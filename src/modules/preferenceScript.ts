@@ -32,21 +32,21 @@ import {
 } from "../settings";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
 
-const PROJECT_URL = "https://github.com/quillamio/bilingual-reader";
+const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
 function getElement<T extends HTMLElement>(doc: Document, id: string): T | null {
   return doc.getElementById(id) as T | null;
 }
 
 function setStatus(doc: Document, message: string): void {
-  const status = getElement<HTMLElement>(doc, "bilingualreader-settings-status");
+  const status = getElement<HTMLElement>(doc, "interlinear-settings-status");
   if (status) status.textContent = message;
 }
 
 function updateBackendVisibility(doc: Document): void {
-  const engine = getElement<HTMLSelectElement>(doc, "bilingualreader-engine")?.value;
-  const pdfSection = getElement<HTMLElement>(doc, "bilingualreader-pdftranslate-section");
-  const ollamaSection = getElement<HTMLElement>(doc, "bilingualreader-ollama-section");
+  const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
+  const pdfSection = getElement<HTMLElement>(doc, "interlinear-pdftranslate-section");
+  const ollamaSection = getElement<HTMLElement>(doc, "interlinear-ollama-section");
   if (pdfSection) pdfSection.hidden = engine !== "pdftranslate";
   if (ollamaSection) ollamaSection.hidden = engine !== "ollama";
 }
@@ -58,33 +58,33 @@ function readNumberInput(doc: Document, id: string, fallback: number): number {
 }
 
 function saveSettings(doc: Document): void {
-  const engineValue = getElement<HTMLSelectElement>(doc, "bilingualreader-engine")?.value;
+  const engineValue = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
   const engine: TranslationEngine = engineValue === "ollama" ? "ollama" : "pdftranslate";
   const url =
-    getElement<HTMLInputElement>(doc, "bilingualreader-ollama-url")?.value || DEFAULT_OLLAMA_URL;
+    getElement<HTMLInputElement>(doc, "interlinear-ollama-url")?.value || DEFAULT_OLLAMA_URL;
   const model =
-    getElement<HTMLInputElement>(doc, "bilingualreader-ollama-model")?.value ||
+    getElement<HTMLInputElement>(doc, "interlinear-ollama-model")?.value ||
     DEFAULT_OLLAMA_MODEL;
 
   setEngine(engine);
   setOllamaURL(url);
   setOllamaModel(model);
   setSkipLastPages(
-    readNumberInput(doc, "bilingualreader-skip-last-pages", DEFAULT_SKIP_LAST_PAGES),
+    readNumberInput(doc, "interlinear-skip-last-pages", DEFAULT_SKIP_LAST_PAGES),
   );
-  setMaxConcurrent(readNumberInput(doc, "bilingualreader-max-concurrent", DEFAULT_MAX_CONCURRENT));
-  setRequestGapMs(readNumberInput(doc, "bilingualreader-request-gap", DEFAULT_REQUEST_GAP_MS));
+  setMaxConcurrent(readNumberInput(doc, "interlinear-max-concurrent", DEFAULT_MAX_CONCURRENT));
+  setRequestGapMs(readNumberInput(doc, "interlinear-request-gap", DEFAULT_REQUEST_GAP_MS));
   setMaxCharsPerRequest(
-    readNumberInput(doc, "bilingualreader-max-chars", DEFAULT_MAX_CHARS_PER_REQUEST),
+    readNumberInput(doc, "interlinear-max-chars", DEFAULT_MAX_CHARS_PER_REQUEST),
   );
   setMaxBatchParagraphs(
-    readNumberInput(doc, "bilingualreader-max-batch-paragraphs", DEFAULT_MAX_BATCH_PARAGRAPHS),
+    readNumberInput(doc, "interlinear-max-batch-paragraphs", DEFAULT_MAX_BATCH_PARAGRAPHS),
   );
   setMaxConsecutiveErrors(
-    readNumberInput(doc, "bilingualreader-max-errors", DEFAULT_MAX_CONSECUTIVE_ERRORS),
+    readNumberInput(doc, "interlinear-max-errors", DEFAULT_MAX_CONSECUTIVE_ERRORS),
   );
   setRequestTimeoutMs(
-    readNumberInput(doc, "bilingualreader-request-timeout", DEFAULT_REQUEST_TIMEOUT_MS),
+    readNumberInput(doc, "interlinear-request-timeout", DEFAULT_REQUEST_TIMEOUT_MS),
   );
 
   setStatus(doc, "设置已保存。返回正在阅读的 PDF 后点击 🔄 即可应用。 ");
@@ -92,13 +92,13 @@ function saveSettings(doc: Document): void {
 
 async function testOllama(doc: Document): Promise<void> {
   const url = (
-    getElement<HTMLInputElement>(doc, "bilingualreader-ollama-url")?.value || DEFAULT_OLLAMA_URL
+    getElement<HTMLInputElement>(doc, "interlinear-ollama-url")?.value || DEFAULT_OLLAMA_URL
   ).replace(/\/+$/, "");
   const model =
-    getElement<HTMLInputElement>(doc, "bilingualreader-ollama-model")?.value ||
+    getElement<HTMLInputElement>(doc, "interlinear-ollama-model")?.value ||
     DEFAULT_OLLAMA_MODEL;
 
-  const button = getElement<HTMLButtonElement>(doc, "bilingualreader-test-ollama");
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-test-ollama");
   if (button?.disabled) return;
   if (button) button.disabled = true;
   setStatus(doc, `正在连接 ${url} …`);
@@ -136,7 +136,7 @@ async function testOllama(doc: Document): Promise<void> {
 }
 
 function updateCacheStatus(doc: Document): void {
-  const status = getElement<HTMLElement>(doc, "bilingualreader-cache-status");
+  const status = getElement<HTMLElement>(doc, "interlinear-cache-status");
   if (!status) return;
   const stats = getTranslationCacheStats();
   const sizeMiB = ((stats.chars * 2) / (1024 * 1024)).toFixed(1);
@@ -152,7 +152,7 @@ function clearCache(doc: Document): void {
 
 function updatePDFTranslateStatus(doc: Document): void {
   const api = (Zotero as any).PDFTranslate?.api;
-  const target = getElement<HTMLElement>(doc, "bilingualreader-pdftranslate-status");
+  const target = getElement<HTMLElement>(doc, "interlinear-pdftranslate-status");
   if (!target) return;
 
   if (!api?.translate) {
@@ -168,12 +168,12 @@ function updatePDFTranslateStatus(doc: Document): void {
   }
 
   target.textContent = version
-    ? `已检测到 Translate for Zotero ${version}。Bilingual Reader 将固定跟随它当前的默认服务。`
-    : "已检测到 Translate for Zotero。Bilingual Reader 将固定跟随它当前的默认服务。";
+    ? `已检测到 Translate for Zotero ${version}。Interlinear 将固定跟随它当前的默认服务。`
+    : "已检测到 Translate for Zotero。Interlinear 将固定跟随它当前的默认服务。";
 }
 
 function registerProjectLink(doc: Document): void {
-  getElement<HTMLAnchorElement>(doc, "bilingualreader-github-link")?.addEventListener(
+  getElement<HTMLAnchorElement>(doc, "interlinear-github-link")?.addEventListener(
     "click",
     (event) => {
       event.preventDefault();
@@ -186,23 +186,23 @@ function registerProjectLink(doc: Document): void {
 
 export async function registerPrefsScripts(window: Window): Promise<void> {
   const doc = window.document;
-  const root = getElement<HTMLElement>(doc, "bilingualreader-settings-root");
+  const root = getElement<HTMLElement>(doc, "interlinear-settings-root");
   if (!root || root.dataset.initialized === "true") return;
   root.dataset.initialized = "true";
 
-  const engine = getElement<HTMLSelectElement>(doc, "bilingualreader-engine");
-  const url = getElement<HTMLInputElement>(doc, "bilingualreader-ollama-url");
-  const model = getElement<HTMLInputElement>(doc, "bilingualreader-ollama-model");
-  const skipLastPages = getElement<HTMLInputElement>(doc, "bilingualreader-skip-last-pages");
-  const maxConcurrent = getElement<HTMLInputElement>(doc, "bilingualreader-max-concurrent");
-  const gap = getElement<HTMLInputElement>(doc, "bilingualreader-request-gap");
-  const maxChars = getElement<HTMLInputElement>(doc, "bilingualreader-max-chars");
+  const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine");
+  const url = getElement<HTMLInputElement>(doc, "interlinear-ollama-url");
+  const model = getElement<HTMLInputElement>(doc, "interlinear-ollama-model");
+  const skipLastPages = getElement<HTMLInputElement>(doc, "interlinear-skip-last-pages");
+  const maxConcurrent = getElement<HTMLInputElement>(doc, "interlinear-max-concurrent");
+  const gap = getElement<HTMLInputElement>(doc, "interlinear-request-gap");
+  const maxChars = getElement<HTMLInputElement>(doc, "interlinear-max-chars");
   const maxBatchParagraphs = getElement<HTMLInputElement>(
     doc,
-    "bilingualreader-max-batch-paragraphs",
+    "interlinear-max-batch-paragraphs",
   );
-  const maxErrors = getElement<HTMLInputElement>(doc, "bilingualreader-max-errors");
-  const requestTimeout = getElement<HTMLInputElement>(doc, "bilingualreader-request-timeout");
+  const maxErrors = getElement<HTMLInputElement>(doc, "interlinear-max-errors");
+  const requestTimeout = getElement<HTMLInputElement>(doc, "interlinear-request-timeout");
 
   if (engine) engine.value = getEngine();
   if (url) url.value = getOllamaURL();
@@ -225,18 +225,18 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     setStatus(doc, "翻译后端已修改，点击“保存设置”后生效。");
   });
 
-  getElement<HTMLButtonElement>(doc, "bilingualreader-save")?.addEventListener("click", () => {
+  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
     saveSettings(doc);
   });
 
-  getElement<HTMLButtonElement>(doc, "bilingualreader-test-ollama")?.addEventListener(
+  getElement<HTMLButtonElement>(doc, "interlinear-test-ollama")?.addEventListener(
     "click",
     () => {
       void testOllama(doc);
     },
   );
 
-  getElement<HTMLButtonElement>(doc, "bilingualreader-clear-cache")?.addEventListener(
+  getElement<HTMLButtonElement>(doc, "interlinear-clear-cache")?.addEventListener(
     "click",
     () => {
       clearCache(doc);

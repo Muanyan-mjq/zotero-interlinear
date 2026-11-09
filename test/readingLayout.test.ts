@@ -131,7 +131,7 @@ describe("native Zotero reading-mode highlight layout", function () {
     async function () {
       assert.isBelow(alignmentError(), 2);
       const block = doc.createElement("div");
-      block.className = "bilingual-reader-translation";
+      block.className = "interlinear-translation";
       block.style.cssText = "height:70px;line-height:20px";
       block.textContent = "等待翻译…";
       doc.querySelector('[data-ref-path="0"]')!.after(block);

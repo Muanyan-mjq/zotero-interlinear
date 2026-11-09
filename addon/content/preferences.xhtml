@@ -3,51 +3,51 @@
 </linkset>
 
 <groupbox
-  id="bilingualreader-settings-root"
+  id="interlinear-settings-root"
   onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
 >
-  <label><html:h2>中英对照阅读</html:h2></label>
+  <label><html:h2>Interlinear 中英对照阅读</html:h2></label>
   <html:p
-    id="bilingualreader-introduction"
+    id="interlinear-introduction"
     style="margin: 0 0 12px 0; line-height: 1.6; max-width: 760px"
   >
-    在 Zotero 10 新 PDF 阅读模式中按段落显示英文原文和中文译文。默认使用 Translate for
-    Zotero（推荐使用google，其次必应）；Ollama 作为可选后端保留。
+    Interlinear 在 Zotero 10 新 PDF 阅读模式中按段落显示英文原文和中文译文。默认使用 Translate
+    for Zotero（推荐使用google，其次必应）；Ollama 作为可选后端保留。
   </html:p>
 
   <hbox align="center" style="margin-bottom: 10px">
-    <html:label for="bilingualreader-engine" style="min-width: 130px">翻译后端</html:label>
-    <html:select id="bilingualreader-engine" style="min-width: 320px; padding: 4px 8px">
+    <html:label for="interlinear-engine" style="min-width: 130px">翻译后端</html:label>
+    <html:select id="interlinear-engine" style="min-width: 320px; padding: 4px 8px">
       <html:option value="pdftranslate">Translate for Zotero（推荐）</html:option>
       <html:option value="ollama">Ollama</html:option>
     </html:select>
   </hbox>
 </groupbox>
 
-<groupbox id="bilingualreader-pdftranslate-section">
+<groupbox id="interlinear-pdftranslate-section">
   <label><html:h3>Translate for Zotero</html:h3></label>
   <html:p
-    id="bilingualreader-pdftranslate-status"
+    id="interlinear-pdftranslate-status"
     style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
   ></html:p>
 
   <html:p
-    id="bilingualreader-pdftranslate-policy"
+    id="interlinear-pdftranslate-policy"
     style="line-height: 1.6; margin: 0; max-width: 760px"
   >
     固定跟随 Translate for Zotero 当前默认服务。请在 Translate for Zotero 中切换服务或配置密钥。
-    Bilingual Reader 只负责分段、调度、缓存和双语排版。
+    Interlinear 只负责分段、调度、缓存和双语排版。
   </html:p>
 </groupbox>
 
-<groupbox id="bilingualreader-page-section">
+<groupbox id="interlinear-page-section">
   <label><html:h3>翻译范围</html:h3></label>
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-skip-last-pages" style="min-width: 180px"
+    <html:label for="interlinear-skip-last-pages" style="min-width: 180px"
       >不翻译末尾页数</html:label
     >
     <html:input
-      id="bilingualreader-skip-last-pages"
+      id="interlinear-skip-last-pages"
       type="number"
       min="0"
       max="50"
@@ -63,15 +63,15 @@
   </html:p>
 </groupbox>
 
-<groupbox id="bilingualreader-speed-section">
+<groupbox id="interlinear-speed-section">
   <label><html:h3>速度与稳定性</html:h3></label>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-max-concurrent" style="min-width: 180px"
+    <html:label for="interlinear-max-concurrent" style="min-width: 180px"
       >最大并发请求</html:label
     >
     <html:input
-      id="bilingualreader-max-concurrent"
+      id="interlinear-max-concurrent"
       type="number"
       min="1"
       max="3"
@@ -84,11 +84,11 @@
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-request-gap" style="min-width: 180px"
+    <html:label for="interlinear-request-gap" style="min-width: 180px"
       >请求启动间隔（毫秒）</html:label
     >
     <html:input
-      id="bilingualreader-request-gap"
+      id="interlinear-request-gap"
       type="number"
       min="0"
       max="5000"
@@ -101,11 +101,11 @@
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-max-chars" style="min-width: 180px"
+    <html:label for="interlinear-max-chars" style="min-width: 180px"
       >单次请求最大字符数</html:label
     >
     <html:input
-      id="bilingualreader-max-chars"
+      id="interlinear-max-chars"
       type="number"
       min="500"
       max="8000"
@@ -118,11 +118,11 @@
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-max-batch-paragraphs" style="min-width: 180px"
+    <html:label for="interlinear-max-batch-paragraphs" style="min-width: 180px"
       >单次合并段落数</html:label
     >
     <html:input
-      id="bilingualreader-max-batch-paragraphs"
+      id="interlinear-max-batch-paragraphs"
       type="number"
       min="1"
       max="12"
@@ -136,11 +136,11 @@
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-request-timeout" style="min-width: 180px"
+    <html:label for="interlinear-request-timeout" style="min-width: 180px"
       >单次请求超时（毫秒）</html:label
     >
     <html:input
-      id="bilingualreader-request-timeout"
+      id="interlinear-request-timeout"
       type="number"
       min="5000"
       max="300000"
@@ -153,11 +153,11 @@
   </hbox>
 
   <hbox align="center" style="margin-bottom: 10px">
-    <html:label for="bilingualreader-max-errors" style="min-width: 180px"
+    <html:label for="interlinear-max-errors" style="min-width: 180px"
       >连续失败后暂停</html:label
     >
     <html:input
-      id="bilingualreader-max-errors"
+      id="interlinear-max-errors"
       type="number"
       min="1"
       max="20"
@@ -170,21 +170,21 @@
   </hbox>
 
   <hbox align="center">
-    <html:button id="bilingualreader-save" type="button" style="padding: 6px 16px"
+    <html:button id="interlinear-save" type="button" style="padding: 6px 16px"
       >保存设置</html:button
     >
     <html:span
-      id="bilingualreader-settings-status"
+      id="interlinear-settings-status"
       style="margin-left: 12px; line-height: 1.5"
     ></html:span>
   </hbox>
 </groupbox>
 
-<groupbox id="bilingualreader-cache-section">
+<groupbox id="interlinear-cache-section">
   <label><html:h3>翻译缓存</html:h3></label>
-  <html:p id="bilingualreader-cache-status" style="line-height: 1.6; margin: 0 0 8px 0"></html:p>
+  <html:p id="interlinear-cache-status" style="line-height: 1.6; margin: 0 0 8px 0"></html:p>
   <hbox align="center">
-    <html:button id="bilingualreader-clear-cache" type="button" style="padding: 5px 12px"
+    <html:button id="interlinear-clear-cache" type="button" style="padding: 5px 12px"
       >清除翻译缓存</html:button
     >
     <html:span style="margin-left: 10px; max-width: 560px"
@@ -193,21 +193,21 @@
   </hbox>
 </groupbox>
 
-<groupbox id="bilingualreader-ollama-section">
+<groupbox id="interlinear-ollama-section">
   <label><html:h3>Ollama（可选）</html:h3></label>
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-ollama-url" style="min-width: 130px">服务地址</html:label>
+    <html:label for="interlinear-ollama-url" style="min-width: 130px">服务地址</html:label>
     <html:input
-      id="bilingualreader-ollama-url"
+      id="interlinear-ollama-url"
       type="text"
       style="width: 430px; padding: 4px 6px"
       placeholder="http://127.0.0.1:11434"
     />
   </hbox>
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="bilingualreader-ollama-model" style="min-width: 130px">模型</html:label>
+    <html:label for="interlinear-ollama-model" style="min-width: 130px">模型</html:label>
     <html:input
-      id="bilingualreader-ollama-model"
+      id="interlinear-ollama-model"
       type="text"
       style="width: 430px; padding: 4px 6px"
       placeholder="gpt-oss:20b"
@@ -215,7 +215,7 @@
   </hbox>
   <hbox align="center">
     <spacer width="130" />
-    <html:button id="bilingualreader-test-ollama" type="button" style="padding: 5px 12px"
+    <html:button id="interlinear-test-ollama" type="button" style="padding: 5px 12px"
       >测试 Ollama 连接</html:button
     >
   </hbox>
@@ -233,10 +233,10 @@
   <label><html:h3>项目主页</html:h3></label>
   <html:p style="line-height: 1.6; margin: 0">
     <html:a
-      id="bilingualreader-github-link"
-      href="https://github.com/quillamio/bilingual-reader"
+      id="interlinear-github-link"
+      href="https://github.com/Muanyan-mjq/zotero-interlinear"
       style="cursor: pointer"
-      >https://github.com/quillamio/bilingual-reader</html:a
+      >https://github.com/Muanyan-mjq/zotero-interlinear</html:a
     >
   </html:p>
 </groupbox>

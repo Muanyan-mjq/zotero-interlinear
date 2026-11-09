@@ -11,7 +11,7 @@ describe("startup", function () {
 
   it("should register the preferences pane", function () {
     const pane = Zotero.PreferencePanes.pluginPanes.find(
-      (entry) => entry.id === "bilingual-reader-preferences",
+      (entry) => entry.id === "interlinear-preferences",
     );
 
     assert.exists(pane);
@@ -21,21 +21,21 @@ describe("startup", function () {
 
   it("should load the preferences controls", async function () {
     this.timeout(10000);
-    const win = Zotero.Utilities.Internal.openPreferences("bilingual-reader-preferences");
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
 
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("bilingualreader-engine")) break;
+        if (win?.document.getElementById("interlinear-engine")) break;
         await Zotero.Promise.delay(50);
       }
 
-      assert.exists(win?.document.getElementById("bilingualreader-engine"));
+      assert.exists(win?.document.getElementById("interlinear-engine"));
       const engine = win?.document.getElementById(
-        "bilingualreader-engine",
+        "interlinear-engine",
       ) as HTMLSelectElement | null;
       const skipLastPages = win?.document.getElementById(
-        "bilingualreader-skip-last-pages",
+        "interlinear-skip-last-pages",
       ) as HTMLInputElement | null;
 
       assert.deepEqual(
@@ -46,21 +46,21 @@ describe("startup", function () {
       assert.equal(skipLastPages?.value, "1");
       assert.equal(
         win?.document
-          .getElementById("bilingualreader-introduction")
+          .getElementById("interlinear-introduction")
           ?.textContent?.replace(/\s+/gu, " ")
           .trim(),
-        "在 Zotero 10 新 PDF 阅读模式中按段落显示英文原文和中文译文。默认使用 Translate for Zotero（推荐使用google，其次必应）；Ollama 作为可选后端保留。",
+        "Interlinear 在 Zotero 10 新 PDF 阅读模式中按段落显示英文原文和中文译文。默认使用 Translate for Zotero（推荐使用google，其次必应）；Ollama 作为可选后端保留。",
       );
-      assert.notExists(win?.document.getElementById("bilingualreader-pdftranslate-service"));
+      assert.notExists(win?.document.getElementById("interlinear-pdftranslate-service"));
       assert.include(
-        win?.document.getElementById("bilingualreader-pdftranslate-policy")?.textContent || "",
+        win?.document.getElementById("interlinear-pdftranslate-policy")?.textContent || "",
         "固定跟随 Translate for Zotero 当前默认服务",
       );
-      assert.exists(win?.document.getElementById("bilingualreader-save"));
+      assert.exists(win?.document.getElementById("interlinear-save"));
       assert.equal(
-        (win?.document.getElementById("bilingualreader-github-link") as HTMLAnchorElement | null)
+        (win?.document.getElementById("interlinear-github-link") as HTMLAnchorElement | null)
           ?.href,
-        "https://github.com/quillamio/bilingual-reader",
+        "https://github.com/Muanyan-mjq/zotero-interlinear",
       );
     } finally {
       win?.close();
@@ -75,35 +75,39 @@ describe("startup", function () {
     renderReaderToolbar({ reader, doc, append });
     renderReaderToolbar({ reader, doc, append });
 
-    assert.equal(doc.querySelectorAll(".bilingual-reader-toolbar-button").length, 1);
-    assert.equal(doc.querySelectorAll(".bilingual-reader-refresh-button").length, 1);
-    assert.equal(doc.querySelectorAll(".bilingual-reader-export-button").length, 1);
-    assert.equal(doc.querySelector(".bilingual-reader-toolbar-button")?.textContent, "🀄");
-    assert.equal(doc.querySelector(".bilingual-reader-export-button")?.textContent, "🖨️");
-    assert.notExists(doc.querySelector(".bilingual-reader-settings-button"));
-    assert.notExists(doc.querySelector(".bilingual-reader-wordwise-button"));
+    assert.equal(doc.querySelectorAll(".interlinear-toolbar-button").length, 1);
+    assert.equal(doc.querySelectorAll(".interlinear-refresh-button").length, 1);
+    assert.equal(doc.querySelectorAll(".interlinear-export-button").length, 1);
+    const toggle = doc.querySelector(".interlinear-toolbar-button");
+    assert.equal(toggle?.textContent, "");
+    const toggleIcon = toggle?.querySelector("img") as HTMLImageElement | null;
+    assert.exists(toggleIcon);
+    assert.match(toggleIcon?.src || "", /content\/icons\/icon20\.png$/u);
+    assert.equal(doc.querySelector(".interlinear-export-button")?.textContent, "🖨️");
+    assert.notExists(doc.querySelector(".interlinear-settings-button"));
+    assert.notExists(doc.querySelector(".interlinear-wordwise-button"));
   });
 
   it("should save the engine and trailing-page settings from Zotero preferences", async function () {
     this.timeout(10000);
-    const enginePref = "extensions.zotero.bilingualreader.engine";
-    const skipPref = "extensions.zotero.bilingualreader.skipLastPages";
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const skipPref = "extensions.zotero.interlinear.skipLastPages";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSkip = Zotero.Prefs.get(skipPref, true);
-    const win = Zotero.Utilities.Internal.openPreferences("bilingual-reader-preferences");
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
 
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("bilingualreader-save")) break;
+        if (win?.document.getElementById("interlinear-save")) break;
         await Zotero.Promise.delay(50);
       }
 
-      const engine = win?.document.getElementById("bilingualreader-engine") as HTMLSelectElement;
+      const engine = win?.document.getElementById("interlinear-engine") as HTMLSelectElement;
       const skipLastPages = win?.document.getElementById(
-        "bilingualreader-skip-last-pages",
+        "interlinear-skip-last-pages",
       ) as HTMLInputElement;
-      const save = win?.document.getElementById("bilingualreader-save") as HTMLButtonElement;
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
 
       engine.value = "ollama";
       engine.dispatchEvent(new win!.Event("change"));
@@ -123,8 +127,8 @@ describe("startup", function () {
 
   it("should translate through Translate for Zotero without AbortController", async function () {
     this.timeout(10000);
-    const prefKey = "extensions.zotero.bilingualreader.engine";
-    const obsoleteServicePref = "extensions.zotero.bilingualreader.pdftranslate.service";
+    const prefKey = "extensions.zotero.interlinear.engine";
+    const obsoleteServicePref = "extensions.zotero.interlinear.pdftranslate.service";
     const previousEngine = Zotero.Prefs.get(prefKey, true);
     const previousObsoleteService = Zotero.Prefs.get(obsoleteServicePref, true);
     const previousPDFTranslate = (Zotero as any).PDFTranslate;
@@ -176,7 +180,7 @@ describe("startup", function () {
 
       await toggleBilingualReading(reader);
 
-      const translated = doc.querySelector(".bilingual-reader-translation");
+      const translated = doc.querySelector(".interlinear-translation");
       assert.equal(shownError, "");
       assert.equal(translated?.textContent, "集成测试译文。");
       assert.equal(translated?.getAttribute("data-state"), "done");
@@ -200,7 +204,7 @@ describe("startup", function () {
 
   it("should translate through the selected Ollama engine", async function () {
     this.timeout(10000);
-    const enginePref = "extensions.zotero.bilingualreader.engine";
+    const enginePref = "extensions.zotero.interlinear.engine";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousRequest = Zotero.HTTP.request;
     let requestedURL = "";
@@ -238,7 +242,7 @@ describe("startup", function () {
 
       await toggleBilingualReading(reader);
 
-      const translated = doc.querySelector(".bilingual-reader-translation");
+      const translated = doc.querySelector(".interlinear-translation");
       assert.match(requestedURL, /\/api\/chat$/u);
       assert.equal(translated?.textContent, "Ollama 集成测试译文。");
       assert.equal(translated?.getAttribute("data-state"), "done");
@@ -253,8 +257,8 @@ describe("startup", function () {
 
   it("should skip the configured number of trailing PDF pages", async function () {
     this.timeout(10000);
-    const enginePref = "extensions.zotero.bilingualreader.engine";
-    const skipPref = "extensions.zotero.bilingualreader.skipLastPages";
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const skipPref = "extensions.zotero.interlinear.skipLastPages";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSkip = Zotero.Prefs.get(skipPref, true);
     const previousPDFTranslate = (Zotero as any).PDFTranslate;
@@ -309,7 +313,7 @@ describe("startup", function () {
 
       await toggleBilingualReading(reader);
 
-      const translations = doc.querySelectorAll(".bilingual-reader-translation");
+      const translations = doc.querySelectorAll(".interlinear-translation");
       assert.equal(requestCount, 1);
       assert.equal(translations.length, 1);
       assert.equal(translations[0].textContent, "第一页译文。");

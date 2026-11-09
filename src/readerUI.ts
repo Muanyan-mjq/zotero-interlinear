@@ -1,5 +1,5 @@
-const TRANSLATION_CLASS = "bilingual-reader-translation";
-const EXPORT_BUTTON_CLASS = "bilingual-reader-export-button";
+const TRANSLATION_CLASS = "interlinear-translation";
+const EXPORT_BUTTON_CLASS = "interlinear-export-button";
 const PRINTER_EMOJI = "🖨️";
 
 function getInternalReader(reader: any): any {
@@ -351,7 +351,7 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
   );
   const fileName = sanitizeFileName(`${parentTitle} - 中英对照翻译.pdf`);
   const tempFile = Zotero.getTempDirectory();
-  tempFile.append(`bilingual-reader-${Date.now()}-${fileName}`);
+  tempFile.append(`interlinear-${Date.now()}-${fileName}`);
 
   try {
     if (tempFile.exists()) tempFile.remove(false);

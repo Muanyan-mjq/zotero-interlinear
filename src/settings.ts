@@ -1,4 +1,5 @@
-const BASE = "extensions.zotero.bilingualreader";
+const BASE = "extensions.zotero.interlinear";
+const LEGACY_BASE = "extensions.zotero.bilingualreader";
 
 export type TranslationEngine = "pdftranslate" | "ollama";
 
@@ -154,29 +155,97 @@ export function migrateLegacyPreferences(): void {
   const rootBranch = (Zotero.Prefs as any).rootBranch;
   if (!rootBranch?.getChildList) return;
 
-  const malformedPrefix = `extensions.zotero.${BASE}.`;
-  const keys = rootBranch.getChildList(malformedPrefix, {}) || [];
-  for (const malformedKey of keys) {
-    const correctedKey = malformedKey.slice("extensions.zotero.".length);
-    try {
-      if (!rootBranch.prefHasUserValue(correctedKey)) {
-        switch (rootBranch.getPrefType(malformedKey)) {
-          case rootBranch.PREF_BOOL:
-            rootBranch.setBoolPref(correctedKey, rootBranch.getBoolPref(malformedKey));
-            break;
-          case rootBranch.PREF_INT:
-            rootBranch.setIntPref(correctedKey, rootBranch.getIntPref(malformedKey));
-            break;
-          case rootBranch.PREF_STRING:
-            rootBranch.setStringPref(correctedKey, rootBranch.getStringPref(malformedKey));
-            break;
-          default:
-            break;
+  for (const base of [LEGACY_BASE, BASE]) {
+    const malformedPrefix = `extensions.zotero.${base}.`;
+    const keys = rootBranch.getChildList(malformedPrefix, {}) || [];
+    for (const malformedKey of keys) {
+      const correctedKey = malformedKey.slice("extensions.zotero.".length);
+      try {
+        if (!rootBranch.prefHasUserValue(correctedKey)) {
+          switch (rootBranch.getPrefType(malformedKey)) {
+            case rootBranch.PREF_BOOL:
+              rootBranch.setBoolPref(correctedKey, rootBranch.getBoolPref(malformedKey));
+              break;
+            case rootBranch.PREF_INT:
+              rootBranch.setIntPref(correctedKey, rootBranch.getIntPref(malformedKey));
+              break;
+            case rootBranch.PREF_STRING:
+              rootBranch.setStringPref(correctedKey, rootBranch.getStringPref(malformedKey));
+              break;
+            default:
+              break;
+          }
         }
+        rootBranch.clearUserPref(malformedKey);
+      } catch (error) {
+        Zotero.logError(error as Error);
       }
-      rootBranch.clearUserPref(malformedKey);
+    }
+  }
+
+  migrateLegacyBranch(rootBranch);
+}
+
+/**
+ * Copy Bilingual Reader prefs into the Interlinear branch once. The legacy
+ * branch is left intact: the original plugin may still be installed, and
+ * clearing its prefs would destroy its state.
+ */
+function migrateLegacyBranch(rootBranch: any): void {
+  const markerKey = `${BASE}.migratedFromBilingualReader`;
+  try {
+    if (rootBranch.prefHasUserValue(markerKey)) return;
+  } catch (_) {
+    return;
+  }
+  const legacyPrefix = `${LEGACY_BASE}.`;
+  const keys = rootBranch.getChildList(legacyPrefix, {}) || [];
+  for (const legacyKey of keys) {
+    const targetKey = `${BASE}.${legacyKey.slice(legacyPrefix.length)}`;
+    try {
+      if (rootBranch.prefHasUserValue(targetKey)) continue;
+      switch (rootBranch.getPrefType(legacyKey)) {
+        case rootBranch.PREF_BOOL:
+          rootBranch.setBoolPref(targetKey, rootBranch.getBoolPref(legacyKey));
+          break;
+        case rootBranch.PREF_INT:
+          rootBranch.setIntPref(targetKey, rootBranch.getIntPref(legacyKey));
+          break;
+        case rootBranch.PREF_STRING: {
+          let value = rootBranch.getStringPref(legacyKey);
+          // The cache index stores full pref keys; repoint them at the new
+          // branch or every migrated entry would be filtered out as foreign.
+          if (legacyKey === `${LEGACY_BASE}.cache.v4.index`) {
+            value = rewriteCacheIndexKeys(value);
+          }
+          rootBranch.setStringPref(targetKey, value);
+          break;
+        }
+        default:
+          break;
+      }
     } catch (error) {
       Zotero.logError(error as Error);
     }
+  }
+  try {
+    rootBranch.setBoolPref(markerKey, true);
+  } catch (error) {
+    Zotero.logError(error as Error);
+  }
+}
+
+function rewriteCacheIndexKeys(raw: string): string {
+  try {
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries)) return raw;
+    for (const entry of entries) {
+      if (typeof entry?.key === "string" && entry.key.startsWith(`${LEGACY_BASE}.`)) {
+        entry.key = `${BASE}.${entry.key.slice(LEGACY_BASE.length + 1)}`;
+      }
+    }
+    return JSON.stringify(entries);
+  } catch (_) {
+    return raw;
   }
 }

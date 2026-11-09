@@ -1,26 +1,29 @@
 {
-  "name": "zotero-bilingual-reader",
+  "name": "zotero-interlinear",
   "type": "module",
   "version": "0.5.1",
-  "description": "Zotero 10 阅读模式 PDF 段落中英对照翻译",
+  "description": "Interlinear：Zotero 10 阅读模式 PDF 段落中英对照翻译",
   "keywords": [
     "translation",
     "reader",
     "ai"
   ],
   "config": {
-    "addonName": "Bilingual Reader",
-    "addonID": "bilingual-reader@zotero.local",
-    "addonRef": "bilingualreader",
-    "addonInstance": "BilingualReader",
-    "prefsPrefix": "extensions.zotero.bilingualreader"
+    "addonName": "Interlinear",
+    "addonID": "interlinear@muanyan-mjq",
+    "addonRef": "interlinear",
+    "addonInstance": "Interlinear",
+    "prefsPrefix": "extensions.zotero.interlinear"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/quillamio/bilingual-reader.git"
+    "url": "https://github.com/Muanyan-mjq/zotero-interlinear.git"
   },
-  "homepage": "https://github.com/quillamio/bilingual-reader",
-  "author": "quillamio",
+  "homepage": "https://github.com/Muanyan-mjq/zotero-interlinear",
+  "author": "Muanyan-mjq",
+  "contributors": [
+    "quillamio (original Bilingual Reader)"
+  ],
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "zotero-plugin serve",

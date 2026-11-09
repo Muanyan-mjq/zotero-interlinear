@@ -1,4 +1,4 @@
-const BASE = "extensions.zotero.bilingualreader";
+const BASE = "extensions.zotero.interlinear";
 const TARGET_LANG = "zh-CN";
 const CACHE_PREFIX = `${BASE}.cache.v4.`;
 const LEGACY_CACHE_PREFIX = `${BASE}.cache.v3.`;

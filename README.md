@@ -1,10 +1,14 @@
 <p align="center">
-  <img src="addon/content/icons/mahjong-red-dragon.svg" width="96" alt="Bilingual Reader" />
+  <img src="addon/content/icons/icon96.png" width="96" alt="Interlinear" />
 </p>
 
-# Bilingual Reader
+# Interlinear
 
 **Zotero 10 阅读模式 PDF 段落中英对照翻译。**
+
+> Based on [quillamio/bilingual-reader](https://github.com/quillamio/bilingual-reader), AGPL-3.0-or-later.
+
+> **请先卸载原版 Bilingual Reader 再安装本插件。** 两者会向同一个阅读器工具栏区域注入按钮；本插件首次启动时会把原版的偏好设置与翻译缓存复制到新的命名空间，原版数据不会被清除。
 
 在 Zotero 10 的 PDF 阅读模式中读取结构化段落，将英文原文与中文译文按段落连续显示，适合论文精读。
 
@@ -12,7 +16,7 @@
 
 ## 主要功能
 
-- 🀄 一键开启 / 关闭段落中英对照。
+- 一键开启 / 关闭段落中英对照（阅读器工具栏上的插件图标按钮）。
 - 默认调用 **Translate for Zotero** 的翻译服务（推荐使用google，其次必应）。
 - 可选 **Ollama** 本地或云端模型。
 - 自动缓存已完成译文。
@@ -41,7 +45,7 @@
 ## 使用
 
 1. 在 Zotero 10 中打开英文 PDF。
-2. 点击阅读器顶部 **🀄**。
+2. 点击阅读器顶部的 **Interlinear 图标按钮**（红色 Z 与 A/文 翻译卡片）。
 3. 等待 Zotero 生成阅读模式结构化文本。
 4. 中文译文会显示在对应英文段落下方。
 5. 点击 **🔄** 可重新调度翻译。
@@ -76,15 +80,20 @@
 
 ## 图标
 
-插件图标使用 Google Noto Emoji 的麻将红中图标，并本地打包到插件中，避免运行时依赖外部网络。
+插件图标由本项目作者提供（红色 Z 与 A/文 翻译卡片，圆角方形底板），源文件为仓库根目录的
+`Zotero Translation Icon.png`（1254×1254）。各尺寸由该源文件等比缩放生成，未改动图形内容，全部本地打包，运行时不依赖外部网络。
 
-视觉来源：
-https://images.emojiterra.com/google/noto-emoji/unicode-17.0/color/svg/1f004.svg
+| 文件 | 尺寸 | 用途 |
+| --- | --- | --- |
+| `addon/content/icons/icon16.png` | 16×16 | 小尺寸备用 |
+| `addon/content/icons/icon20.png` | 20×20 | 阅读器工具栏对照按钮 |
+| `addon/content/icons/icon32.png` | 32×32 | 中尺寸备用 |
+| `addon/content/icons/icon48.png` | 48×48 | 插件管理器图标 |
+| `addon/content/icons/icon96.png` | 96×96 | 插件管理器高清图标、设置页顶部 |
+| `addon/content/icons/favicon.png` | 32×32 | 模板工具栏 / 菜单图标 |
+| `addon/content/icons/favicon@0.5x.png` | 16×16 | 模板菜单小图标 |
 
-上游图形：
-https://github.com/googlefonts/noto-emoji/blob/main/svg/emoji_u1f004.svg
-
-Noto Emoji 图形资源采用 Apache License 2.0。
+重译（🔄）与导出（🖨️）按钮仍使用 emoji，暂未替换。
 
 ## 开发
 
@@ -96,4 +105,5 @@ npm run test
 
 ## 许可证
 
-AGPL-3.0-or-later
+AGPL-3.0-or-later。原项目 [quillamio/bilingual-reader](https://github.com/quillamio/bilingual-reader)
+的版权声明与 LICENSE 全部保留；本仓库由 Muanyan-mjq 维护。

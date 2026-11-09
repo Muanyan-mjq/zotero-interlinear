@@ -1,4 +1,5 @@
 import { assert } from "chai";
+import { config } from "../package.json";
 import {
   reconcileReaderToolbars,
   registerReaderToolbar,
@@ -17,7 +18,7 @@ describe("reader toolbar recovery", function () {
     const { AddonManager } = ChromeUtils.importESModule(
       "resource://gre/modules/AddonManager.sys.mjs",
     );
-    installedAddon = await AddonManager.getAddonByID("bilingual-reader@zotero.local");
+    installedAddon = await AddonManager.getAddonByID(config.addonID);
     await installedAddon.disable();
   });
 
@@ -44,7 +45,7 @@ describe("reader toolbar recovery", function () {
 
   function assertButtons(doc: Document, expected = 1) {
     for (const name of ["toolbar", "refresh", "export"]) {
-      assert.lengthOf(doc.querySelectorAll(`.bilingual-reader-${name}-button`), expected);
+      assert.lengthOf(doc.querySelectorAll(`.interlinear-${name}-button`), expected);
     }
   }
 
@@ -79,7 +80,7 @@ describe("reader toolbar recovery", function () {
     reconcileReaderToolbars();
 
     const section = reader._iframeWindow.document.querySelector(
-      ".bilingual-reader-toolbar-section",
+      ".interlinear-toolbar-section",
     ) as HTMLElement | null;
     assert.exists(section);
     assert.isFalse(section!.classList.contains("section"));
@@ -134,7 +135,7 @@ describe("reader toolbar recovery", function () {
     await Zotero.Promise.delay(400);
     assertButtons(reader._iframeWindow.document, 0);
     assert.notExists(
-      reader._iframeWindow.document.querySelector(".bilingual-reader-toolbar-section"),
+      reader._iframeWindow.document.querySelector(".interlinear-toolbar-section"),
     );
   });
 });

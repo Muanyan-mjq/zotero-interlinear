@@ -1,7 +1,8 @@
 import { cleanupBilingualReader, renderBilingualToolbarButtons } from "./bilingualReader";
 import { cleanupReaderUI, renderReaderExportButton } from "./readerUI";
+import { config } from "../package.json";
 
-const PLUGIN_ID = "bilingual-reader@zotero.local";
+const PLUGIN_ID = config.addonID;
 const STARTUP_RECONCILE_DELAYS_MS = [250, 1000, 3000];
 
 type ToolbarRenderer = (event: any) => void;
@@ -19,7 +20,7 @@ function applyFallbackSectionLayout(section: HTMLElement): void {
   // 10 builds/themes apply a vertical layout to that class, which can stack our
   // toolbar buttons. Keep the fallback container fully namespaced and explicit.
   section.classList.remove("section");
-  section.classList.add("bilingual-reader-toolbar-section");
+  section.classList.add("interlinear-toolbar-section");
   section.style.display = "inline-flex";
   section.style.flexDirection = "row";
   section.style.alignItems = "center";
@@ -32,7 +33,7 @@ function applyFallbackSectionLayout(section: HTMLElement): void {
 
 function getOrCreateFallbackSection(doc: Document, container: Element): HTMLElement {
   let section = container.querySelector(
-    ".bilingual-reader-toolbar-section",
+    ".interlinear-toolbar-section",
   ) as HTMLElement | null;
 
   if (!section) {
@@ -87,7 +88,7 @@ function scheduleStartupReconcile(): void {
 }
 
 /**
- * Render every Bilingual Reader control from one Zotero Reader listener.
+ * Render every Interlinear control from one Zotero Reader listener.
  *
  * Zotero dispatches Reader listeners synchronously without isolating exceptions.
  * Keeping our controls in one listener removes ordering dependencies, while the
@@ -132,7 +133,7 @@ export function unregisterReaderToolbar(): void {
   for (const reader of readers) {
     cleanupReader(reader);
     try {
-      reader._iframeWindow?.document?.querySelector(".bilingual-reader-toolbar-section")?.remove();
+      reader._iframeWindow?.document?.querySelector(".interlinear-toolbar-section")?.remove();
     } catch (_) {
       // The reader may already have closed.
     }

@@ -31,15 +31,16 @@ import {
 } from "./translationPipeline";
 import { CancellationToken } from "./cancellationToken";
 import { cleanupReadingLayout, observeReadingLayout } from "./readingLayout";
+import { config } from "../package.json";
 
-const PLUGIN_ID = "bilingual-reader@zotero.local";
+const PLUGIN_ID = config.addonID;
 const TARGET_LANG = "zh-CN";
-const TRANSLATION_CLASS = "bilingual-reader-translation";
-const TOOLBAR_BUTTON_CLASS = "bilingual-reader-toolbar-button";
-const REFRESH_BUTTON_CLASS = "bilingual-reader-refresh-button";
-const STYLE_ID = "bilingual-reader-style";
-const PREFERENCES_PANE_ID = "bilingual-reader-preferences";
-const MAHJONG_EMOJI = "🀄";
+const TRANSLATION_CLASS = "interlinear-translation";
+const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
+const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
+const STYLE_ID = "interlinear-style";
+const PREFERENCES_PANE_ID = "interlinear-preferences";
+const TOGGLE_ICON_URL = `chrome://${config.addonRef}/content/icons/icon20.png`;
 
 interface ReaderParagraph {
   refPath: string;
@@ -565,7 +566,7 @@ function clearTranslations(doc: Document): void {
   }
 
   const root = getDocumentRoot(doc);
-  if (root) delete root.dataset.bilingualReaderRunning;
+  if (root) delete root.dataset.interlinearRunning;
   cleanupReadingLayout(doc);
 }
 
@@ -807,7 +808,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   }
 
   const generation = nextGeneration(reader);
-  root.dataset.bilingualReaderRunning = "true";
+  root.dataset.interlinearRunning = "true";
   try {
     await translateParagraphs(
       reader,
@@ -822,7 +823,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   } finally {
     flushTranslationCacheIndex();
     const liveRoot = getDocumentRoot(getSDTDocument(reader) || doc);
-    if (liveRoot) delete liveRoot.dataset.bilingualReaderRunning;
+    if (liveRoot) delete liveRoot.dataset.interlinearRunning;
   }
 }
 
@@ -916,19 +917,32 @@ function createToolbarButton(
   text: string,
   title: string,
   onClick: (event: Event) => void,
+  iconURL?: string,
 ): HTMLButtonElement {
   const button = doc.createElement("button");
   button.className = `toolbar-button ${className}`;
   button.type = "button";
   button.tabIndex = -1;
-  button.textContent = text;
   button.title = title;
   button.setAttribute("aria-label", title);
   button.style.minWidth = "34px";
   button.style.paddingInline = "5px";
-  button.style.fontSize = "19px";
-  button.style.lineHeight = "1";
-  button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  if (iconURL) {
+    const img = doc.createElement("img");
+    img.src = iconURL;
+    img.alt = "";
+    img.draggable = false;
+    img.style.width = "20px";
+    img.style.height = "20px";
+    img.style.display = "block";
+    img.style.pointerEvents = "none";
+    button.appendChild(img);
+  } else {
+    button.textContent = text;
+    button.style.fontSize = "19px";
+    button.style.lineHeight = "1";
+    button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  }
   button.addEventListener("click", (event: Event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -946,9 +960,10 @@ export function renderBilingualToolbarButtons(event: any): void {
       createToolbarButton(
         doc,
         TOOLBAR_BUTTON_CLASS,
-        MAHJONG_EMOJI,
+        "",
         "开启/关闭中英段落对照",
         () => void toggleBilingualReading(reader),
+        TOGGLE_ICON_URL,
       ),
     );
   }
