@@ -3,12 +3,16 @@ import {
   getCacheEngineTag,
   getDisplayMode,
   getEngine,
+  getHoverDelayMs,
+  getHoverTranslateEnabled,
   getMaxBatchParagraphs,
   getMaxCharsPerRequest,
   getMaxConcurrent,
   getMaxConsecutiveErrors,
   getRequestGapMs,
   getRequestTimeoutMs,
+  getShortcutEnabled,
+  getShortcutSpec,
   getSkipLastPages,
   getSourceLanguage,
   getTargetLanguage,
@@ -83,6 +87,9 @@ interface ReaderInteractions {
 
 const runStates = new WeakMap<object, RunState>();
 const interactionControllers = new WeakMap<object, ReaderInteractions>();
+// Shared by the full-document scheduler and on-demand triggers so the same
+// paragraph is never requested twice at once.
+const paragraphRequests = new WeakMap<HTMLElement, Promise<void>>();
 
 function defaultRunState(): RunState {
   return { generation: 0, running: false, completed: 0, total: 0 };
@@ -381,6 +388,10 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .interlinear-source-hover {
       outline: 1px dashed currentColor;
       outline-offset: 2px;
+    }
+    .interlinear-source-hover-auto {
+      outline: 1px dotted currentColor;
+      outline-offset: 3px;
     }
     .interlinear-selection-popup {
       position: fixed;
@@ -714,19 +725,44 @@ export async function translateSelectedText(reader: any, rawText: string): Promi
   return response.text;
 }
 
-/** Translate the paragraph under an Alt+click / Alt+Enter trigger. */
-export async function translateReaderParagraph(
+/** Translate the paragraph under a hover / shortcut / Alt+click trigger. */
+export function translateReaderParagraph(
   reader: any,
   source: HTMLElement,
 ): Promise<void> {
+  const pending = paragraphRequests.get(source);
+  if (pending) return pending;
+
   const doc = source?.ownerDocument;
-  if (!doc || !source.closest?.("#sdt-content")) return;
-  if (source.closest?.(`.${TRANSLATION_CLASS}`)) return;
+  if (!doc || !source.closest?.("#sdt-content")) return Promise.resolve();
+  if (source.closest?.(`.${TRANSLATION_CLASS}`)) return Promise.resolve();
 
   const refPath = source.dataset?.refPath || "";
   const sourceText = (source.textContent || "").replace(/\s+/g, " ").trim();
-  if (!refPath || sourceText.length < 2) return;
+  if (!refPath || sourceText.length < 2) return Promise.resolve();
 
+  const existingBlock = source.nextElementSibling as HTMLElement | null;
+  if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
+    const state = existingBlock.dataset.state;
+    if (state === "loading" || state === "done") return Promise.resolve();
+  }
+
+  const promise = requestReaderParagraph(reader, source, doc, refPath, sourceText);
+  paragraphRequests.set(source, promise);
+  const release = () => {
+    if (paragraphRequests.get(source) === promise) paragraphRequests.delete(source);
+  };
+  void promise.then(release, release);
+  return promise;
+}
+
+async function requestReaderParagraph(
+  reader: any,
+  source: HTMLElement,
+  doc: Document,
+  refPath: string,
+  sourceText: string,
+): Promise<void> {
   const { itemID, itemKey } = getReaderItem(reader);
   const engine = getEngine();
   const engineTag = getCacheEngineTag();
@@ -798,10 +834,23 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
   if (existing?.doc === doc) return;
 
   existing?.controller.dispose();
-  const controller = attachReaderInteractions(doc, {
-    translateSelection: (text) => translateSelectedText(reader, text),
-    translateParagraph: (source) => translateReaderParagraph(reader, source),
-  });
+  const controller = attachReaderInteractions(
+    doc,
+    {
+      translateSelection: (text) => translateSelectedText(reader, text),
+      translateParagraph: (source) => translateReaderParagraph(reader, source),
+    },
+    {
+      getHoverSettings: () => ({
+        enabled: getHoverTranslateEnabled(),
+        delayMs: getHoverDelayMs(),
+      }),
+      getShortcutSettings: () => ({
+        enabled: getShortcutEnabled(),
+        spec: getShortcutSpec(),
+      }),
+    },
+  );
   interactionControllers.set(reader, { doc, controller });
 }
 
@@ -941,11 +990,63 @@ async function translateParagraphs(
     return fallback;
   };
 
+  const adoptCached = (paragraph: ReaderParagraph): boolean => {
+    if (paragraph.translation) return true;
+    const cached = loadCachedTranslation(
+      itemKey,
+      paragraph.sourceText,
+      engineTag,
+      isFailureText,
+      getTargetLanguage(),
+    );
+    if (!cached) return false;
+    paragraph.translation = cached;
+    const liveBlock = ensureTranslationBlock(doc, paragraph);
+    if (liveBlock?.parentNode) {
+      liveBlock.dataset.state = "done";
+      liveBlock.textContent = cached;
+    }
+    return true;
+  };
+
   const worker = async () => {
     while (!aborted && isCurrentRun(reader, generation, doc)) {
       const slot = cursor++;
       if (slot >= jobs.length) return;
-      const job = jobs[slot];
+      const scheduled = jobs[slot];
+      const busy: Array<{ item: TranslationJobItem; promise: Promise<void> }> = [];
+      const job: TranslationJobItem[] = [];
+
+      for (const item of scheduled) {
+        const paragraph = paragraphs[item.paragraphIndex];
+        if (adoptCached(paragraph)) {
+          completed += 1;
+          setRunProgress(reader, generation, completed, pendingIndexes.length);
+          continue;
+        }
+        const pending = paragraphRequests.get(paragraph.sourceElement);
+        if (pending) {
+          busy.push({ item, promise: pending });
+        } else {
+          job.push(item);
+        }
+      }
+
+      if (busy.length) {
+        await Promise.allSettled(busy.map((entry) => entry.promise));
+        if (!isCurrentRun(reader, generation, doc)) return;
+        for (const { item } of busy) {
+          const paragraph = paragraphs[item.paragraphIndex];
+          if (adoptCached(paragraph)) {
+            completed += 1;
+            setRunProgress(reader, generation, completed, pendingIndexes.length);
+          } else {
+            job.push(item);
+          }
+        }
+      }
+
+      if (!job.length) continue;
 
       for (const item of job) {
         const block = ensureTranslationBlock(doc, paragraphs[item.paragraphIndex]);
@@ -954,6 +1055,14 @@ async function translateParagraphs(
         block.textContent = getString("paragraph-translating-progress", {
           args: { done: completed, total: pendingIndexes.length },
         });
+      }
+
+      let releaseJob: () => void = () => undefined;
+      const shared = new Promise<void>((resolve) => {
+        releaseJob = resolve;
+      });
+      for (const item of job) {
+        paragraphRequests.set(paragraphs[item.paragraphIndex].sourceElement, shared);
       }
 
       try {
@@ -1006,6 +1115,14 @@ async function translateParagraphs(
           markUnfinishedPaused(doc, paragraphs);
           cancelRun(reader);
           return;
+        }
+      } finally {
+        releaseJob();
+        for (const item of job) {
+          const sourceElement = paragraphs[item.paragraphIndex].sourceElement;
+          if (paragraphRequests.get(sourceElement) === shared) {
+            paragraphRequests.delete(sourceElement);
+          }
         }
       }
     }

@@ -7,6 +7,7 @@ import {
   translateSelectedText,
 } from "../src/bilingualReader";
 import { attachReaderInteractions } from "../src/readerInteractions";
+import { parseShortcut } from "../src/shortcut";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
 import { getCacheEngineTag, getDisplayMode } from "../src/settings";
@@ -89,6 +90,22 @@ describe("startup", function () {
           ?.textContent?.replace(/\s+/gu, " ")
           .trim(),
       );
+      const hoverTranslate = win?.document.getElementById(
+        "interlinear-hover-translate",
+      ) as HTMLInputElement | null;
+      const hoverDelay = win?.document.getElementById(
+        "interlinear-hover-delay",
+      ) as HTMLInputElement | null;
+      const shortcutEnabled = win?.document.getElementById(
+        "interlinear-shortcut-enabled",
+      ) as HTMLInputElement | null;
+      const shortcut = win?.document.getElementById(
+        "interlinear-shortcut",
+      ) as HTMLInputElement | null;
+      assert.isTrue(hoverTranslate?.checked ?? false);
+      assert.equal(hoverDelay?.value, "800");
+      assert.isTrue(shortcutEnabled?.checked ?? false);
+      assert.equal(shortcut?.value, "Alt+Enter");
       const googleBaseURL = win?.document.getElementById(
         "interlinear-google-base-url",
       ) as HTMLInputElement | null;
@@ -182,9 +199,17 @@ describe("startup", function () {
     const enginePref = "extensions.zotero.interlinear.engine";
     const skipPref = "extensions.zotero.interlinear.skipLastPages";
     const displayModePref = "extensions.zotero.interlinear.displayMode";
+    const hoverPref = "extensions.zotero.interlinear.interaction.hoverTranslate";
+    const hoverDelayPref = "extensions.zotero.interlinear.interaction.hoverDelayMs";
+    const shortcutEnabledPref = "extensions.zotero.interlinear.interaction.shortcutEnabled";
+    const shortcutPref = "extensions.zotero.interlinear.interaction.shortcut";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSkip = Zotero.Prefs.get(skipPref, true);
     const previousDisplayMode = Zotero.Prefs.get(displayModePref, true);
+    const previousHover = Zotero.Prefs.get(hoverPref, true);
+    const previousHoverDelay = Zotero.Prefs.get(hoverDelayPref, true);
+    const previousShortcutEnabled = Zotero.Prefs.get(shortcutEnabledPref, true);
+    const previousShortcut = Zotero.Prefs.get(shortcutPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
 
@@ -202,16 +227,36 @@ describe("startup", function () {
       const displayMode = win?.document.getElementById(
         "interlinear-display-mode",
       ) as HTMLSelectElement;
+      const hoverTranslate = win?.document.getElementById(
+        "interlinear-hover-translate",
+      ) as HTMLInputElement;
+      const hoverDelay = win?.document.getElementById(
+        "interlinear-hover-delay",
+      ) as HTMLInputElement;
+      const shortcutEnabled = win?.document.getElementById(
+        "interlinear-shortcut-enabled",
+      ) as HTMLInputElement;
+      const shortcut = win?.document.getElementById(
+        "interlinear-shortcut",
+      ) as HTMLInputElement;
 
       engine.value = "ollama";
       engine.dispatchEvent(new win!.Event("change"));
       skipLastPages.value = "2";
       displayMode.value = "side-by-side";
+      hoverTranslate.checked = false;
+      hoverDelay.value = "1200";
+      shortcutEnabled.checked = false;
+      shortcut.value = "Ctrl+Shift+T";
       save.click();
 
       assert.equal(Zotero.Prefs.get(enginePref, true), "ollama");
       assert.equal(Zotero.Prefs.get(skipPref, true), 2);
       assert.equal(Zotero.Prefs.get(displayModePref, true), "side-by-side");
+      assert.isFalse(Zotero.Prefs.get(hoverPref, true) as boolean);
+      assert.equal(Zotero.Prefs.get(hoverDelayPref, true), 1200);
+      assert.isFalse(Zotero.Prefs.get(shortcutEnabledPref, true) as boolean);
+      assert.equal(Zotero.Prefs.get(shortcutPref, true), "Ctrl+Shift+T");
     } finally {
       win?.close();
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
@@ -220,6 +265,17 @@ describe("startup", function () {
       else Zotero.Prefs.set(skipPref, previousSkip, true);
       if (previousDisplayMode === undefined) Zotero.Prefs.clear(displayModePref, true);
       else Zotero.Prefs.set(displayModePref, previousDisplayMode, true);
+      if (previousHover === undefined) Zotero.Prefs.clear(hoverPref, true);
+      else Zotero.Prefs.set(hoverPref, previousHover, true);
+      if (previousHoverDelay === undefined) Zotero.Prefs.clear(hoverDelayPref, true);
+      else Zotero.Prefs.set(hoverDelayPref, previousHoverDelay, true);
+      if (previousShortcutEnabled === undefined) {
+        Zotero.Prefs.clear(shortcutEnabledPref, true);
+      } else {
+        Zotero.Prefs.set(shortcutEnabledPref, previousShortcutEnabled, true);
+      }
+      if (previousShortcut === undefined) Zotero.Prefs.clear(shortcutPref, true);
+      else Zotero.Prefs.set(shortcutPref, previousShortcut, true);
     }
   });
 
@@ -1251,6 +1307,119 @@ describe("startup", function () {
 
     assert.notExists(doc.querySelector(".interlinear-selection-popup"));
     assert.isFalse(first.classList.contains("interlinear-source-hover"));
+  });
+
+  it("should translate on hover dwell and respect configurable shortcut settings", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "interaction-settings-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const first = doc.createElement("p");
+    first.dataset.refPath = "0";
+    first.textContent = "First paragraph for hover translation.";
+    const second = doc.createElement("p");
+    second.dataset.refPath = "1";
+    second.textContent = "Second paragraph for the custom shortcut.";
+    content.append(first, second);
+    doc.body.append(content);
+
+    let hoverSettings = { enabled: true, delayMs: 500 };
+    let shortcutSettings = {
+      enabled: true,
+      spec: parseShortcut("Ctrl+Shift+T"),
+    };
+    let selection: any = null;
+    const scheduled: Array<{ callback: () => void; delay: number }> = [];
+    const paragraphCalls: string[] = [];
+    const controller = attachReaderInteractions(
+      doc,
+      {
+        translateSelection: async () => "",
+        translateParagraph: async (source) => {
+          paragraphCalls.push(source.dataset.refPath || "");
+        },
+      },
+      {
+        getSelection: () => selection,
+        getHoverSettings: () => hoverSettings,
+        getShortcutSettings: () => shortcutSettings,
+        setHoverTimer: (callback, delay) => {
+          scheduled.push({ callback, delay });
+          return scheduled.length;
+        },
+        clearHoverTimer: () => undefined,
+      },
+    );
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      first.dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      assert.equal(scheduled.length, 1);
+      assert.equal(scheduled[0].delay, 500);
+      assert.isTrue(first.classList.contains("interlinear-source-hover-auto"));
+      scheduled[0].callback();
+      assert.deepEqual(paragraphCalls, ["0"]);
+      assert.isTrue(first.classList.contains("interlinear-source-hover-auto"));
+
+      second.dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 20, clientY: 20 }),
+      );
+      assert.equal(scheduled.length, 2);
+      content.dispatchEvent(new win.Event("scroll", { bubbles: true }));
+      scheduled[1].callback();
+      assert.deepEqual(paragraphCalls, ["0"]);
+
+      hoverSettings = { enabled: false, delayMs: 500 };
+      second.dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 30, clientY: 30 }),
+      );
+      assert.equal(scheduled.length, 2);
+
+      selection = {
+        toString: () => "Second paragraph",
+        isCollapsed: false,
+        rangeCount: 1,
+        getRangeAt: () => ({ startContainer: second.firstChild || second }),
+      };
+      second.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+          key: "Enter",
+        }),
+      );
+      assert.deepEqual(paragraphCalls, ["0"]);
+
+      second.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          shiftKey: true,
+          key: "T",
+        }),
+      );
+      assert.deepEqual(paragraphCalls, ["0", "1"]);
+
+      shortcutSettings = { enabled: false, spec: parseShortcut("Ctrl+Shift+T") };
+      first.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          shiftKey: true,
+          key: "T",
+        }),
+      );
+      assert.deepEqual(paragraphCalls, ["0", "1"]);
+    } finally {
+      controller.dispose();
+    }
   });
 
   it("should show progress and cancel a running translation from the reader toolbar", async function () {

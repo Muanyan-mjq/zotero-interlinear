@@ -36,6 +36,10 @@ declare namespace _ZoteroTypes {
       "requestTimeoutMs": number;
       "skipLastPages": number;
       "displayMode": string;
+      "interaction.hoverTranslate": boolean;
+      "interaction.hoverDelayMs": number;
+      "interaction.shortcutEnabled": boolean;
+      "interaction.shortcut": string;
       "glossary": string;
       "appearance.fontSize": number;
       "appearance.color": string;

@@ -66,7 +66,64 @@
   </hbox>
   <html:p
     id="interlinear-display-mode-help"
-    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+    style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
+</groupbox>
+
+<groupbox id="interlinear-interaction-section">
+  <label><html:h3 id="interlinear-interaction-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:input id="interlinear-hover-translate" type="checkbox" />
+    <html:label
+      id="interlinear-hover-translate-label"
+      for="interlinear-hover-translate"
+      style="margin-left: 6px"
+    ></html:label>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-hover-delay-label"
+      for="interlinear-hover-delay"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-hover-delay"
+      type="number"
+      min="200"
+      max="5000"
+      step="100"
+      style="width: 120px; padding: 4px 6px"
+    />
+    <html:label id="interlinear-hover-delay-unit" style="margin-left: 6px"></html:label>
+  </hbox>
+  <html:p
+    id="interlinear-hover-help"
+    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:input id="interlinear-shortcut-enabled" type="checkbox" />
+    <html:label
+      id="interlinear-shortcut-enabled-label"
+      for="interlinear-shortcut-enabled"
+      style="margin-left: 6px"
+    ></html:label>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-shortcut-label"
+      for="interlinear-shortcut"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-shortcut"
+      type="text"
+      style="width: 220px; padding: 4px 6px"
+      placeholder="Alt+Enter"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-shortcut-help"
+    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
   ></html:p>
   <html:p
     id="interlinear-interaction-help"

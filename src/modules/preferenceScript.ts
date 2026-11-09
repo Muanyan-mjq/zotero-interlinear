@@ -2,6 +2,7 @@ import {
   DEFAULT_CLAUDE_TEMPERATURE,
   DEFAULT_GEMINI_TEMPERATURE,
   DEFAULT_GOOGLE_BASE_URL,
+  DEFAULT_HOVER_DELAY_MS,
   DEFAULT_MAX_CHARS_PER_REQUEST,
   DEFAULT_MAX_BATCH_PARAGRAPHS,
   DEFAULT_MAX_CONCURRENT,
@@ -14,6 +15,7 @@ import {
   DEFAULT_OPENAI_TEMPERATURE,
   DEFAULT_REQUEST_GAP_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_SHORTCUT,
   DEFAULT_SKIP_LAST_PAGES,
   DEFAULT_SOURCE_LANGUAGE,
   DEFAULT_TARGET_LANGUAGE,
@@ -34,6 +36,8 @@ import {
   getGeminiTemperature,
   getGlossaryText,
   getGoogleBaseURL,
+  getHoverDelayMs,
+  getHoverTranslateEnabled,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
   getMaxConcurrent,
@@ -47,6 +51,8 @@ import {
   getOpenAITemperature,
   getRequestGapMs,
   getRequestTimeoutMs,
+  getShortcut,
+  getShortcutEnabled,
   getSkipLastPages,
   getSourceLanguage,
   getTargetLanguage,
@@ -65,6 +71,8 @@ import {
   setGeminiTemperature,
   setGlossaryText,
   setGoogleBaseURL,
+  setHoverDelayMs,
+  setHoverTranslateEnabled,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
   setMaxConcurrent,
@@ -78,6 +86,8 @@ import {
   setOpenAITemperature,
   setRequestGapMs,
   setRequestTimeoutMs,
+  setShortcut,
+  setShortcutEnabled,
   setSkipLastPages,
   setSourceLanguage,
   setTargetLanguage,
@@ -93,6 +103,12 @@ import {
 import { getString } from "../utils/locale";
 import { refreshDisplayModes, refreshTranslationStyles } from "../bilingualReader";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
+import {
+  formatShortcut,
+  isValidShortcut,
+  normalizeShortcut,
+  shortcutFromEvent,
+} from "../shortcut";
 import {
   testClaudeConnection,
   testGeminiConnection,
@@ -248,6 +264,14 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-display-mode-target-only", "display-mode-target-only"],
     ["interlinear-display-mode-source-only", "display-mode-source-only"],
     ["interlinear-display-mode-help", "display-mode-help"],
+    ["interlinear-interaction-title", "interaction-title"],
+    ["interlinear-hover-translate-label", "interaction-hover-label"],
+    ["interlinear-hover-delay-label", "interaction-hover-delay-label"],
+    ["interlinear-hover-delay-unit", "interaction-hover-delay-unit"],
+    ["interlinear-hover-help", "interaction-hover-help"],
+    ["interlinear-shortcut-enabled-label", "interaction-shortcut-enabled-label"],
+    ["interlinear-shortcut-label", "interaction-shortcut-label"],
+    ["interlinear-shortcut-help", "interaction-shortcut-help"],
     ["interlinear-interaction-help", "interaction-help"],
   ];
   for (const [id, key] of entries) {
@@ -417,10 +441,26 @@ function saveSettings(doc: Document): void {
     getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
       getDisplayMode(),
   );
+  setHoverTranslateEnabled(readCheckbox(doc, "interlinear-hover-translate"));
+  setHoverDelayMs(
+    readNumberInput(doc, "interlinear-hover-delay", DEFAULT_HOVER_DELAY_MS),
+  );
+  setShortcutEnabled(readCheckbox(doc, "interlinear-shortcut-enabled"));
+  const shortcutInput = getElement<HTMLInputElement>(doc, "interlinear-shortcut");
+  const rawShortcut = shortcutInput?.value.trim() || DEFAULT_SHORTCUT;
+  const shortcutValid = isValidShortcut(rawShortcut);
+  const normalizedShortcut = normalizeShortcut(rawShortcut);
+  setShortcut(normalizedShortcut);
+  if (shortcutInput) shortcutInput.value = normalizedShortcut;
   refreshTranslationStyles();
   refreshDisplayModes();
 
-  setStatus(doc, getString("settings-saved"));
+  setStatus(
+    doc,
+    shortcutValid
+      ? getString("settings-saved")
+      : getString("interaction-shortcut-invalid"),
+  );
 }
 
 async function testOllama(doc: Document): Promise<void> {
@@ -699,6 +739,27 @@ function registerProjectLink(doc: Document): void {
   );
 }
 
+function registerShortcutRecorder(doc: Document): void {
+  const input = getElement<HTMLInputElement>(doc, "interlinear-shortcut");
+  if (!input) return;
+
+  input.addEventListener("keydown", (event) => {
+    const keyEvent = event as KeyboardEvent;
+    if (keyEvent.key === "Tab") return;
+    keyEvent.preventDefault();
+
+    if (keyEvent.key === "Backspace" || keyEvent.key === "Delete") {
+      input.value = DEFAULT_SHORTCUT;
+      return;
+    }
+
+    const spec = shortcutFromEvent(keyEvent);
+    if (spec) input.value = formatShortcut(spec);
+  });
+
+  input.addEventListener("focus", () => input.select());
+}
+
 export async function registerPrefsScripts(window: Window): Promise<void> {
   const doc = window.document;
   const root = getElement<HTMLElement>(doc, "interlinear-settings-root");
@@ -780,6 +841,13 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   const geminiPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-gemini-prompt");
   const glossary = getElement<HTMLTextAreaElement>(doc, "interlinear-glossary");
   const displayMode = getElement<HTMLSelectElement>(doc, "interlinear-display-mode");
+  const hoverTranslate = getElement<HTMLInputElement>(doc, "interlinear-hover-translate");
+  const hoverDelay = getElement<HTMLInputElement>(doc, "interlinear-hover-delay");
+  const shortcutEnabled = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-shortcut-enabled",
+  );
+  const shortcutInput = getElement<HTMLInputElement>(doc, "interlinear-shortcut");
 
   if (engine) engine.value = getEngine();
   if (url) url.value = getOllamaURL();
@@ -802,6 +870,13 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (geminiPrompt) geminiPrompt.value = getGeminiPrompt();
   if (glossary) glossary.value = getGlossaryText();
   if (displayMode) displayMode.value = getDisplayMode();
+  if (hoverTranslate) hoverTranslate.checked = getHoverTranslateEnabled();
+  if (hoverDelay) {
+    hoverDelay.value = String(getHoverDelayMs());
+    hoverDelay.disabled = !getHoverTranslateEnabled();
+  }
+  if (shortcutEnabled) shortcutEnabled.checked = getShortcutEnabled();
+  if (shortcutInput) shortcutInput.value = getShortcut();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   if (maxConcurrent) maxConcurrent.value = String(getMaxConcurrent());
   if (gap) gap.value = String(getRequestGapMs());
@@ -832,6 +907,11 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   updateBackendVisibility(doc);
   updateCacheStatus(doc);
   registerProjectLink(doc);
+  registerShortcutRecorder(doc);
+
+  hoverTranslate?.addEventListener("change", () => {
+    if (hoverDelay) hoverDelay.disabled = !hoverTranslate.checked;
+  });
 
   engine?.addEventListener("change", () => {
     updateBackendVisibility(doc);

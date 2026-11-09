@@ -28,6 +28,12 @@ import {
   parseGlossary,
   type GlossaryEntry,
 } from "./glossary";
+import {
+  DEFAULT_SHORTCUT,
+  normalizeShortcut,
+  parseShortcut,
+  type ShortcutSpec,
+} from "./shortcut";
 
 export type { AppearanceSettings } from "./appearance";
 export type { DisplayMode } from "./displayMode";
@@ -84,6 +90,12 @@ export const DEFAULT_MAX_BATCH_PARAGRAPHS = 6;
 export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 3;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
 export const DEFAULT_SKIP_LAST_PAGES = 1;
+export const DEFAULT_HOVER_TRANSLATE = true;
+export const DEFAULT_HOVER_DELAY_MS = 800;
+export const HOVER_DELAY_MIN_MS = 200;
+export const HOVER_DELAY_MAX_MS = 5000;
+export const DEFAULT_SHORTCUT_ENABLED = true;
+export { DEFAULT_SHORTCUT };
 
 const ENGINE_PREF = `${BASE}.engine`;
 const OLLAMA_URL_PREF = `${BASE}.ollama.url`;
@@ -113,6 +125,10 @@ const MAX_BATCH_PARAGRAPHS_PREF = `${BASE}.maxBatchParagraphs`;
 const MAX_ERRORS_PREF = `${BASE}.maxConsecutiveErrors`;
 const REQUEST_TIMEOUT_PREF = `${BASE}.requestTimeoutMs`;
 const SKIP_LAST_PAGES_PREF = `${BASE}.skipLastPages`;
+const HOVER_TRANSLATE_PREF = `${BASE}.interaction.hoverTranslate`;
+const HOVER_DELAY_PREF = `${BASE}.interaction.hoverDelayMs`;
+const SHORTCUT_ENABLED_PREF = `${BASE}.interaction.shortcutEnabled`;
+const SHORTCUT_PREF = `${BASE}.interaction.shortcut`;
 const APPEARANCE_FONT_SIZE_PREF = `${BASE}.appearance.fontSize`;
 const APPEARANCE_COLOR_PREF = `${BASE}.appearance.color`;
 const APPEARANCE_FONT_FAMILY_PREF = `${BASE}.appearance.fontFamily`;
@@ -463,6 +479,47 @@ export function getSkipLastPages(): number {
 
 export function setSkipLastPages(value: number): void {
   setNumberPref(SKIP_LAST_PAGES_PREF, value, 0, 50);
+}
+
+export function getHoverTranslateEnabled(): boolean {
+  return getBoolPref(HOVER_TRANSLATE_PREF, DEFAULT_HOVER_TRANSLATE);
+}
+
+export function setHoverTranslateEnabled(value: boolean): void {
+  setBoolPref(HOVER_TRANSLATE_PREF, value);
+}
+
+export function getHoverDelayMs(): number {
+  return getNumberPref(
+    HOVER_DELAY_PREF,
+    DEFAULT_HOVER_DELAY_MS,
+    HOVER_DELAY_MIN_MS,
+    HOVER_DELAY_MAX_MS,
+  );
+}
+
+export function setHoverDelayMs(value: number): void {
+  setNumberPref(HOVER_DELAY_PREF, value, HOVER_DELAY_MIN_MS, HOVER_DELAY_MAX_MS);
+}
+
+export function getShortcutEnabled(): boolean {
+  return getBoolPref(SHORTCUT_ENABLED_PREF, DEFAULT_SHORTCUT_ENABLED);
+}
+
+export function setShortcutEnabled(value: boolean): void {
+  setBoolPref(SHORTCUT_ENABLED_PREF, value);
+}
+
+export function getShortcut(): string {
+  return normalizeShortcut(getRawStringPref(SHORTCUT_PREF));
+}
+
+export function setShortcut(value: string): void {
+  setStringPref(SHORTCUT_PREF, normalizeShortcut(value));
+}
+
+export function getShortcutSpec(): ShortcutSpec | null {
+  return parseShortcut(getShortcut());
 }
 
 export function getAppearance(): AppearanceSettings {

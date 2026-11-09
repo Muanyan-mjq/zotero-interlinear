@@ -42,6 +42,7 @@ Known limits: mainly English → Simplified Chinese; tables and math are not tra
 - 支持短段落合并、受控并发、请求节流、超时与连续失败暂停。
 - 可设置“不翻译末尾页数”，用于跳过参考文献。
 - 支持术语表、单段翻译与选区翻译、阅读助手侧栏聊天。
+- 鼠标在段落上停留可自动翻译该段（停留时间可配置，可关闭）；也可用自定义快捷键翻译当前段落，单段请求会与全文翻译去重。
 - 将当前双语阅读结果导出为 PDF，并添加为当前文献的 Zotero 附件。
 
 ## 环境
@@ -74,6 +75,7 @@ Known limits: mainly English → Simplified Chinese; tables and math are not tra
 - 原文与译文语言；
 - 译文外观（字号、颜色、字体、行高、段落间距、主题、下划线、色带）；
 - 显示模式；
+- 单段翻译：悬停自动翻译开关与停留时间、快捷键开关与组合键；
 - 术语表导入 / 导出；
 - 不翻译末尾页数；
 - 最大并发请求；
