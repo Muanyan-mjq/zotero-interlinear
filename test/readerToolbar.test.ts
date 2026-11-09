@@ -140,20 +140,17 @@ describe("reader toolbar recovery", function () {
     );
   });
 
-  it("stays interactive when Zotero's append would clone the controls", function () {
+  it("renders interactive controls when Zotero's cloneInto append throws", function () {
     const reader = makeReader();
     const doc = reader._iframeWindow.document as Document;
-    const container = doc.querySelector(".toolbar .custom-sections") as HTMLElement;
 
     renderReaderToolbar({
       reader,
       doc,
-      append: (...elements: HTMLElement[]) => {
-        // Zotero's renderToolbar append runs clones through
-        // Components.utils.cloneInto(); clones drop event listeners.
-        container.append(
-          ...elements.map((element) => element.cloneNode(true) as HTMLElement),
-        );
+      append: () => {
+        // Zotero's renderToolbar append hands DOM nodes to
+        // Components.utils.cloneInto(), which throws for DOM nodes.
+        throw new Error("Encountered unsupported value type writing structured clone");
       },
     });
 

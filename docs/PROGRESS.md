@@ -516,12 +516,12 @@
 ## Step 11：修复真实 Zotero 中工具栏按钮无图标、右键无响应
 
 ### 做了什么
-- 根因定位到 Zotero 上游 `chrome/content/zotero/xpcom/reader.js`：`renderToolbar` 事件里的 `append()` 会把插件传入的节点经 `Components.utils.cloneInto(args, this._iframeWindow, ...)` 克隆到阅读器 iframe 再插入。克隆会丢失事件监听器（也可能丢失子树），所以按钮虽然出现，但右键/点击全部失效、图标空白；集成测试里的 fake append 直接插入原节点，因此没有暴露该问题。
+- 根因定位到 Zotero 上游 `chrome/content/zotero/xpcom/reader.js`：`renderToolbar` 事件里的 `append()` 会执行 `Components.utils.cloneInto(args, this._iframeWindow, ...)`。用 Zotero 内临时诊断测试实测：该调用对 DOM 节点直接抛出 `Encountered unsupported value type writing stack-scoped structured clone`，所以真实环境中工具栏控件根本没有插入成功——这同时解释了“按钮图标不显示”和“右键没有任何效果”。集成测试里的 fake append 直接插入原节点，因此没有暴露该问题。
 - `src/readerToolbar.ts` 新增 `resolveToolbarAppend()`：当阅读器文档存在 `.toolbar .custom-sections` 时，改为直接把控件插入我们自己的 `.interlinear-toolbar-section`，完全绕开 Zotero 的克隆路径；只有找不到该容器时才回退到事件自带的 `append`。
 - `renderReaderToolbar()` 用解析后的直接注入函数替换事件 append，其余事件字段原样传给两个渲染器；`reconcileReaderToolbars()` 复用同一路径，删除了重复的注入闭包。
 - 原来的 `interlinear-toolbar-section` 容器逻辑保留并改名为通用工具栏容器（不再是“fallback”），继续强制横向 inline-flex，避免 Zotero `.section` 样式把按钮竖排。
 - 未改按钮创建函数本身：直连 DOM 后 `img`/emoji 子节点和内联样式都保留，16px 图标与右键上下文菜单恢复。
-- 新增回归用例：模拟 Zotero 的克隆式 `append`（`cloneNode(true)` 后插入），断言控件仍位于直连 section 中、图标仍在、`contextmenu` 仍能打开菜单。
+- 新增回归用例：让 fake `append` 像真实 Zotero 一样同步抛错，断言控件仍位于直连 section 中、图标仍在、`contextmenu` 仍能打开菜单。
 
 ### 改动文件
 - 修改：`src/readerToolbar.ts`、`test/readerToolbar.test.ts`。
@@ -530,11 +530,11 @@
 - `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。
 - `npm run lint:check`：通过，无告警。
 - `npm run test:unit`：**68 pass / 0 fail**。
-- `npm run test:review`（Zotero headless 独立 profile）：**34 pass / 0 fail**（新增克隆 append 回归用例通过）。
+- `npm run test:review`（Zotero headless 独立 profile）：**34 pass / 0 fail**（新增 cloneInto 抛错回归用例通过）。
 
 ### 不确定项
-- 集成测试无法证明真实 GUI 的像素级图标渲染；但它现在使用的是真实节点，不再经过会剥离监听器的克隆路径。
-- 直接注入依赖阅读器工具栏存在 `.toolbar .custom-sections`（Zotero 10 当前结构）；若上游改名，会回退到 Zotero append，交互可能再次失效（会保留按钮外观）。
+- 集成测试无法证明真实 GUI 的像素级图标渲染；但诊断已证实 Zotero 的 cloneInto 路径会直接抛错，修复完全绕开了它。
+- 直接注入依赖阅读器工具栏存在 `.toolbar .custom-sections`（Zotero 10 当前结构）；若上游改名，会回退到 Zotero append，而该路径在当前 Gecko 对 DOM 节点会抛错，控件将不出现（不会影响 Zotero 其他功能）。
 - React 重挂载 `.custom-sections` 时会清空子节点，依赖 Zotero 重新派发 `renderToolbar` 事件恢复；该事件本身无去重问题（渲染器仍按 class 检查）。
 
 ### 需要手动验证的清单
