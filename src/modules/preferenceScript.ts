@@ -18,6 +18,7 @@ import {
   SOURCE_LANGUAGES,
   TARGET_LANGUAGES,
   getAppearance,
+  getDisplayMode,
   getEngine,
   getGoogleBaseURL,
   getMaxCharsPerRequest,
@@ -38,6 +39,7 @@ import {
   getTargetLanguage,
   setEngine,
   setAppearance,
+  setDisplayMode,
   setGoogleBaseURL,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
@@ -59,7 +61,7 @@ import {
 } from "../settings";
 import { DEFAULT_APPEARANCE, type AppearanceSettings } from "../appearance";
 import { getString } from "../utils/locale";
-import { refreshTranslationStyles } from "../bilingualReader";
+import { refreshDisplayModes, refreshTranslationStyles } from "../bilingualReader";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
 import { testGoogleConnection, testOpenAIConnection } from "../providers";
 
@@ -175,6 +177,13 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-ribbon-label", "appearance-ribbon-label"],
     ["interlinear-appearance-ribbon-color-label", "appearance-ribbon-color-label"],
     ["interlinear-appearance-ribbon-color-help", "appearance-ribbon-color-help"],
+    ["interlinear-display-mode-title", "display-mode-title"],
+    ["interlinear-display-mode-label", "display-mode-label"],
+    ["interlinear-display-mode-top-bottom", "display-mode-top-bottom"],
+    ["interlinear-display-mode-side-by-side", "display-mode-side-by-side"],
+    ["interlinear-display-mode-target-only", "display-mode-target-only"],
+    ["interlinear-display-mode-source-only", "display-mode-source-only"],
+    ["interlinear-display-mode-help", "display-mode-help"],
   ];
   for (const [id, key] of entries) {
     const element = getElement<HTMLElement>(doc, id);
@@ -284,7 +293,12 @@ function saveSettings(doc: Document): void {
       readInputText(doc, "interlinear-appearance-ribbon-color") ||
       DEFAULT_APPEARANCE.ribbonColor,
   });
+  setDisplayMode(
+    getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
+      getDisplayMode(),
+  );
   refreshTranslationStyles();
+  refreshDisplayModes();
 
   setStatus(doc, "设置已保存。返回正在阅读的 PDF 后点击 🔄 即可应用。 ");
 }
@@ -502,6 +516,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     "interlinear-openai-temperature",
   );
   const openAIPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-openai-prompt");
+  const displayMode = getElement<HTMLSelectElement>(doc, "interlinear-display-mode");
 
   if (engine) engine.value = getEngine();
   if (url) url.value = getOllamaURL();
@@ -512,6 +527,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (openAIApiKey) openAIApiKey.value = getOpenAIApiKey();
   if (openAITemperature) openAITemperature.value = String(getOpenAITemperature());
   if (openAIPrompt) openAIPrompt.value = getOpenAIPrompt();
+  if (displayMode) displayMode.value = getDisplayMode();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   if (maxConcurrent) maxConcurrent.value = String(getMaxConcurrent());
   if (gap) gap.value = String(getRequestGapMs());

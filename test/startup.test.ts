@@ -1,6 +1,6 @@
 import { assert } from "chai";
 import { config } from "../package.json";
-import { toggleBilingualReading } from "../src/bilingualReader";
+import { refreshDisplayModes, toggleBilingualReading } from "../src/bilingualReader";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
 import { getCacheEngineTag } from "../src/settings";
@@ -67,6 +67,14 @@ describe("startup", function () {
       assert.equal(targetLanguage?.options.length, 13);
       assert.equal(sourceLanguage?.value, "auto");
       assert.equal(targetLanguage?.value, "zh-CN");
+      const displayMode = win?.document.getElementById(
+        "interlinear-display-mode",
+      ) as HTMLSelectElement | null;
+      assert.deepEqual(
+        Array.from(displayMode?.options || []).map((option) => option.value),
+        ["top-bottom", "side-by-side", "target-only", "source-only"],
+      );
+      assert.equal(displayMode?.value, "top-bottom");
       const googleBaseURL = win?.document.getElementById(
         "interlinear-google-base-url",
       ) as HTMLInputElement | null;
@@ -121,8 +129,10 @@ describe("startup", function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
     const skipPref = "extensions.zotero.interlinear.skipLastPages";
+    const displayModePref = "extensions.zotero.interlinear.displayMode";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSkip = Zotero.Prefs.get(skipPref, true);
+    const previousDisplayMode = Zotero.Prefs.get(displayModePref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
 
@@ -137,20 +147,27 @@ describe("startup", function () {
         "interlinear-skip-last-pages",
       ) as HTMLInputElement;
       const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
+      const displayMode = win?.document.getElementById(
+        "interlinear-display-mode",
+      ) as HTMLSelectElement;
 
       engine.value = "ollama";
       engine.dispatchEvent(new win!.Event("change"));
       skipLastPages.value = "2";
+      displayMode.value = "side-by-side";
       save.click();
 
       assert.equal(Zotero.Prefs.get(enginePref, true), "ollama");
       assert.equal(Zotero.Prefs.get(skipPref, true), 2);
+      assert.equal(Zotero.Prefs.get(displayModePref, true), "side-by-side");
     } finally {
       win?.close();
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousSkip === undefined) Zotero.Prefs.clear(skipPref, true);
       else Zotero.Prefs.set(skipPref, previousSkip, true);
+      if (previousDisplayMode === undefined) Zotero.Prefs.clear(displayModePref, true);
+      else Zotero.Prefs.set(displayModePref, previousDisplayMode, true);
     }
   });
 
@@ -289,6 +306,101 @@ describe("startup", function () {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value as any, true);
       }
+    }
+  });
+
+  it("should switch display modes without moving source nodes", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const modePref = "extensions.zotero.interlinear.displayMode";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousMode = Zotero.Prefs.get(modePref, true);
+    const previousPDFTranslate = (Zotero as any).PDFTranslate;
+    const originalReaders = (Zotero.Reader as any)._readers;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("display-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    for (const [refPath, text] of [
+      ["0", `First synthetic paragraph ${Date.now()}.`],
+      ["1", `Second synthetic paragraph ${Date.now()}.`],
+    ]) {
+      const paragraph = doc.createElement("p");
+      paragraph.dataset.refPath = refPath;
+      paragraph.textContent = text;
+      content.append(paragraph);
+    }
+    doc.body.append(content);
+
+    const reader = {
+      type: "pdf",
+      itemID: 2147483640,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+    (Zotero.Reader as any)._readers = [reader];
+
+    try {
+      Zotero.Prefs.set(enginePref, "pdftranslate", true);
+      Zotero.Prefs.set(modePref, "top-bottom", true);
+      (Zotero as any).PDFTranslate = {
+        api: {
+          translate: async () => ({
+            status: "success",
+            result: "显示模式集成测试译文。",
+            service: "integration-test",
+          }),
+        },
+      };
+
+      await toggleBilingualReading(reader);
+
+      const sources = Array.from(content.querySelectorAll("p[data-ref-path]")) as HTMLElement[];
+      const blocks = Array.from(
+        doc.querySelectorAll(".interlinear-translation"),
+      ) as HTMLElement[];
+      assert.equal(blocks.length, 2);
+      for (const [index, source] of sources.entries()) {
+        assert.isTrue(source.classList.contains("interlinear-source"));
+        assert.equal(source.nextElementSibling, blocks[index]);
+        assert.equal(blocks[index].dataset.sourceRefPath, source.dataset.refPath);
+      }
+      assert.equal(content.dataset.interlinearDisplay, "top-bottom");
+      const css = doc.getElementById("interlinear-style")?.textContent || "";
+      assert.include(css, 'data-interlinear-display="side-by-side"');
+      assert.include(css, 'data-interlinear-display="target-only"');
+      assert.include(css, 'data-interlinear-display="source-only"');
+      assert.include(css, "display: inline-block;");
+      assert.include(css, "width: 49%;");
+
+      for (const mode of ["side-by-side", "target-only", "source-only", "top-bottom"]) {
+        Zotero.Prefs.set(modePref, mode, true);
+        refreshDisplayModes();
+        assert.equal(content.dataset.interlinearDisplay, mode);
+        assert.equal(sources[0].nextElementSibling, blocks[0]);
+      }
+
+      await toggleBilingualReading(reader);
+      for (const source of sources) {
+        assert.isFalse(source.classList.contains("interlinear-source"));
+      }
+      assert.isUndefined(content.dataset.interlinearDisplay);
+      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 0);
+      assert.isTrue(sources[0].isConnected);
+    } finally {
+      clearTranslationCache();
+      (Zotero.Reader as any)._readers = originalReaders;
+      (Zotero as any).PDFTranslate = previousPDFTranslate;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+      if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
+      else Zotero.Prefs.set(modePref, previousMode, true);
     }
   });
 

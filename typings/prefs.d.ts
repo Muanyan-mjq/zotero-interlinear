@@ -25,6 +25,7 @@ declare namespace _ZoteroTypes {
       "maxConsecutiveErrors": number;
       "requestTimeoutMs": number;
       "skipLastPages": number;
+      "displayMode": string;
       "appearance.fontSize": number;
       "appearance.color": string;
       "appearance.fontFamily": string;

@@ -88,6 +88,11 @@ export function observeReadingLayout(view: any, doc: Document): void {
   schedule();
 }
 
+/** Ask Zotero to recompute highlight rectangles after a pure CSS layout change. */
+export function refreshReadingLayout(doc: Document): void {
+  layouts.get(doc)?.refresh();
+}
+
 /** Call after removing translations so the original layout is drawn once. */
 export function cleanupReadingLayout(doc: Document): void {
   const observer = layouts.get(doc);

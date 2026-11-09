@@ -182,3 +182,56 @@
 5. 把原文语言设为英语、译文语言设为日语，保存并翻译一段。预期：Google 请求含 `sl=en&tl=ja`；切换回中文后重新翻译不会命中日语缓存。
 6. 打开一篇论文，先 Google 翻两段，再切到 pdftranslate 刷新。预期：两种后端的缓存互不串用；切回 Google 时已翻段落直接命中缓存。
 7. 在 OpenAI 接口地址填 `not-a-url` 并保存。预期：回退到默认 `http://127.0.0.1:11434/v1/chat/completions`，不会保存非法值。
+
+## Step 4：显示模式与段落对齐
+
+### 做了什么
+- 新增 `src/displayMode.ts`：`DisplayMode = "top-bottom" | "side-by-side" | "target-only" | "source-only"`、`DISPLAY_MODES`、`DEFAULT_DISPLAY_MODE = "top-bottom"`、`normalizeDisplayMode()`、`buildDisplayModeCSS()`。
+- 采用**纯 CSS 模式切换，不移动 Zotero 的正文节点**：
+  - 在 `#sdt-content` 上写 `data-interlinear-display="<mode>"`，所有规则都以此为作用域。
+  - 创建译文块时给对应原文元素加 `interlinear-source` 类，并保持“原文 → 译文块”的相邻兄弟关系不变；因此原生批注 range 仍指向同一批文本节点，`refreshReadingLayout()` 只触发 `_handleViewUpdate(true)` 重算矩形。
+  - `top-bottom`：不加任何布局规则，维持原文在上、译文在下。
+  - `side-by-side`：原文与译文都改为 `inline-block`、`width:49%`、`vertical-align:top`；译文 `margin: 0 0 <段距>em 1%`。每个“原文+译文”对自然占一行，不改变 DOM 结构。
+  - `target-only`：隐藏带 `interlinear-source` 的原文（只隐藏已生成译文的段落，未翻译页/参考文献保持原样）。
+  - `source-only`：隐藏 `interlinear-translation` 译文块，原文保持可见。
+- `settings.ts`：新增 `displayMode` 偏好（默认 `top-bottom`）与 `getDisplayMode()/setDisplayMode()`。
+- `bilingualReader.ts`：
+  - `installStyles()` 追加显示模式 CSS；`prepareAndRun()` 在清理旧译文后应用当前模式。
+  - 新增导出 `refreshDisplayModes()`：设置保存后对已打开 PDF 阅读器立即切换，无需重新翻译。
+  - `clearTranslations()` 关闭对照时移除所有 `interlinear-source` 类与 `#sdt-content` 上的模式属性。
+- 设置页新增“显示模式”分组（4 项，Fluent en-US/zh-CN）；保存时同时调用 `refreshTranslationStyles()` 与 `refreshDisplayModes()`。
+- 打印导出保持原行为：克隆正文时两份文本都在，打印 CSS 不包含显示模式规则，因此打印稿始终同时包含原文与译文（避免用户只想隐藏屏幕内容却把译文漏印）。
+
+### 改动文件
+- 新增：`src/displayMode.ts`、`test/displayMode.node.test.mjs`。
+- 修改：`src/settings.ts`、`src/bilingualReader.ts`、`src/readingLayout.ts`（导出 `refreshReadingLayout`）、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/prefs.js`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`package.json`、`test/startup.test.ts`、`typings/i10n.d.ts`、`typings/prefs.d.ts`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**40 pass / 0 fail**（新增 6 个显示模式测试：默认/归一化、target-only 只隐藏原文、source-only 只隐藏译文、左右双栏列宽与段距、不产生绝对定位/transform、top-bottom 无隐藏规则）。
+- `npm run test:review`（Zotero headless 独立 profile）：**20 pass / 0 fail**。新增用例实际翻译两个段落后，依次切换 4 种模式，断言：
+  - 译文块始终紧跟在对应原文之后（`source.nextElementSibling === block`，refPath 一致）；
+  - 原文元素始终 `isConnected`，切换模式不会移动或重建正文节点；
+  - `#sdt-content` 的 `data-interlinear-display` 随模式更新；
+  - 样式表包含三套模式规则；
+  - 关闭对照后 `interlinear-source` 类与模式属性被清除、译文块全部移除。
+- 偏好页用例同时断言显示模式下拉默认 `top-bottom`、4 个选项，以及通过“保存设置”写入 `displayMode=side-by-side`。
+
+### 不确定项
+- 左右双栏在真实 Zotero PDF 页面中的视觉效果**不确定**：只断言了 CSS 与 DOM 关系，未在真实论文上逐页截图。具体风险：
+  - 原文含标题、列表项（`li`）、图注（`figcaption`）时，`inline-block` 可能改变列表符号/缩进观感；
+  - 若 Zotero 页面容器的可用宽度扣除 padding 后小于 100%，`49% + 1% + 49%` 可能让每对换行（预期行为），但也可能出现右列被挤到下一行；
+  - 原文与译文仅顶部对齐，长段落不会逐行对齐。
+- `target-only` 下原文被 `display:none`，依赖原文节点定位的原生高亮在屏幕上不可见；这是隐藏原文的必然结果，未破坏 range/几何数据，但“高亮仍显示”**做不到**。
+- `source-only` 仍会照常发起翻译并写入缓存/生成隐藏译文块（为了切回其他模式时立即显示）；若用户只想要原文，当前仍会消耗翻译请求。后续可在 Step 5/9 视需要改成“仅缓存命中”。
+- 真实 Zotero 若对 `#sdt-content` 内的 `p`/`li` 设置 `!important` 的 `display`，双栏规则可能被覆盖；未在实机验证。
+
+### 需要手动验证的清单
+1. 打开英文 PDF，开启对照，保持“原文在上，译文在下”。预期：与升级前一致。
+2. 设置里改为“左右双栏”，保存。预期：已打开的阅读器立即变成左原文/右译文两列，无需点 🔄；每个译文与对应段落同一行，长段落顶部对齐。
+3. 在双栏模式下滚动、选中原文、加一条高亮。预期：高亮矩形仍覆盖原文文字，位置不偏移；Zotero 批注侧栏可正常跳转。
+4. 改为“只看译文”，保存。预期：原文消失，只看到译文块；关闭对照（点工具栏图标）后原文全部恢复。
+5. 改为“只看原文”，保存。预期：译文块消失，原文完整；再切回“原文在上，译文在下”时译文立即出现（命中缓存，不发新请求或仅发少量请求）。
+6. 打开含列表/图注的论文，重复第 2 步。预期：列表符号与图注仍可读；若出现错位请记录段落类型（`li`/`figcaption`）与截图。
+7. 点 🖨️ 导出打印版。预期：打印稿始终同时包含原文与译文，不受当前显示模式影响。

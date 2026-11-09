@@ -8,9 +8,15 @@ import { DEFAULT_GOOGLE_BASE_URL, normalizeGoogleEndpoint } from "./providers/go
 import { normalizeChatCompletionsEndpoint } from "./providers/openaiProtocol";
 import { buildLanguageDirective } from "./providers/prompts";
 import type { ProviderId } from "./providers/types";
+import {
+  DEFAULT_DISPLAY_MODE,
+  normalizeDisplayMode,
+  type DisplayMode,
+} from "./displayMode";
 
 export type { AppearanceSettings } from "./appearance";
-export { DEFAULT_GOOGLE_BASE_URL };
+export type { DisplayMode } from "./displayMode";
+export { DEFAULT_GOOGLE_BASE_URL, DEFAULT_DISPLAY_MODE };
 
 const BASE = "extensions.zotero.interlinear";
 const LEGACY_BASE = "extensions.zotero.bilingualreader";
@@ -88,6 +94,7 @@ const APPEARANCE_UNDERLINE_PREF = `${BASE}.appearance.underline`;
 const APPEARANCE_UNDERLINE_COLOR_PREF = `${BASE}.appearance.underlineColor`;
 const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
 const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
+const DISPLAY_MODE_PREF = `${BASE}.displayMode`;
 
 function getStringPref(key: string, fallback: string): string {
   const value = (Zotero.Prefs as any).get(key, true);
@@ -340,6 +347,14 @@ export function setAppearance(input: Partial<AppearanceSettings>): void {
   setStringPref(APPEARANCE_UNDERLINE_COLOR_PREF, settings.underlineColor);
   setBoolPref(APPEARANCE_RIBBON_PREF, settings.ribbon);
   setStringPref(APPEARANCE_RIBBON_COLOR_PREF, settings.ribbonColor);
+}
+
+export function getDisplayMode(): DisplayMode {
+  return normalizeDisplayMode(getRawStringPref(DISPLAY_MODE_PREF));
+}
+
+export function setDisplayMode(mode: string): void {
+  setStringPref(DISPLAY_MODE_PREF, normalizeDisplayMode(mode));
 }
 
 export function getResolvedPDFTranslateService(): string {

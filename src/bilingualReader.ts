@@ -3,6 +3,7 @@ import {
   DEFAULT_OLLAMA_URL,
   getAppearance,
   getCacheEngineTag,
+  getDisplayMode,
   getEngine,
   getMaxBatchParagraphs,
   getMaxCharsPerRequest,
@@ -36,10 +37,16 @@ import { isFailureText } from "./translationFailure";
 import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
 import { buildTranslationCSS } from "./appearance";
-import { cleanupReadingLayout, observeReadingLayout } from "./readingLayout";
+import { buildDisplayModeCSS, type DisplayMode } from "./displayMode";
+import {
+  cleanupReadingLayout,
+  observeReadingLayout,
+  refreshReadingLayout,
+} from "./readingLayout";
 import { config } from "../package.json";
 
 const TRANSLATION_CLASS = "interlinear-translation";
+const SOURCE_CELL_CLASS = "interlinear-source";
 const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
 const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
 const STYLE_ID = "interlinear-style";
@@ -300,8 +307,10 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 }
 
 function installStyles(doc: Document): void {
+  const appearance = getAppearance();
   const css = `
-${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "reader")}
+${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader")}
+${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraphSpacing)}
     .${TRANSLATION_CLASS}[data-state="loading"] {
       opacity: 0.62;
     }
@@ -319,6 +328,31 @@ ${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "reader")}
     target?.append(style);
   }
   style.textContent = css;
+}
+
+/**
+ * Switch layout without moving Zotero's source nodes. Source and translation
+ * stay siblings, so native annotation ranges keep pointing at the same text.
+ */
+function applyDisplayMode(doc: Document, mode: DisplayMode = getDisplayMode()): void {
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (!content) return;
+  content.dataset.interlinearDisplay = mode;
+  refreshReadingLayout(doc);
+}
+
+/** Re-apply the display mode to readers that are already open. */
+export function refreshDisplayModes(): void {
+  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  for (const reader of readers) {
+    try {
+      if (reader.type !== "pdf") continue;
+      const doc = getSDTDocument(reader);
+      if (doc?.querySelector("#sdt-content")) applyDisplayMode(doc);
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
 }
 
 /** Re-apply appearance settings to readers that are already open. */
@@ -461,6 +495,7 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
     sibling?.classList.contains(TRANSLATION_CLASS) &&
     sibling.dataset.sourceRefPath === paragraph.refPath
   ) {
+    source.classList.add(SOURCE_CELL_CLASS);
     paragraph.block = sibling;
     return sibling;
   }
@@ -481,6 +516,7 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
     block.textContent = "等待翻译…";
   }
 
+  source.classList.add(SOURCE_CELL_CLASS);
   source.after(block);
   paragraph.block = block;
   return block;
@@ -495,6 +531,20 @@ function clearTranslations(doc: Document): void {
       // Reader may have replaced the SDT iframe while cleaning up.
     }
   }
+
+  const sources = Array.from(
+    doc.querySelectorAll(`.${SOURCE_CELL_CLASS}`),
+  ) as HTMLElement[];
+  for (const source of sources) {
+    try {
+      source.classList.remove(SOURCE_CELL_CLASS);
+    } catch (_) {
+      // Same iframe replacement case as above.
+    }
+  }
+
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (content) delete content.dataset.interlinearDisplay;
 
   const root = getDocumentRoot(doc);
   if (root) delete root.dataset.interlinearRunning;
@@ -717,6 +767,8 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   if (refresh) {
     clearTranslations(doc);
   }
+
+  applyDisplayMode(doc);
 
   const itemID = Number(reader?.itemID || 0);
   const item = itemID ? Zotero.Items.get(itemID) : null;

@@ -28,10 +28,10 @@
   "scripts": {
     "start": "zotero-plugin serve",
     "build": "tsc --noEmit && zotero-plugin build",
-    "lint:check": "eslint src/index.ts src/addon.ts src/hooks.ts src/bilingualReader.ts src/readerUI.ts src/readerToolbar.ts src/readingLayout.ts src/cancellationToken.ts src/settings.ts src/translationCache.ts src/translationPipeline.ts src/appearance.ts src/translationFailure.ts src/providers src/modules/preferenceScript.ts",
-    "lint:fix": "eslint src/index.ts src/addon.ts src/hooks.ts src/bilingualReader.ts src/readerUI.ts src/readerToolbar.ts src/readingLayout.ts src/cancellationToken.ts src/settings.ts src/translationCache.ts src/translationPipeline.ts src/appearance.ts src/translationFailure.ts src/providers src/modules/preferenceScript.ts --fix",
+    "lint:check": "eslint src/index.ts src/addon.ts src/hooks.ts src/bilingualReader.ts src/readerUI.ts src/readerToolbar.ts src/readingLayout.ts src/cancellationToken.ts src/settings.ts src/translationCache.ts src/translationPipeline.ts src/appearance.ts src/displayMode.ts src/translationFailure.ts src/providers src/modules/preferenceScript.ts",
+    "lint:fix": "eslint src/index.ts src/addon.ts src/hooks.ts src/bilingualReader.ts src/readerUI.ts src/readerToolbar.ts src/readingLayout.ts src/cancellationToken.ts src/settings.ts src/translationCache.ts src/translationPipeline.ts src/appearance.ts src/displayMode.ts src/translationFailure.ts src/providers src/modules/preferenceScript.ts --fix",
     "test": "zotero-plugin test --no-watch",
-    "test:unit": "node --test test/translationPipeline.node.test.mjs test/appearance.node.test.mjs test/providers.node.test.mjs",
+    "test:unit": "node --test test/translationPipeline.node.test.mjs test/appearance.node.test.mjs test/providers.node.test.mjs test/displayMode.node.test.mjs",
     "test:review": "node scripts/test-review.mjs"
   },
   "dependencies": {
