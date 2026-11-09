@@ -1,3 +1,6 @@
+import { buildTranslationCSS } from "./appearance";
+import { getAppearance } from "./settings";
+
 const TRANSLATION_CLASS = "interlinear-translation";
 const EXPORT_BUTTON_CLASS = "interlinear-export-button";
 const PRINTER_EMOJI = "🖨️";
@@ -186,17 +189,7 @@ function buildExportHTML(doc: Document, title: string): string {
     color: inherit;
     text-decoration: none;
   }
-  .${TRANSLATION_CLASS} {
-    margin: 0.18em 0 0.7em !important;
-    padding: 0.12em 0 0.12em 0.78em !important;
-    border-left: 2.2pt solid #c7354a !important;
-    color: #222 !important;
-    background: transparent !important;
-    font-size: 10.2pt !important;
-    line-height: 1.58 !important;
-    break-inside: avoid-page;
-    page-break-inside: avoid;
-  }
+  ${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "print")}
   .${TRANSLATION_CLASS}[data-state="done"]::before {
     content: "";
   }

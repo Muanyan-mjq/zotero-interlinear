@@ -8,6 +8,7 @@ import {
   DEFAULT_REQUEST_GAP_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   DEFAULT_SKIP_LAST_PAGES,
+  getAppearance,
   getEngine,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
@@ -19,6 +20,7 @@ import {
   getRequestTimeoutMs,
   getSkipLastPages,
   setEngine,
+  setAppearance,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
   setMaxConcurrent,
@@ -30,6 +32,9 @@ import {
   setSkipLastPages,
   type TranslationEngine,
 } from "../settings";
+import { DEFAULT_APPEARANCE, type AppearanceSettings } from "../appearance";
+import { getString } from "../utils/locale";
+import { refreshTranslationStyles } from "../bilingualReader";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
@@ -51,10 +56,52 @@ function updateBackendVisibility(doc: Document): void {
   if (ollamaSection) ollamaSection.hidden = engine !== "ollama";
 }
 
+function fillAppearanceLabels(doc: Document): void {
+  const entries: Array<[string, Parameters<typeof getString>[0]]> = [
+    ["interlinear-appearance-title", "appearance-title"],
+    ["interlinear-appearance-font-size-label", "appearance-font-size-label"],
+    ["interlinear-appearance-font-size-help", "appearance-font-size-help"],
+    ["interlinear-appearance-color-label", "appearance-color-label"],
+    ["interlinear-appearance-color-help", "appearance-color-help"],
+    ["interlinear-appearance-font-family-label", "appearance-font-family-label"],
+    ["interlinear-appearance-font-family-help", "appearance-font-family-help"],
+    ["interlinear-appearance-line-height-label", "appearance-line-height-label"],
+    ["interlinear-appearance-line-height-help", "appearance-line-height-help"],
+    ["interlinear-appearance-paragraph-spacing-label", "appearance-paragraph-spacing-label"],
+    ["interlinear-appearance-paragraph-spacing-help", "appearance-paragraph-spacing-help"],
+    ["interlinear-appearance-background-label", "appearance-background-label"],
+    ["interlinear-appearance-background-help", "appearance-background-help"],
+    ["interlinear-appearance-theme-label", "appearance-theme-label"],
+    ["interlinear-appearance-theme-help", "appearance-theme-help"],
+    ["interlinear-appearance-theme-auto", "appearance-theme-auto"],
+    ["interlinear-appearance-theme-light", "appearance-theme-light"],
+    ["interlinear-appearance-theme-dark", "appearance-theme-dark"],
+    ["interlinear-appearance-underline-label", "appearance-underline-label"],
+    ["interlinear-appearance-underline-color-label", "appearance-underline-color-label"],
+    ["interlinear-appearance-underline-color-help", "appearance-underline-color-help"],
+    ["interlinear-appearance-ribbon-label", "appearance-ribbon-label"],
+    ["interlinear-appearance-ribbon-color-label", "appearance-ribbon-color-label"],
+    ["interlinear-appearance-ribbon-color-help", "appearance-ribbon-color-help"],
+  ];
+  for (const [id, key] of entries) {
+    const element = getElement<HTMLElement>(doc, id);
+    if (element) element.textContent = getString(key);
+  }
+}
+
 function readNumberInput(doc: Document, id: string, fallback: number): number {
   const input = getElement<HTMLInputElement>(doc, id);
   const value = Number(input?.value);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function readCheckbox(doc: Document, id: string): boolean {
+  return !!getElement<HTMLInputElement>(doc, id)?.checked;
+}
+
+function readInputText(doc: Document, id: string, fallback = ""): string {
+  const input = getElement<HTMLInputElement>(doc, id);
+  return input ? input.value : fallback;
 }
 
 function saveSettings(doc: Document): void {
@@ -86,6 +133,37 @@ function saveSettings(doc: Document): void {
   setRequestTimeoutMs(
     readNumberInput(doc, "interlinear-request-timeout", DEFAULT_REQUEST_TIMEOUT_MS),
   );
+
+  setAppearance({
+    fontSize: readNumberInput(
+      doc,
+      "interlinear-appearance-font-size",
+      DEFAULT_APPEARANCE.fontSize,
+    ),
+    color: readInputText(doc, "interlinear-appearance-color"),
+    fontFamily: readInputText(doc, "interlinear-appearance-font-family"),
+    lineHeight: readNumberInput(
+      doc,
+      "interlinear-appearance-line-height",
+      DEFAULT_APPEARANCE.lineHeight,
+    ),
+    paragraphSpacing: readNumberInput(
+      doc,
+      "interlinear-appearance-paragraph-spacing",
+      DEFAULT_APPEARANCE.paragraphSpacing,
+    ),
+    background: readInputText(doc, "interlinear-appearance-background"),
+    theme:
+      (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
+        ?.value as AppearanceSettings["theme"]) || "auto",
+    underline: readCheckbox(doc, "interlinear-appearance-underline"),
+    underlineColor: readInputText(doc, "interlinear-appearance-underline-color"),
+    ribbon: readCheckbox(doc, "interlinear-appearance-ribbon"),
+    ribbonColor:
+      readInputText(doc, "interlinear-appearance-ribbon-color") ||
+      DEFAULT_APPEARANCE.ribbonColor,
+  });
+  refreshTranslationStyles();
 
   setStatus(doc, "设置已保存。返回正在阅读的 PDF 后点击 🔄 即可应用。 ");
 }
@@ -203,6 +281,41 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   );
   const maxErrors = getElement<HTMLInputElement>(doc, "interlinear-max-errors");
   const requestTimeout = getElement<HTMLInputElement>(doc, "interlinear-request-timeout");
+  const appearanceFontSize = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-font-size",
+  );
+  const appearanceColor = getElement<HTMLInputElement>(doc, "interlinear-appearance-color");
+  const appearanceFontFamily = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-font-family",
+  );
+  const appearanceLineHeight = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-line-height",
+  );
+  const appearanceParagraphSpacing = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-paragraph-spacing",
+  );
+  const appearanceBackground = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-background",
+  );
+  const appearanceTheme = getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme");
+  const appearanceUnderline = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-underline",
+  );
+  const appearanceUnderlineColor = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-underline-color",
+  );
+  const appearanceRibbon = getElement<HTMLInputElement>(doc, "interlinear-appearance-ribbon");
+  const appearanceRibbonColor = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-ribbon-color",
+  );
 
   if (engine) engine.value = getEngine();
   if (url) url.value = getOllamaURL();
@@ -214,7 +327,22 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (maxBatchParagraphs) maxBatchParagraphs.value = String(getMaxBatchParagraphs());
   if (maxErrors) maxErrors.value = String(getMaxConsecutiveErrors());
   if (requestTimeout) requestTimeout.value = String(getRequestTimeoutMs());
+  const appearance = getAppearance();
+  if (appearanceFontSize) appearanceFontSize.value = String(appearance.fontSize);
+  if (appearanceColor) appearanceColor.value = appearance.color;
+  if (appearanceFontFamily) appearanceFontFamily.value = appearance.fontFamily;
+  if (appearanceLineHeight) appearanceLineHeight.value = String(appearance.lineHeight);
+  if (appearanceParagraphSpacing) {
+    appearanceParagraphSpacing.value = String(appearance.paragraphSpacing);
+  }
+  if (appearanceBackground) appearanceBackground.value = appearance.background;
+  if (appearanceTheme) appearanceTheme.value = appearance.theme;
+  if (appearanceUnderline) appearanceUnderline.checked = appearance.underline;
+  if (appearanceUnderlineColor) appearanceUnderlineColor.value = appearance.underlineColor;
+  if (appearanceRibbon) appearanceRibbon.checked = appearance.ribbon;
+  if (appearanceRibbonColor) appearanceRibbonColor.value = appearance.ribbonColor;
 
+  fillAppearanceLabels(doc);
   updateBackendVisibility(doc);
   updatePDFTranslateStatus(doc);
   updateCacheStatus(doc);

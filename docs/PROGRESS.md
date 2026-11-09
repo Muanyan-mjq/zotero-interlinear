@@ -78,3 +78,45 @@
 3. 设置（Zotero 设置→Interlinear）。预期：顶部有 96px 图标 brand，标题 “Interlinear 中英对照阅读”，项目主页链接指向 `Muanyan-mjq/zotero-interlinear`。
 4. 若之前装过原版 Bilingual Reader：先记下原版某项设置（如“不翻译末尾页数”），卸载原版、装新版后打开设置。预期：该值被带过来（迁移生效）；再打开原版 prefs.js 不应被清空（共存安全，仅复制）。
 5. 深色主题下看工具栏图标与设置页图标。预期：白色底板使图标可见；若 Z 与背景对比不足请反馈（当前判断为“不确定”）。
+## Step 2：外观设置（2a 字号/颜色 + 2b 全量外观）
+
+### 做了什么
+- 新增 `src/appearance.ts` 作为**唯一外观模型与 CSS 生成器**：`AppearanceSettings`、`DEFAULT_APPEARANCE`、`normalizeAppearance()`、`isValidColor()`、`buildTranslationCSS(className, settings, "reader" | "print")`。阅读器实时样式与打印导出共用同一个函数，避免两套样式漂移。
+- 可配置项（全部持久化到 `extensions.zotero.interlinear.appearance.*`）：
+  - 字号 `fontSize`：10–32 px，默认 16。
+  - 文字颜色 `color`：留空继承 Zotero 主题；仅接受 hex/rgb(a)/纯字母命名色。
+  - 字体 `fontFamily`：逗号分隔的 CSS 字体名，留空继承阅读器字体；只允许 `[a-z0-9 ,._-]`，不允许引号、括号、分号、反斜杠或换行。
+  - 行高 `lineHeight`：1–2.5，默认 1.75；持久化为整数百分比（如 175）。
+  - 段落间距 `paragraphSpacing`：0–3 em，默认 1.25；持久化为整数百分之一 em（如 125）。
+  - 背景色 `background`：留空透明；与文字颜色同样校验。
+  - 主题 `theme`：`auto`（跟随 Zotero）/`light`（#f6f6f6 背景 + #222 文字）/`dark`（#2b2b2b + #e8e8e8）；显式文字颜色/背景优先于主题。
+  - 下划线 `underline` + `underlineColor`：开关 + 可选颜色（留空跟随文字颜色）。
+  - 左侧色带 `ribbon` + `ribbonColor`：默认开启、颜色 `#c7354a`。**确认结果：原译文块左侧那条红色竖线就是色带**（原 CSS `border-left: 4px solid #c7354a`），现已可开关和改色；关闭输出 `border-left: none`。
+- `normalizeAppearance()` 统一做范围钳制、非法颜色回退、非法字体清空、非法主题回退；`buildTranslationCSS()` 只输出已归一化的值，因此设置页输入无法注入额外 CSS。
+- 打印模式（`readerUI.ts` 导出）忽略深色阅读主题：背景固定透明、文字默认 #222，避免把深色块印到纸上；字体、行高、段距、下划线、色带仍按设置输出（色带宽度 2.2pt）。
+- 设置页新增完整外观分组：字号、文字颜色、字体、行高、段落间距、背景色、主题下拉、下划线开关 + 颜色、色带开关 + 颜色；标签与帮助文字全部通过 Fluent（en-US/zh-CN）填充，无新增硬编码中文。
+- 保存后调用 `refreshTranslationStyles()`，对已打开的所有 PDF 阅读器重写 `<style id="interlinear-style">`，无需关闭重开 PDF。
+- 2a 与 2b 合并为同一个 Step 2 提交，避免历史上出现只完成一半外观设置的中间状态。
+
+### 改动文件
+- 新增：`src/appearance.ts`、`test/appearance.node.test.mjs`。
+- 修改：`src/settings.ts`（外观 prefs 读写，`setAppearance` 先与当前值合并再归一化，避免局部保存清空其他字段）、`src/bilingualReader.ts`（`installStyles` 改用 `buildTranslationCSS`，新增 `refreshTranslationStyles`）、`src/readerUI.ts`（打印导出改用 `buildTranslationCSS(..., "print")`）、`src/modules/preferenceScript.ts`（填充/保存/即时刷新）、`addon/content/preferences.xhtml`、`addon/prefs.js`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`package.json`（lint 脚本加入 `src/appearance.ts`；`test:unit` 加入 appearance 测试）、`test/startup.test.ts`（集成用例扩展）、`typings/i10n.d.ts`、`typings/prefs.d.ts`（构建时生成）。
+
+### 测试结果
+- `npm run build`：通过（先跑 `npx zotero-plugin build` 重新生成 typings，否则新 prefs/FTL key 会让 `tsc` 失败）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**24 pass / 0 fail**（translationPipeline 5 + appearance 19）。外观测试覆盖默认值、字号/行高/段距钳制、颜色与字体注入拒绝、主题解析与显式覆盖、下划线/色带开关、打印模式忽略深色主题。
+- `npm run test:review`（Zotero 内集成，headless 独立 profile）：**17 pass / 0 fail**。外观用例实际打开偏好窗口，断言默认值、保存后的 11 个 prefs、打开的阅读器 `<style>` 内容，以及非法颜色不泄漏进 CSS。
+
+### 不确定项
+- 深色主题、字体族、打印导出的实际观感：**不确定**（只断言了生成的 CSS，未在真实 PDF 上逐项截图；字体能否命中取决于系统/Zotero 内置字体）。
+- 打印导出的段距由原固定 `0.7em` 改为跟随 `paragraphSpacing`（默认 1.25em），属于有意的行为变化；若用户觉得打印过松，可在设置里调到 0。
+- `font-family` 以未加引号形式输出以保留 `serif` 等通用关键字；含空格的真实字体名在 CSS 中合法，但若某字体名本身包含数字开头等极端情况，浏览器可能忽略该字体而回退。未做字体可用性检测。
+
+### 需要手动验证的清单
+1. 打开英文 PDF 并开启对照，进 Zotero 设置→Interlinear→译文外观，改字号 20、行高 2、段距 2、字体 `Georgia, serif`，保存。预期：已打开的阅读器译文块立即变大、变松，无需重开 PDF。
+2. 主题选“深色”，文字颜色与背景色留空，保存。预期：译文块深底浅字；再把文字颜色设为 `#ff0000`，预期文字变红而背景仍深色。
+3. 勾选“译文加下划线”，下划线颜色留空，保存。预期：译文出现下划线且颜色跟随文字；再填 `#00ff00`，预期下划线变绿。
+4. 取消“显示左侧色带”，保存。预期：译文块左侧红线消失；重新勾选并把色带颜色改为 `#123456`，预期竖线变蓝黑。
+5. 点 🖨️ 导出打印版，用打印预览查看。预期：译文为白底黑字、字号按设置换算为 pt、色带/下划线仍保留；深色主题不会带入打印稿。
+6. 在文字颜色里输入 `red; } body { display:none` 并保存。预期：设置被拒绝（pref 变空、译文恢复跟随主题），页面无任何异常样式。

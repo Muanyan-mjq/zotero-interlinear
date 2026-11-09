@@ -1,6 +1,7 @@
 import {
   DEFAULT_OLLAMA_MODEL,
   DEFAULT_OLLAMA_URL,
+  getAppearance,
   getCacheEngineTag,
   getEngine,
   getMaxBatchParagraphs,
@@ -30,6 +31,7 @@ import {
   type BatchInput,
 } from "./translationPipeline";
 import { CancellationToken } from "./cancellationToken";
+import { buildTranslationCSS } from "./appearance";
 import { cleanupReadingLayout, observeReadingLayout } from "./readingLayout";
 import { config } from "../package.json";
 
@@ -382,21 +384,8 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 }
 
 function installStyles(doc: Document): void {
-  if (doc.getElementById(STYLE_ID)) return;
-
-  const style = doc.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = `
-    .${TRANSLATION_CLASS} {
-      box-sizing: border-box;
-      border-left: 4px solid #c7354a;
-      margin: 0.65em 0 1.25em;
-      padding: 0.45em 0.95em;
-      line-height: 1.75;
-      font-size: 1em;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
+  const css = `
+${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "reader")}
     .${TRANSLATION_CLASS}[data-state="loading"] {
       opacity: 0.62;
     }
@@ -406,8 +395,28 @@ function installStyles(doc: Document): void {
     }
   `;
 
-  const target = doc.head || doc.documentElement;
-  target?.append(style);
+  let style = doc.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = STYLE_ID;
+    const target = doc.head || doc.documentElement;
+    target?.append(style);
+  }
+  style.textContent = css;
+}
+
+/** Re-apply appearance settings to readers that are already open. */
+export function refreshTranslationStyles(): void {
+  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  for (const reader of readers) {
+    try {
+      if (reader.type !== "pdf") continue;
+      const doc = getSDTDocument(reader);
+      if (doc?.querySelector("#sdt-content")) installStyles(doc);
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
 }
 
 function isTranslatableElement(element: HTMLElement): boolean {

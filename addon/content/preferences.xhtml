@@ -24,6 +24,175 @@
   </hbox>
 </groupbox>
 
+<groupbox id="interlinear-appearance-section">
+  <label><html:h3 id="interlinear-appearance-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-font-size-label"
+      for="interlinear-appearance-font-size"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-font-size"
+      type="number"
+      min="10"
+      max="32"
+      step="1"
+      style="width: 110px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-appearance-font-size-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-color-label"
+      for="interlinear-appearance-color"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-color"
+      type="text"
+      style="width: 160px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-appearance-color-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-font-family-label"
+      for="interlinear-appearance-font-family"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-font-family"
+      type="text"
+      style="width: 240px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-appearance-font-family-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-line-height-label"
+      for="interlinear-appearance-line-height"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-line-height"
+      type="number"
+      min="1"
+      max="2.5"
+      step="0.05"
+      style="width: 110px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-appearance-line-height-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-paragraph-spacing-label"
+      for="interlinear-appearance-paragraph-spacing"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-paragraph-spacing"
+      type="number"
+      min="0"
+      max="3"
+      step="0.05"
+      style="width: 110px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-appearance-paragraph-spacing-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-background-label"
+      for="interlinear-appearance-background"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-background"
+      type="text"
+      style="width: 160px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-appearance-background-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-appearance-theme-label"
+      for="interlinear-appearance-theme"
+      style="min-width: 180px"
+    ></html:label>
+    <html:select id="interlinear-appearance-theme" style="width: 160px; padding: 4px 8px">
+      <html:option id="interlinear-appearance-theme-auto" value="auto"></html:option>
+      <html:option id="interlinear-appearance-theme-light" value="light"></html:option>
+      <html:option id="interlinear-appearance-theme-dark" value="dark"></html:option>
+    </html:select>
+    <html:span
+      id="interlinear-appearance-theme-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:input id="interlinear-appearance-underline" type="checkbox" />
+    <html:label
+      id="interlinear-appearance-underline-label"
+      for="interlinear-appearance-underline"
+      style="margin-left: 6px"
+    ></html:label>
+    <html:label
+      id="interlinear-appearance-underline-color-label"
+      for="interlinear-appearance-underline-color"
+      style="margin-left: 24px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-underline-color"
+      type="text"
+      style="width: 140px; padding: 4px 6px; margin-left: 6px"
+    />
+    <html:span
+      id="interlinear-appearance-underline-color-help"
+      style="margin-left: 10px; max-width: 420px"
+    ></html:span>
+  </hbox>
+  <hbox align="center">
+    <html:input id="interlinear-appearance-ribbon" type="checkbox" />
+    <html:label
+      id="interlinear-appearance-ribbon-label"
+      for="interlinear-appearance-ribbon"
+      style="margin-left: 6px"
+    ></html:label>
+    <html:label
+      id="interlinear-appearance-ribbon-color-label"
+      for="interlinear-appearance-ribbon-color"
+      style="margin-left: 24px"
+    ></html:label>
+    <html:input
+      id="interlinear-appearance-ribbon-color"
+      type="text"
+      style="width: 140px; padding: 4px 6px; margin-left: 6px"
+    />
+    <html:span
+      id="interlinear-appearance-ribbon-color-help"
+      style="margin-left: 10px; max-width: 420px"
+    ></html:span>
+  </hbox>
+</groupbox>
+
 <groupbox id="interlinear-pdftranslate-section">
   <label><html:h3>Translate for Zotero</html:h3></label>
   <html:p

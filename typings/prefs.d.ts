@@ -17,6 +17,17 @@ declare namespace _ZoteroTypes {
       "maxConsecutiveErrors": number;
       "requestTimeoutMs": number;
       "skipLastPages": number;
+      "appearance.fontSize": number;
+      "appearance.color": string;
+      "appearance.fontFamily": string;
+      "appearance.lineHeightPercent": number;
+      "appearance.paragraphSpacing": number;
+      "appearance.background": string;
+      "appearance.theme": string;
+      "appearance.underline": boolean;
+      "appearance.underlineColor": string;
+      "appearance.ribbon": boolean;
+      "appearance.ribbonColor": string;
     };
   }
 }

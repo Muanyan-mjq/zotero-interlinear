@@ -125,6 +125,144 @@ describe("startup", function () {
     }
   });
 
+  it("should save appearance settings and re-apply them to open readers", async function () {
+    this.timeout(10000);
+    const appearancePrefs = [
+      "extensions.zotero.interlinear.appearance.fontSize",
+      "extensions.zotero.interlinear.appearance.color",
+      "extensions.zotero.interlinear.appearance.fontFamily",
+      "extensions.zotero.interlinear.appearance.lineHeightPercent",
+      "extensions.zotero.interlinear.appearance.paragraphSpacing",
+      "extensions.zotero.interlinear.appearance.background",
+      "extensions.zotero.interlinear.appearance.theme",
+      "extensions.zotero.interlinear.appearance.underline",
+      "extensions.zotero.interlinear.appearance.underlineColor",
+      "extensions.zotero.interlinear.appearance.ribbon",
+      "extensions.zotero.interlinear.appearance.ribbonColor",
+    ];
+    const fontSizePref = appearancePrefs[0];
+    const colorPref = appearancePrefs[1];
+    const previous = new Map<string, unknown>(
+      appearancePrefs.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
+    );
+    const originalReaders = (Zotero.Reader as any)._readers;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "appearance-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    doc.body.append(content);
+    const reader = {
+      type: "pdf",
+      itemID: 2147483643,
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: { _iframeDocument: doc, getData: () => ({ structure: null }) },
+      },
+    };
+    (Zotero.Reader as any)._readers = [reader];
+
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as
+        | (HTMLInputElement & HTMLSelectElement)
+        | null;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-font-size")) break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const fontSize = byId("interlinear-appearance-font-size");
+      const color = byId("interlinear-appearance-color");
+      const fontFamily = byId("interlinear-appearance-font-family");
+      const lineHeight = byId("interlinear-appearance-line-height");
+      const paragraphSpacing = byId("interlinear-appearance-paragraph-spacing");
+      const background = byId("interlinear-appearance-background");
+      const theme = byId("interlinear-appearance-theme");
+      const underline = byId("interlinear-appearance-underline");
+      const underlineColor = byId("interlinear-appearance-underline-color");
+      const ribbon = byId("interlinear-appearance-ribbon");
+      const ribbonColor = byId("interlinear-appearance-ribbon-color");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
+      assert.exists(fontSize);
+      assert.exists(color);
+      assert.exists(fontFamily);
+      assert.exists(lineHeight);
+      assert.exists(paragraphSpacing);
+      assert.exists(background);
+      assert.exists(theme);
+      assert.exists(underline);
+      assert.exists(underlineColor);
+      assert.exists(ribbon);
+      assert.exists(ribbonColor);
+      assert.exists(save);
+      assert.equal(fontSize?.value, "16");
+      assert.equal(color?.value, "");
+      assert.equal(fontFamily?.value, "");
+      assert.equal(lineHeight?.value, "1.75");
+      assert.equal(paragraphSpacing?.value, "1.25");
+      assert.equal(background?.value, "");
+      assert.equal(theme?.value, "auto");
+      assert.equal(underline?.checked, false);
+      assert.equal(ribbon?.checked, true);
+      assert.equal(ribbonColor?.value, "#c7354a");
+
+      if (fontSize) fontSize.value = "20";
+      if (color) color.value = "#ff0000";
+      if (fontFamily) fontFamily.value = "Georgia, serif";
+      if (lineHeight) lineHeight.value = "2";
+      if (paragraphSpacing) paragraphSpacing.value = "2";
+      if (background) background.value = "#101010";
+      if (theme) theme.value = "dark";
+      if (underline) underline.checked = true;
+      if (underlineColor) underlineColor.value = "#00ff00";
+      if (ribbon) ribbon.checked = false;
+      save.click();
+
+      assert.equal(Zotero.Prefs.get(fontSizePref, true), 20);
+      assert.equal(Zotero.Prefs.get(colorPref, true), "#ff0000");
+      assert.equal(Zotero.Prefs.get(appearancePrefs[2], true), "Georgia, serif");
+      assert.equal(Zotero.Prefs.get(appearancePrefs[3], true), 200);
+      assert.equal(Zotero.Prefs.get(appearancePrefs[4], true), 200);
+      assert.equal(Zotero.Prefs.get(appearancePrefs[5], true), "#101010");
+      assert.equal(Zotero.Prefs.get(appearancePrefs[6], true), "dark");
+      assert.equal(Zotero.Prefs.get(appearancePrefs[7], true), true);
+      assert.equal(Zotero.Prefs.get(appearancePrefs[8], true), "#00ff00");
+      assert.equal(Zotero.Prefs.get(appearancePrefs[9], true), false);
+      const style = doc.getElementById("interlinear-style") as HTMLStyleElement | null;
+      assert.exists(style);
+      const css = style?.textContent || "";
+      assert.match(css, /font-size: 20px;/u);
+      assert.match(css, /color: #ff0000;/u);
+      assert.match(css, /background: #101010;/u);
+      assert.match(css, /font-family: Georgia, serif;/u);
+      assert.match(css, /line-height: 2;/u);
+      assert.match(css, /margin: 0\.65em 0 2em;/u);
+      assert.match(css, /text-decoration: underline;/u);
+      assert.match(css, /text-decoration-color: #00ff00;/u);
+      assert.match(css, /border-left: none;/u);
+
+      if (theme) theme.value = "auto";
+      if (color) color.value = "red; } body { display: none";
+      save.click();
+      assert.equal(Zotero.Prefs.get(colorPref, true), "");
+      const cssAfter = doc.getElementById("interlinear-style")?.textContent || "";
+      assert.isFalse(/^\s*color:/mu.test(cssAfter));
+      assert.isFalse(/body/u.test(cssAfter));
+    } finally {
+      win?.close();
+      (Zotero.Reader as any)._readers = originalReaders;
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
+    }
+  });
+
   it("should translate through Translate for Zotero without AbortController", async function () {
     this.timeout(10000);
     const prefKey = "extensions.zotero.interlinear.engine";

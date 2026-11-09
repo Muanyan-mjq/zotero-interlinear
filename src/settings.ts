@@ -1,3 +1,12 @@
+import {
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  normalizeAppearance,
+  type AppearanceSettings,
+} from "./appearance";
+
+export type { AppearanceSettings } from "./appearance";
+
 const BASE = "extensions.zotero.interlinear";
 const LEGACY_BASE = "extensions.zotero.bilingualreader";
 
@@ -23,14 +32,39 @@ const MAX_BATCH_PARAGRAPHS_PREF = `${BASE}.maxBatchParagraphs`;
 const MAX_ERRORS_PREF = `${BASE}.maxConsecutiveErrors`;
 const REQUEST_TIMEOUT_PREF = `${BASE}.requestTimeoutMs`;
 const SKIP_LAST_PAGES_PREF = `${BASE}.skipLastPages`;
+const APPEARANCE_FONT_SIZE_PREF = `${BASE}.appearance.fontSize`;
+const APPEARANCE_COLOR_PREF = `${BASE}.appearance.color`;
+const APPEARANCE_FONT_FAMILY_PREF = `${BASE}.appearance.fontFamily`;
+const APPEARANCE_LINE_HEIGHT_PREF = `${BASE}.appearance.lineHeightPercent`;
+const APPEARANCE_PARAGRAPH_SPACING_PREF = `${BASE}.appearance.paragraphSpacing`;
+const APPEARANCE_BACKGROUND_PREF = `${BASE}.appearance.background`;
+const APPEARANCE_THEME_PREF = `${BASE}.appearance.theme`;
+const APPEARANCE_UNDERLINE_PREF = `${BASE}.appearance.underline`;
+const APPEARANCE_UNDERLINE_COLOR_PREF = `${BASE}.appearance.underlineColor`;
+const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
+const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
 
 function getStringPref(key: string, fallback: string): string {
   const value = (Zotero.Prefs as any).get(key, true);
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function getRawStringPref(key: string): string {
+  const value = (Zotero.Prefs as any).get(key, true);
+  return typeof value === "string" ? value : "";
+}
+
 function setStringPref(key: string, value: string): void {
   (Zotero.Prefs as any).set(key, value, true);
+}
+
+function getBoolPref(key: string, fallback: boolean): boolean {
+  const value = (Zotero.Prefs as any).get(key, true);
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function setBoolPref(key: string, value: boolean): void {
+  (Zotero.Prefs as any).set(key, !!value, true);
 }
 
 function getNumberPref(key: string, fallback: number, min: number, max: number): number {
@@ -123,6 +157,47 @@ export function getSkipLastPages(): number {
 
 export function setSkipLastPages(value: number): void {
   setNumberPref(SKIP_LAST_PAGES_PREF, value, 0, 50);
+}
+
+export function getAppearance(): AppearanceSettings {
+  return normalizeAppearance({
+    fontSize: getNumberPref(APPEARANCE_FONT_SIZE_PREF, 16, FONT_SIZE_MIN, FONT_SIZE_MAX),
+    color: getRawStringPref(APPEARANCE_COLOR_PREF),
+    fontFamily: getRawStringPref(APPEARANCE_FONT_FAMILY_PREF),
+    lineHeight: getNumberPref(APPEARANCE_LINE_HEIGHT_PREF, 175, 100, 250) / 100,
+    paragraphSpacing: getNumberPref(APPEARANCE_PARAGRAPH_SPACING_PREF, 125, 0, 300) / 100,
+    background: getRawStringPref(APPEARANCE_BACKGROUND_PREF),
+    theme: getRawStringPref(APPEARANCE_THEME_PREF) as AppearanceSettings["theme"],
+    underline: getBoolPref(APPEARANCE_UNDERLINE_PREF, false),
+    underlineColor: getRawStringPref(APPEARANCE_UNDERLINE_COLOR_PREF),
+    ribbon: getBoolPref(APPEARANCE_RIBBON_PREF, true),
+    ribbonColor: getRawStringPref(APPEARANCE_RIBBON_COLOR_PREF),
+  });
+}
+
+export function setAppearance(input: Partial<AppearanceSettings>): void {
+  const settings = normalizeAppearance({ ...getAppearance(), ...input });
+  setNumberPref(APPEARANCE_FONT_SIZE_PREF, settings.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX);
+  setStringPref(APPEARANCE_COLOR_PREF, settings.color);
+  setStringPref(APPEARANCE_FONT_FAMILY_PREF, settings.fontFamily);
+  setNumberPref(
+    APPEARANCE_LINE_HEIGHT_PREF,
+    Math.round(settings.lineHeight * 100),
+    100,
+    250,
+  );
+  setNumberPref(
+    APPEARANCE_PARAGRAPH_SPACING_PREF,
+    Math.round(settings.paragraphSpacing * 100),
+    0,
+    300,
+  );
+  setStringPref(APPEARANCE_BACKGROUND_PREF, settings.background);
+  setStringPref(APPEARANCE_THEME_PREF, settings.theme);
+  setBoolPref(APPEARANCE_UNDERLINE_PREF, settings.underline);
+  setStringPref(APPEARANCE_UNDERLINE_COLOR_PREF, settings.underlineColor);
+  setBoolPref(APPEARANCE_RIBBON_PREF, settings.ribbon);
+  setStringPref(APPEARANCE_RIBBON_COLOR_PREF, settings.ribbonColor);
 }
 
 export function getResolvedPDFTranslateService(): string {
