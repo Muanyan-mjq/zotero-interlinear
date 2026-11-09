@@ -162,7 +162,10 @@ describe("reader toolbar recovery", function () {
       doc.querySelector(".interlinear-toolbar-section")?.contains(toggle as Node),
       "controls must be injected directly, not through the cloning append",
     );
-    assert.exists(toggle?.querySelector("img"));
+    const icon = toggle?.querySelector("svg") as SVGElement | null;
+    assert.exists(icon);
+    assert.equal(icon?.getAttribute("width"), "16");
+    assert.equal(icon?.getAttribute("height"), "16");
 
     const win = Zotero.getMainWindow() as any;
     toggle!.dispatchEvent(

@@ -1,6 +1,7 @@
 import { buildTranslationCSS } from "./appearance";
 import { getAppearance, getTargetLanguage } from "./settings";
 import { getString } from "./utils/locale";
+import { registerToolbarHandlers } from "./toolbarEvents";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const EXPORT_BUTTON_CLASS = "interlinear-export-button";
@@ -61,7 +62,6 @@ function createToolbarEmojiButton(
   className: string,
   emoji: string,
   title: string,
-  onClick: (button: HTMLButtonElement) => void,
 ): HTMLButtonElement {
   const button = doc.createElement("button");
   button.className = `toolbar-button ${className}`;
@@ -71,12 +71,9 @@ function createToolbarEmojiButton(
   button.title = title;
   button.setAttribute("aria-label", title);
   applyEmojiButtonStyle(button);
-
-  button.addEventListener("click", (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onClick(button);
-  });
+  button.style.display = "inline-flex";
+  button.style.alignItems = "center";
+  button.style.justifyContent = "center";
   return button;
 }
 
@@ -393,6 +390,16 @@ export function renderReaderExportButton(event: any): void {
   const { reader, doc, append } = event || {};
   if (!reader || reader.type !== "pdf" || !doc || typeof append !== "function") return;
 
+  registerToolbarHandlers(doc, EXPORT_BUTTON_CLASS, {
+    onClick: (_event, button) => {
+      if (button.disabled) return;
+      button.disabled = true;
+      void exportBilingualPDF(reader).finally(() => {
+        button.disabled = false;
+      });
+    },
+  });
+
   if (!doc.querySelector(`.${EXPORT_BUTTON_CLASS}`)) {
     append(
       createToolbarEmojiButton(
@@ -400,13 +407,6 @@ export function renderReaderExportButton(event: any): void {
         EXPORT_BUTTON_CLASS,
         PRINTER_EMOJI,
         getString("toolbar-export-title"),
-        (button) => {
-          if (button.disabled) return;
-          button.disabled = true;
-          void exportBilingualPDF(reader).finally(() => {
-            button.disabled = false;
-          });
-        },
       ),
     );
   }

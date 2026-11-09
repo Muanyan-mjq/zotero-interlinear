@@ -107,9 +107,21 @@ function scheduleStartupReconcile(): void {
  * Keeping our controls in one listener removes ordering dependencies, while the
  * per-control guard prevents one optional control from hiding the other icons.
  */
+function resolveReaderDocument(event: any): Document | null {
+  try {
+    const doc = event?.reader?._iframeWindow?.document as Document | undefined;
+    if (doc) return doc;
+  } catch (_) {
+    // The reader window can disappear while its event is still being handled.
+  }
+  return (event?.doc as Document | undefined) || null;
+}
+
 export function renderReaderToolbar(event: any): void {
-  const append = resolveToolbarAppend(event);
-  const target = append ? { ...event, append } : event;
+  const doc = resolveReaderDocument(event);
+  const withDoc = doc && doc !== event?.doc ? { ...event, doc } : event;
+  const append = resolveToolbarAppend(withDoc);
+  const target = append ? { ...withDoc, append } : withDoc;
   for (const render of toolbarRenderers) {
     try {
       render(target);

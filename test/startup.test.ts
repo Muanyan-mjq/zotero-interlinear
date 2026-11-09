@@ -169,9 +169,10 @@ describe("startup", function () {
     assert.equal(doc.querySelectorAll(".interlinear-export-button").length, 1);
     const toggle = doc.querySelector(".interlinear-toolbar-button");
     assert.equal(toggle?.textContent, "");
-    const toggleIcon = toggle?.querySelector("img") as HTMLImageElement | null;
+    const toggleIcon = toggle?.querySelector("svg") as SVGElement | null;
     assert.exists(toggleIcon);
-    assert.match(toggleIcon?.src || "", /content\/icons\/icon20\.png$/u);
+    assert.equal(toggleIcon?.getAttribute("width"), "16");
+    assert.equal(toggleIcon?.getAttribute("height"), "16");
     assert.equal(doc.querySelector(".interlinear-export-button")?.textContent, "🖨️");
     assert.notExists(doc.querySelector(".interlinear-settings-button"));
     assert.notExists(doc.querySelector(".interlinear-wordwise-button"));
@@ -1391,10 +1392,10 @@ describe("startup", function () {
       const toggle = toolbarDoc.querySelector(
         ".interlinear-toolbar-button",
       ) as HTMLButtonElement;
-      const icon = toggle?.querySelector("img") as HTMLImageElement | null;
+      const icon = toggle?.querySelector("svg") as SVGElement | null;
       assert.exists(icon);
-      assert.equal(icon?.style.width, "16px");
-      assert.equal(icon?.style.height, "16px");
+      assert.equal(icon?.getAttribute("width"), "16");
+      assert.equal(icon?.getAttribute("height"), "16");
 
       const win = Zotero.getMainWindow() as any;
       toggle.dispatchEvent(

@@ -125,13 +125,6 @@ export function openReaderMenu(doc: Document, options: ReaderMenuOptions): HTMLE
     label.className = `${MENU_CLASS}-label`;
     label.textContent = entry.label;
     button.append(label);
-
-    button.addEventListener("click", (event: Event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      closeReaderMenu(doc);
-      options.onSelect(entry.action);
-    });
     menu.append(button);
   }
 
@@ -148,6 +141,19 @@ export function openReaderMenu(doc: Document, options: ReaderMenuOptions): HTMLE
     menu.style.top = `${Math.min(Math.max(4, options.y), maxTop)}px`;
   }
 
+  const onMenuClick = (event: Event) => {
+    const target = event.target as Element | null;
+    if (!target || typeof (target as any).closest !== "function") return;
+    const item = (target as Element).closest(
+      `.${MENU_CLASS}-item`,
+    ) as HTMLButtonElement | null;
+    if (!item || !menu.contains(item)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const action = item.dataset.action;
+    closeReaderMenu(doc);
+    if (action) options.onSelect(action);
+  };
   const onPointerDown = (event: Event) => {
     const target = event.target as Node | null;
     if (target && menu.contains(target)) return;
@@ -160,6 +166,7 @@ export function openReaderMenu(doc: Document, options: ReaderMenuOptions): HTMLE
   };
   const onDismiss = () => closeReaderMenu(doc);
 
+  doc.addEventListener("click", onMenuClick, true);
   doc.addEventListener("pointerdown", onPointerDown, true);
   doc.addEventListener("keydown", onKeyDown, true);
   if (view) {
@@ -169,6 +176,7 @@ export function openReaderMenu(doc: Document, options: ReaderMenuOptions): HTMLE
   }
 
   MENUS.set(doc, () => {
+    doc.removeEventListener("click", onMenuClick, true);
     doc.removeEventListener("pointerdown", onPointerDown, true);
     doc.removeEventListener("keydown", onKeyDown, true);
     if (view) {

@@ -48,7 +48,7 @@ import {
 } from "./readerMenu";
 import { exportBilingualPDF } from "./readerUI";
 import { getString } from "./utils/locale";
-import { config } from "../package.json";
+import { registerToolbarHandlers } from "./toolbarEvents";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
@@ -57,7 +57,6 @@ const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
 const PROGRESS_CLASS = "interlinear-progress";
 const STYLE_ID = "interlinear-style";
 const PREFERENCES_PANE_ID = "interlinear-preferences";
-const TOGGLE_ICON_URL = `chrome://${config.addonRef}/content/icons/icon20.png`;
 
 interface ReaderParagraph {
   refPath: string;
@@ -1123,9 +1122,6 @@ function createToolbarButton(
   className: string,
   text: string,
   title: string,
-  onClick: (event: Event) => void,
-  iconURL?: string,
-  onContextMenu?: (event: MouseEvent) => void,
 ): HTMLButtonElement {
   const button = doc.createElement("button");
   button.className = `toolbar-button ${className}`;
@@ -1135,35 +1131,54 @@ function createToolbarButton(
   button.setAttribute("aria-label", title);
   button.style.minWidth = "24px";
   button.style.paddingInline = "2px";
-  if (iconURL) {
-    const img = doc.createElement("img");
-    img.src = iconURL;
-    img.alt = "";
-    img.draggable = false;
-    img.style.width = "16px";
-    img.style.height = "16px";
-    img.style.display = "block";
-    img.style.pointerEvents = "none";
-    button.appendChild(img);
-  } else {
+  button.style.display = "inline-flex";
+  button.style.alignItems = "center";
+  button.style.justifyContent = "center";
+  if (text) {
     button.textContent = text;
     button.style.fontSize = "16px";
     button.style.lineHeight = "1";
     button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
   }
-  button.addEventListener("click", (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onClick(event);
-  });
-  if (onContextMenu) {
-    button.addEventListener("contextmenu", (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onContextMenu(event);
-    });
-  }
   return button;
+}
+
+function createInterlinearIcon(doc: Document): SVGElement {
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = doc.createElementNS(namespace, "svg") as unknown as SVGElement;
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.display = "block";
+  svg.style.pointerEvents = "none";
+
+  const background = doc.createElementNS(namespace, "rect");
+  background.setAttribute("x", "0.5");
+  background.setAttribute("y", "0.5");
+  background.setAttribute("width", "15");
+  background.setAttribute("height", "15");
+  background.setAttribute("rx", "3.5");
+  background.setAttribute("fill", "#c7354a");
+  svg.append(background);
+
+  for (const line of [
+    ["3.5", "5.5", "12.5", "5.5"],
+    ["3.5", "8", "12.5", "8"],
+    ["3.5", "10.5", "9", "10.5"],
+  ]) {
+    const stroke = doc.createElementNS(namespace, "line");
+    stroke.setAttribute("x1", line[0]);
+    stroke.setAttribute("y1", line[1]);
+    stroke.setAttribute("x2", line[2]);
+    stroke.setAttribute("y2", line[3]);
+    stroke.setAttribute("stroke", "#ffffff");
+    stroke.setAttribute("stroke-width", "1.5");
+    stroke.setAttribute("stroke-linecap", "round");
+    svg.append(stroke);
+  }
+
+  return svg;
 }
 
 function revealChatPane(): boolean {
@@ -1262,18 +1277,29 @@ export function renderBilingualToolbarButtons(event: any): void {
   const { reader, doc, append } = event || {};
   if (!reader || reader.type !== "pdf" || !doc || typeof append !== "function") return;
 
-  if (!doc.querySelector(`.${TOOLBAR_BUTTON_CLASS}`)) {
-    append(
-      createToolbarButton(
+  registerToolbarHandlers(doc, TOOLBAR_BUTTON_CLASS, {
+    onClick: () => void toggleBilingualReading(reader),
+    onContextMenu: (contextEvent) =>
+      openBilingualToolbarMenu(
+        reader,
         doc,
-        TOOLBAR_BUTTON_CLASS,
-        "",
-        getString("toolbar-toggle-title"),
-        () => void toggleBilingualReading(reader),
-        TOGGLE_ICON_URL,
-        (event) => openBilingualToolbarMenu(reader, doc, event.clientX, event.clientY),
+        contextEvent.clientX,
+        contextEvent.clientY,
       ),
+  });
+  registerToolbarHandlers(doc, REFRESH_BUTTON_CLASS, {
+    onClick: () => void refreshBilingualReading(reader),
+  });
+
+  if (!doc.querySelector(`.${TOOLBAR_BUTTON_CLASS}`)) {
+    const button = createToolbarButton(
+      doc,
+      TOOLBAR_BUTTON_CLASS,
+      "",
+      getString("toolbar-toggle-title"),
     );
+    button.append(createInterlinearIcon(doc));
+    append(button);
   }
 
   if (!doc.querySelector(`.${PROGRESS_CLASS}`)) {
@@ -1290,7 +1316,6 @@ export function renderBilingualToolbarButtons(event: any): void {
         REFRESH_BUTTON_CLASS,
         "🔄",
         getString("toolbar-refresh-title"),
-        () => void refreshBilingualReading(reader),
       ),
     );
   }
