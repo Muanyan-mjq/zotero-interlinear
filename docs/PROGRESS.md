@@ -235,3 +235,54 @@
 5. 改为“只看原文”，保存。预期：译文块消失，原文完整；再切回“原文在上，译文在下”时译文立即出现（命中缓存，不发新请求或仅发少量请求）。
 6. 打开含列表/图注的论文，重复第 2 步。预期：列表符号与图注仍可读；若出现错位请记录段落类型（`li`/`figcaption`）与截图。
 7. 点 🖨️ 导出打印版。预期：打印稿始终同时包含原文与译文，不受当前显示模式影响。
+
+## Step 5：触发方式（全文进度/取消/重试 + 划词弹窗 + Alt 单段）
+
+### 做了什么
+- 新增 `src/readerInteractions.ts`（纯 DOM 模块，便于 Node/集成测试注入）：只负责识别手势与渲染选区弹窗，翻译动作通过 `InteractionHost` 回调交给 `bilingualReader`。
+  - **划词弹窗**：`mouseup` 后读取选区，非折叠且去空白后 ≥ 2 字符才显示；弹窗锚定在选区 `getBoundingClientRect()`，固定宽度 380px，左右/上下按视口钳制。内容为“翻译选区”“关闭（×）”和结果区；翻译中/成功/失败分别用 `data-state` 与本地化文案；选区文本超过 8000 字符时截断。
+  - **Alt 单段**：`Alt+mousemove` 给最近的 `[data-ref-path]` 原文加 `.interlinear-source-hover` 虚线高亮；`Alt+点击` 阻止默认行为并对该段执行按需翻译；`Alt+Enter` 优先翻译悬停段，否则翻译选区起点所在段落。仅识别 `#sdt-content` 内、且不在 `.interlinear-translation` / 弹窗内的元素。
+  - `Esc` 关闭弹窗并清除悬停；点击弹窗外部关闭；`dispose()` 移除全部监听与弹窗节点。
+- `src/bilingualReader.ts`：
+  - 新增 `translateSelectedText(reader, rawText)`：空白归一化后先查缓存（目标语言、引擎 tag 与批量翻译一致），未命中则走 provider（超时 + 独立取消令牌），失败/空结果抛错，不写缓存。
+  - 新增 `translateReaderParagraph(reader, source)`：仅对 `#sdt-content` 内有 `refPath` 的源段落生效；命中缓存直接写块；未命中先显示“正在翻译…”再请求，成功后写缓存并置 `done`，失败置 `error` 并抛出（由交互层捕获记录），无论成败都刷新阅读布局。
+  - `ensureReaderInteractions()` 在 `prepareAndRun` 中按文档幂等附加，阅读器清理时 dispose。
+  - **全文进度**：`RunState` 增加 `completed`/`total`；工具栏新增 `span.interlinear-progress`，运行时显示 `已完成/总数`；切换按钮的 title/aria-label 在运行时变为“翻译中…（n/m）”，空闲恢复原文案。
+  - **取消**：再次点击工具栏对照按钮会递增 generation、取消 `CancellationToken`、清空进度并移除未完成译文块（已成功段落保留）；关闭阅读器/清理时同样取消。
+  - **重试**：没有单独的“重试”按钮——失败段可再次 `Alt+点击` 重试；批量失败/暂停后点 🔄 只会重跑未缓存段落（命中缓存的不再请求）。连续失败达到上限显示“已暂停…请检查翻译服务后点击刷新按钮重试”（该文案原本已存在，改为 Fluent）。
+  - 原有加载/失败/等待文案全部改用 Fluent：`paragraph-waiting`、`paragraph-translating`、`paragraph-translating-progress`、`paragraph-translate-failed`、`paragraph-paused`、`selection-*`、`toolbar-*`。
+- `src/utils/locale.ts`：找不到 `addon` 全局（集成测试直接 import `src/*` 的测试域）时回退返回消息 id，避免 `addon is not defined` 让全部用例失败；真实插件内行为不变。
+- 设置页显示模式分组下新增 `interaction-help` 说明（Fluent），介绍划词弹窗与 Alt 手势。
+- en-US / zh-CN `addon.ftl` 新增 Step 5 全部键；`package.json` 的 lint 列表加入 `src/readerInteractions.ts`。
+
+### 改动文件
+- 新增：`src/readerInteractions.ts`。
+- 修改：`src/bilingualReader.ts`、`src/utils/locale.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`package.json`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**40 pass / 0 fail**（本步无新增纯函数，未新增 unit 用例）。
+- `npm run test:review`（Zotero headless 独立 profile）：**23 pass / 0 fail**。新增 3 个用例：
+  - 按需翻译单段 + 选区：断言译文块插入、源段加类、第二次请求命中缓存（只发 1 次请求）、选区空白归一化与返回值/缓存命中。
+  - 选区弹窗 + Alt 手势：注入假 Selection/Range 与同步定时器，断言弹窗显示、点击“翻译选区”得到结果；Alt+悬停加类、Alt+点击与 Alt+Enter 分别触发 `refPath` 为 `0`/`1` 的段落；dispose 后弹窗与悬停类清除。
+  - 全文进度与取消：用延迟 promise 卡住请求，断言工具栏进度 `0/1` 可见、按钮 title 变为“翻译中”；第二次点击取消后进度隐藏、title 恢复、未完成块移除；迟到的 promise 不会写回译文。
+- 调整：外观注入用例原先断言“CSS 不以 `color:` 开头”，但新增弹窗 CSS 合法包含 `color: CanvasText`，改为断言非法输入 `#ff0000` 与 `body {` 不出现，语义不变。
+
+### 不确定项
+- 弹窗、悬停虚线、进度在**真实 Zotero PDF 上的观感未验证**（集成测试用独立 HTML 文档与假 Selection，非真实阅读器）。
+- 弹窗为 `position: fixed`，打开后不随 PDF 滚动跟随；滚动后弹窗会停在原视口位置，直到点击外部/Esc/重新选择。未做滚动重定位。
+- 弹窗配色用 `Canvas/CanvasText` 系统色，深色主题下应自动反转，但未截图确认。
+- macOS 的 Option+点击/回车是否被系统或其他插件抢占**不确定**；仅按计划实现 Alt。
+- 单段/选区按需翻译使用独立的 `CancellationToken`，不随批量“取消”停止；若同一段同时处于批量与按需翻译中，两者可能互相覆盖（后完成者写入）。
+- 交互只在首次开启对照（进入阅读模式文档）后附加；未开启对照时没有划词弹窗，这是有意行为。
+- 选区翻译上限 8000 字符（超出截断）为防误发超长文本的保守值，未做可配置。
+
+### 需要手动验证的清单
+1. 打开英文 PDF 并开启对照，选中一段英文。预期：出现弹窗；点“翻译选区”显示译文；点击弹窗外部或按 Esc 关闭。
+2. 按住 Alt 移动鼠标。预期：当前段落出现虚线高亮；Alt+点击该段立即出现译文（或“正在翻译…”）；普通点击/普通回车不触发。
+3. `Alt+Enter`（有悬停段落时；无悬停时先选中文字）。预期：只翻译悬停段或选区所在段落，不影响其他段。
+4. 点 🔄 触发全文翻译。预期：工具栏出现 n/m 进度、按钮 title 变为“翻译中…（n/m）”；中途再点图标按钮取消，进度消失、未完成块被移除、已成功段落保留。
+5. 把 Google 地址改成不可达并刷新，连续失败到上限。预期：未完成段落显示“已暂停：连续翻译失败…”，改回可用服务后点 🔄 只重跑未完成段落。
+6. 深色主题下查看弹窗背景与悬停虚线。预期：弹窗可见、文字可读；若对比不足请附截图。
+7. 在 `target-only`（只看译文）模式下选中译文文字。预期：不弹出翻译弹窗（弹窗只针对原文段落）。

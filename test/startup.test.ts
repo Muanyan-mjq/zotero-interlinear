@@ -1,6 +1,12 @@
 import { assert } from "chai";
 import { config } from "../package.json";
-import { refreshDisplayModes, toggleBilingualReading } from "../src/bilingualReader";
+import {
+  refreshDisplayModes,
+  toggleBilingualReading,
+  translateReaderParagraph,
+  translateSelectedText,
+} from "../src/bilingualReader";
+import { attachReaderInteractions } from "../src/readerInteractions";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
 import { getCacheEngineTag } from "../src/settings";
@@ -75,6 +81,12 @@ describe("startup", function () {
         ["top-bottom", "side-by-side", "target-only", "source-only"],
       );
       assert.equal(displayMode?.value, "top-bottom");
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-interaction-help")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+      );
       const googleBaseURL = win?.document.getElementById(
         "interlinear-google-base-url",
       ) as HTMLInputElement | null;
@@ -297,8 +309,8 @@ describe("startup", function () {
       save.click();
       assert.equal(Zotero.Prefs.get(colorPref, true), "");
       const cssAfter = doc.getElementById("interlinear-style")?.textContent || "";
-      assert.isFalse(/^\s*color:/mu.test(cssAfter));
-      assert.isFalse(/body/u.test(cssAfter));
+      assert.notInclude(cssAfter, "#ff0000");
+      assert.notInclude(cssAfter, "body {");
     } finally {
       win?.close();
       (Zotero.Reader as any)._readers = originalReaders;
@@ -757,6 +769,285 @@ describe("startup", function () {
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousSkip === undefined) Zotero.Prefs.clear(skipPref, true);
       else Zotero.Prefs.set(skipPref, previousSkip, true);
+    }
+  });
+
+  it("should translate one paragraph and one selection on demand", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const servicePref = "extensions.zotero.ZoteroPDFTranslate.translateSource";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousService = Zotero.Prefs.get(servicePref, true);
+    const previousPDFTranslate = (Zotero as any).PDFTranslate;
+    const requested: string[] = [];
+    const stamp = Date.now();
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "on-demand-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `On demand paragraph ${stamp}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483639,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "pdftranslate", true);
+      Zotero.Prefs.set(servicePref, "integration-test", true);
+      (Zotero as any).PDFTranslate = {
+        api: {
+          translate: async (text: string) => {
+            requested.push(text);
+            return {
+              status: "success",
+              result: `译文：${text}`,
+              service: "integration-test",
+            };
+          },
+        },
+      };
+
+      await translateReaderParagraph(reader, paragraph);
+      const block = paragraph.nextElementSibling as HTMLElement;
+      assert.equal(block?.className, "interlinear-translation");
+      assert.equal(block?.getAttribute("data-state"), "done");
+      assert.equal(block?.textContent, `译文：On demand paragraph ${stamp}.`);
+      assert.isTrue(paragraph.classList.contains("interlinear-source"));
+
+      await translateReaderParagraph(reader, paragraph);
+      assert.equal(requested.length, 1);
+
+      const selected = await translateSelectedText(reader, `  Selected\n text ${stamp}.  `);
+      assert.equal(requested.length, 2);
+      assert.equal(requested[1], `Selected text ${stamp}.`);
+      assert.equal(selected, `译文：Selected text ${stamp}.`);
+
+      const cached = await translateSelectedText(reader, `Selected text ${stamp}.`);
+      assert.equal(requested.length, 2);
+      assert.equal(cached, `译文：Selected text ${stamp}.`);
+    } finally {
+      clearTranslationCache();
+      (Zotero as any).PDFTranslate = previousPDFTranslate;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+      if (previousService === undefined) Zotero.Prefs.clear(servicePref, true);
+      else Zotero.Prefs.set(servicePref, previousService, true);
+    }
+  });
+
+  it("should open a selection popup and translate one paragraph from Alt triggers", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "interaction-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const first = doc.createElement("p");
+    first.dataset.refPath = "0";
+    first.textContent = "First paragraph for Alt triggers.";
+    const second = doc.createElement("p");
+    second.dataset.refPath = "1";
+    second.textContent = "Second paragraph for the selection popup.";
+    content.append(first, second);
+    doc.body.append(content);
+
+    let selectionText = "Selected   passage\nfor popup";
+    let selectionNode: Node = first.firstChild || first;
+    const selectedCalls: string[] = [];
+    const paragraphCalls: string[] = [];
+    const controller = attachReaderInteractions(
+      doc,
+      {
+        translateSelection: async (text) => {
+          selectedCalls.push(text);
+          return "Popup translation.";
+        },
+        translateParagraph: async (source) => {
+          paragraphCalls.push(source.dataset.refPath || "");
+        },
+      },
+      {
+        getSelection: () => ({
+          toString: () => selectionText,
+          isCollapsed: false,
+          rangeCount: 1,
+          getRangeAt: () => ({
+            startContainer: selectionNode,
+            commonAncestorContainer: selectionNode,
+            getBoundingClientRect: () => ({
+              left: 20,
+              top: 30,
+              right: 200,
+              bottom: 44,
+            }),
+          }),
+        }),
+        setTimer: (callback) => callback(),
+      },
+    );
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      first.dispatchEvent(new win.MouseEvent("mouseup", { bubbles: true }));
+
+      const popup = doc.querySelector(".interlinear-selection-popup") as HTMLElement;
+      assert.exists(popup);
+      assert.isFalse(popup.hidden);
+      const button = popup.querySelector(".interlinear-selection-translate") as HTMLButtonElement;
+      assert.isNotEmpty(button?.textContent || "");
+      button.click();
+
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const result = popup.querySelector(".interlinear-selection-result");
+        if (result?.getAttribute("data-state") === "done") break;
+        await Zotero.Promise.delay(20);
+      }
+      assert.deepEqual(selectedCalls, ["Selected passage for popup"]);
+      assert.equal(
+        popup.querySelector(".interlinear-selection-result")?.textContent,
+        "Popup translation.",
+      );
+
+      first.dispatchEvent(new win.MouseEvent("mousemove", { bubbles: true, altKey: true }));
+      assert.isTrue(first.classList.contains("interlinear-source-hover"));
+      first.dispatchEvent(new win.MouseEvent("click", { bubbles: true, altKey: true }));
+      assert.deepEqual(paragraphCalls, ["0"]);
+      assert.isFalse(first.classList.contains("interlinear-source-hover"));
+
+      selectionText = "Second paragraph";
+      selectionNode = second.firstChild || second;
+      second.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+          key: "Enter",
+        }),
+      );
+      assert.deepEqual(paragraphCalls, ["0", "1"]);
+    } finally {
+      controller.dispose();
+    }
+
+    assert.notExists(doc.querySelector(".interlinear-selection-popup"));
+    assert.isFalse(first.classList.contains("interlinear-source-hover"));
+  });
+
+  it("should show progress and cancel a running translation from the reader toolbar", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousPDFTranslate = (Zotero as any).PDFTranslate;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "progress-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `A paragraph that waits for progress ${Date.now()}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const toolbarDoc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "toolbar-progress-test",
+    );
+    const reader = {
+      type: "pdf",
+      itemID: 2147483638,
+      _iframeWindow: { document: toolbarDoc, alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+    renderReaderToolbar({
+      reader,
+      doc: toolbarDoc,
+      append: (...elements: HTMLElement[]) => toolbarDoc.body.append(...elements),
+    });
+
+    const progress = toolbarDoc.querySelector(".interlinear-progress") as HTMLElement;
+    const toggle = toolbarDoc.querySelector(".interlinear-toolbar-button") as HTMLButtonElement;
+    assert.exists(progress);
+    assert.exists(toggle);
+    assert.isTrue(progress.hidden);
+    const idleTitle = toggle.title;
+    assert.isNotEmpty(idleTitle);
+
+    let resolveTranslation: (value: any) => void = () => undefined;
+    let requested = false;
+    (Zotero as any).PDFTranslate = {
+      api: {
+        translate: () => {
+          requested = true;
+          return new Promise((resolve) => {
+            resolveTranslation = resolve;
+          });
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "pdftranslate", true);
+      const run = toggleBilingualReading(reader);
+
+      for (let attempt = 0; attempt < 200; attempt++) {
+        if (!progress.hidden && progress.textContent === "0/1") break;
+        await Zotero.Promise.delay(20);
+      }
+      assert.isTrue(requested);
+      assert.isFalse(progress.hidden);
+      assert.equal(progress.textContent, "0/1");
+      assert.notEqual(toggle.title, idleTitle);
+
+      await toggleBilingualReading(reader);
+      assert.isTrue(progress.hidden);
+      assert.equal(toggle.title, idleTitle);
+      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 0);
+
+      resolveTranslation({ status: "success", result: "late", service: "integration-test" });
+      await run;
+
+      (Zotero as any).PDFTranslate = {
+        api: {
+          translate: async () => ({
+            status: "success",
+            result: "完成后的译文。",
+            service: "integration-test",
+          }),
+        },
+      };
+      await toggleBilingualReading(reader);
+      assert.equal(
+        doc.querySelector(".interlinear-translation")?.textContent,
+        "完成后的译文。",
+      );
+      assert.isTrue(progress.hidden);
+      assert.equal(toggle.title, idleTitle);
+    } finally {
+      clearTranslationCache();
+      (Zotero as any).PDFTranslate = previousPDFTranslate;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
     }
   });
 });

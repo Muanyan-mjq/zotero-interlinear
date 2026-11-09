@@ -184,6 +184,7 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-display-mode-target-only", "display-mode-target-only"],
     ["interlinear-display-mode-source-only", "display-mode-source-only"],
     ["interlinear-display-mode-help", "display-mode-help"],
+    ["interlinear-interaction-help", "interaction-help"],
   ];
   for (const [id, key] of entries) {
     const element = getElement<HTMLElement>(doc, id);

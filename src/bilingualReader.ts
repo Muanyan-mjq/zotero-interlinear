@@ -43,12 +43,18 @@ import {
   observeReadingLayout,
   refreshReadingLayout,
 } from "./readingLayout";
+import {
+  attachReaderInteractions,
+  type InteractionController,
+} from "./readerInteractions";
+import { getString } from "./utils/locale";
 import { config } from "../package.json";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
 const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
 const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
+const PROGRESS_CLASS = "interlinear-progress";
 const STYLE_ID = "interlinear-style";
 const PREFERENCES_PANE_ID = "interlinear-preferences";
 const TOGGLE_ICON_URL = `chrome://${config.addonRef}/content/icons/icon20.png`;
@@ -66,9 +72,21 @@ interface RunState {
   generation: number;
   running: boolean;
   cancellation?: CancellationToken;
+  completed: number;
+  total: number;
+}
+
+interface ReaderInteractions {
+  doc: Document;
+  controller: InteractionController;
 }
 
 const runStates = new WeakMap<object, RunState>();
+const interactionControllers = new WeakMap<object, ReaderInteractions>();
+
+function defaultRunState(): RunState {
+  return { generation: 0, running: false, completed: 0, total: 0 };
+}
 
 interface TranslationResponse {
   text: string;
@@ -230,22 +248,27 @@ function isDeadObjectError(error: unknown): boolean {
 }
 
 function nextGeneration(reader: any): number {
-  const current = runStates.get(reader) || { generation: 0, running: false };
+  const current = runStates.get(reader) || defaultRunState();
   current.cancellation?.cancel();
   current.generation += 1;
   current.running = true;
+  current.completed = 0;
+  current.total = 0;
   current.cancellation = new CancellationToken();
   runStates.set(reader, current);
   return current.generation;
 }
 
 function cancelRun(reader: any): void {
-  const current = runStates.get(reader) || { generation: 0, running: false };
+  const current = runStates.get(reader) || defaultRunState();
   current.cancellation?.cancel();
   current.generation += 1;
   current.running = false;
+  current.completed = 0;
+  current.total = 0;
   current.cancellation = undefined;
   runStates.set(reader, current);
+  updateToolbarProgress(reader);
 }
 
 function isCurrentRun(reader: any, generation: number, doc: Document): boolean {
@@ -279,6 +302,22 @@ function finishRun(reader: any, generation: number): void {
   if (!state || state.generation !== generation) return;
   state.running = false;
   state.cancellation = undefined;
+  state.completed = 0;
+  state.total = 0;
+  updateToolbarProgress(reader);
+}
+
+function setRunProgress(
+  reader: any,
+  generation: number,
+  completed: number,
+  total: number,
+): void {
+  const state = runStates.get(reader);
+  if (!state || state.generation !== generation) return;
+  state.completed = completed;
+  state.total = total;
+  updateToolbarProgress(reader);
 }
 
 async function ensureReadingMode(reader: any): Promise<Document> {
@@ -317,6 +356,62 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .${TRANSLATION_CLASS}[data-state="error"],
     .${TRANSLATION_CLASS}[data-state="paused"] {
       opacity: 0.78;
+    }
+    .interlinear-source-hover {
+      outline: 1px dashed currentColor;
+      outline-offset: 2px;
+    }
+    .interlinear-selection-popup {
+      position: fixed;
+      z-index: 2147483000;
+      min-width: 320px;
+      max-width: 420px;
+      padding: 8px;
+      border: 1px solid rgba(127, 127, 127, 0.45);
+      border-radius: 6px;
+      background: Canvas;
+      color: CanvasText;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .interlinear-selection-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .interlinear-selection-popup button {
+      padding: 3px 10px;
+      border: 1px solid rgba(127, 127, 127, 0.45);
+      border-radius: 4px;
+      background: ButtonFace;
+      color: ButtonText;
+      cursor: pointer;
+    }
+    .interlinear-selection-popup button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .interlinear-selection-close {
+      margin-left: auto;
+      font-size: 16px;
+      line-height: 1;
+    }
+    .interlinear-selection-result {
+      margin-top: 6px;
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      user-select: text;
+    }
+    .interlinear-selection-result[data-state="error"] {
+      color: #b3261e;
+    }
+    .interlinear-progress {
+      margin-inline: 4px;
+      font-size: 11px;
+      opacity: 0.75;
+      white-space: nowrap;
     }
   `;
 
@@ -513,7 +608,7 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
     block.textContent = paragraph.translation;
   } else {
     block.dataset.state = "loading";
-    block.textContent = "等待翻译…";
+    block.textContent = getString("paragraph-waiting");
   }
 
   source.classList.add(SOURCE_CELL_CLASS);
@@ -551,6 +646,144 @@ function clearTranslations(doc: Document): void {
   cleanupReadingLayout(doc);
 }
 
+function getReaderItem(reader: any): { itemID: number; itemKey: string } {
+  const itemID = Number(reader?.itemID || 0);
+  if (!itemID) throw new Error(getString("reader-item-missing"));
+  const item = Zotero.Items.get(itemID);
+  return { itemID, itemKey: String(item?.key || reader?.itemKey || itemID) };
+}
+
+/** Translate only the user's selection and return the text for the popup. */
+export async function translateSelectedText(reader: any, rawText: string): Promise<string> {
+  const text = String(rawText || "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (text.length < 2) throw new Error(getString("selection-empty-translation"));
+
+  const { itemID, itemKey } = getReaderItem(reader);
+  const engine = getEngine();
+  const engineTag = getCacheEngineTag();
+  const targetLanguage = getTargetLanguage();
+  const cached = loadCachedTranslation(
+    itemKey,
+    text,
+    engineTag,
+    isFailureText,
+    targetLanguage,
+  );
+  if (cached) return cached;
+
+  const response = await raceWithTimeoutAndCancellation(
+    translateTextLimited(text, (chunk) => translateText(chunk, itemID, engine)),
+    getRequestTimeoutMs(),
+    new CancellationToken(),
+  );
+  if (!response.text?.trim()) throw new Error(getString("selection-empty-translation"));
+  if (isFailureText(response.text)) throw new Error(response.text);
+
+  saveCachedTranslation(
+    itemKey,
+    text,
+    response.text,
+    response.engineTag || engineTag,
+    isFailureText,
+    targetLanguage,
+  );
+  flushTranslationCacheIndex();
+  return response.text;
+}
+
+/** Translate the paragraph under an Alt+click / Alt+Enter trigger. */
+export async function translateReaderParagraph(
+  reader: any,
+  source: HTMLElement,
+): Promise<void> {
+  const doc = source?.ownerDocument;
+  if (!doc || !source.closest?.("#sdt-content")) return;
+  if (source.closest?.(`.${TRANSLATION_CLASS}`)) return;
+
+  const refPath = source.dataset?.refPath || "";
+  const sourceText = (source.textContent || "").replace(/\s+/g, " ").trim();
+  if (!refPath || sourceText.length < 2) return;
+
+  const { itemID, itemKey } = getReaderItem(reader);
+  const engine = getEngine();
+  const engineTag = getCacheEngineTag();
+  const targetLanguage = getTargetLanguage();
+  const paragraph: ReaderParagraph = {
+    refPath,
+    sourceText,
+    sourceElement: source,
+    pageIndex: getPageIndexForRef(getSDTStructure(reader), refPath),
+    translation: loadCachedTranslation(
+      itemKey,
+      sourceText,
+      engineTag,
+      isFailureText,
+      targetLanguage,
+    ),
+  };
+
+  const block = ensureTranslationBlock(doc, paragraph);
+  if (!block) return;
+
+  if (paragraph.translation) {
+    block.dataset.state = "done";
+    block.textContent = paragraph.translation;
+    refreshReadingLayout(doc);
+    return;
+  }
+
+  block.dataset.state = "loading";
+  block.textContent = getString("paragraph-translating");
+  try {
+    const response = await raceWithTimeoutAndCancellation(
+      translateTextLimited(sourceText, (chunk) => translateText(chunk, itemID, engine)),
+      getRequestTimeoutMs(),
+      new CancellationToken(),
+    );
+    if (!response.text?.trim()) throw new Error(getString("selection-empty-translation"));
+    if (isFailureText(response.text)) throw new Error(response.text);
+
+    paragraph.translation = response.text;
+    saveCachedTranslation(
+      itemKey,
+      sourceText,
+      response.text,
+      response.engineTag || engineTag,
+      isFailureText,
+      targetLanguage,
+    );
+    flushTranslationCacheIndex();
+    if (block.isConnected) {
+      block.dataset.state = "done";
+      block.textContent = response.text;
+    }
+  } catch (error: any) {
+    if (block.isConnected) {
+      block.dataset.state = "error";
+      block.textContent = getString("paragraph-translate-failed", {
+        args: { detail: String(error?.message || error) },
+      });
+    }
+    throw error;
+  } finally {
+    refreshReadingLayout(doc);
+  }
+}
+
+function ensureReaderInteractions(reader: any, doc: Document): void {
+  const existing = interactionControllers.get(reader);
+  if (existing?.doc === doc) return;
+
+  existing?.controller.dispose();
+  const controller = attachReaderInteractions(doc, {
+    translateSelection: (text) => translateSelectedText(reader, text),
+    translateParagraph: (source) => translateReaderParagraph(reader, source),
+  });
+  interactionControllers.set(reader, { doc, controller });
+}
+
 function showError(reader: any, message: string): void {
   try {
     reader?._iframeWindow?.alert?.(message);
@@ -572,7 +805,7 @@ function markUnfinishedPaused(doc: Document, paragraphs: ReaderParagraph[]): voi
     const block = ensureTranslationBlock(doc, paragraph);
     if (!block || block.dataset.state === "error") continue;
     block.dataset.state = "paused";
-    block.textContent = "已暂停：连续翻译失败。请检查翻译服务后点击 🔄 重试。";
+    block.textContent = getString("paragraph-paused");
   }
 }
 
@@ -623,6 +856,7 @@ async function translateParagraphs(
     return;
   }
 
+  setRunProgress(reader, generation, 0, pendingIndexes.length);
   const cancellation = getRunCancellation(reader, generation);
   const jobItems: TranslationJobItem[] = pendingIndexes.map((paragraphIndex) => ({
     id: String(paragraphIndex),
@@ -696,7 +930,9 @@ async function translateParagraphs(
         const block = ensureTranslationBlock(doc, paragraphs[item.paragraphIndex]);
         if (!block) continue;
         block.dataset.state = "loading";
-        block.textContent = `正在翻译…（已完成 ${completed}/${pendingIndexes.length}）`;
+        block.textContent = getString("paragraph-translating-progress", {
+          args: { done: completed, total: pendingIndexes.length },
+        });
       }
 
       try {
@@ -721,6 +957,7 @@ async function translateParagraphs(
             liveBlock.textContent = response.text;
           }
           completed += 1;
+          setRunProgress(reader, generation, completed, pendingIndexes.length);
         }
         failureStreak = 0;
       } catch (error: any) {
@@ -737,7 +974,9 @@ async function translateParagraphs(
           const liveBlock = paragraphs[item.paragraphIndex].block;
           if (liveBlock?.parentNode) {
             liveBlock.dataset.state = "error";
-            liveBlock.textContent = `翻译失败：${error?.message || String(error)}`;
+            liveBlock.textContent = getString("paragraph-translate-failed", {
+              args: { detail: String(error?.message || error) },
+            });
           }
         }
 
@@ -769,6 +1008,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   }
 
   applyDisplayMode(doc);
+  ensureReaderInteractions(reader, doc);
 
   const itemID = Number(reader?.itemID || 0);
   const item = itemID ? Zotero.Items.get(itemID) : null;
@@ -948,11 +1188,18 @@ export function renderBilingualToolbarButtons(event: any): void {
         doc,
         TOOLBAR_BUTTON_CLASS,
         "",
-        "开启/关闭中英段落对照",
+        getString("toolbar-toggle-title"),
         () => void toggleBilingualReading(reader),
         TOGGLE_ICON_URL,
       ),
     );
+  }
+
+  if (!doc.querySelector(`.${PROGRESS_CLASS}`)) {
+    const progress = doc.createElement("span") as HTMLSpanElement;
+    progress.className = PROGRESS_CLASS;
+    progress.hidden = true;
+    append(progress);
   }
 
   if (!doc.querySelector(`.${REFRESH_BUTTON_CLASS}`)) {
@@ -961,15 +1208,59 @@ export function renderBilingualToolbarButtons(event: any): void {
         doc,
         REFRESH_BUTTON_CLASS,
         "🔄",
-        "取消当前任务、清除错误结果，并按当前设置重新翻译",
+        getString("toolbar-refresh-title"),
         () => void refreshBilingualReading(reader),
       ),
     );
   }
+
+  updateToolbarProgress(reader);
+}
+
+function updateToolbarProgress(reader: any): void {
+  let toolbarDoc: Document | undefined;
+  try {
+    toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+  } catch (_) {
+    toolbarDoc = undefined;
+  }
+  if (!toolbarDoc) return;
+
+  const state = runStates.get(reader);
+  const running = !!state?.running;
+  const done = state?.completed || 0;
+  const total = state?.total || 0;
+
+  const progress = toolbarDoc.querySelector(`.${PROGRESS_CLASS}`) as HTMLElement | null;
+  if (progress) {
+    progress.hidden = !(running && total > 0);
+    progress.textContent = running && total > 0 ? `${done}/${total}` : "";
+  }
+
+  const toggle = toolbarDoc.querySelector(
+    `.${TOOLBAR_BUTTON_CLASS}`,
+  ) as HTMLButtonElement | null;
+  if (!toggle) return;
+  const title =
+    running && total > 0
+      ? getString("toolbar-toggle-running-title", { args: { done, total } })
+      : getString("toolbar-toggle-title");
+  toggle.title = title;
+  toggle.setAttribute("aria-label", title);
 }
 
 export function cleanupBilingualReader(reader: any): void {
   cancelRun(reader);
+
+  const interactions = interactionControllers.get(reader);
+  if (interactions) {
+    interactionControllers.delete(reader);
+    try {
+      interactions.controller.dispose();
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
 
   const internal = getInternalReader(reader);
   for (const view of [internal?._primarySDTView, internal?._secondarySDTView]) {
@@ -990,7 +1281,9 @@ export function cleanupBilingualReader(reader: any): void {
 
   const buttons = toolbarDoc
     ? (Array.from(
-        toolbarDoc.querySelectorAll(`.${TOOLBAR_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}`),
+        toolbarDoc.querySelectorAll(
+          `.${TOOLBAR_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}, .${PROGRESS_CLASS}`,
+        ),
       ) as HTMLElement[])
     : [];
   for (const button of buttons) {
