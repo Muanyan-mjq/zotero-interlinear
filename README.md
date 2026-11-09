@@ -19,30 +19,64 @@
 
 **Interlinear** shows source paragraphs and their translations consecutively inside Zotero 10's PDF reader.
 
-- Small toolbar icon: left-click toggles paragraph translation; right-click opens a menu with every action.
+**Features**
+
+- Small toolbar icon: left-click toggles paragraph translation; right-click opens a menu with every action. A second toolbar button cycles display modes (translation below, side by side, target only, source only).
 - Built-in backends: Google Translate (default, no key), OpenAI-compatible APIs, Anthropic Claude, Google Gemini, and Ollama. No other plugin is required.
-- Display modes: translation above/below, side by side, target only, source only.
-- Per-paragraph and selection triggers, short-paragraph batching, concurrency limits, throttling, timeouts, and automatic pause after repeated failures.
-- Glossary import/export, translation cache, trailing-page skipping, and a reading-assistant chat sidebar for LLM backends.
+- Full-document translation with progress, cancellation, automatic pause after repeated failures, and click-to-retry on failed or paused paragraphs.
+- Per-paragraph hover translation (configurable delay and on/off) and a configurable keyboard shortcut; both reuse in-flight full-document requests instead of calling the service twice.
+- Selection translation from a popup, short-paragraph batching, concurrency limits, request throttling, and timeouts.
+- Translation queue prioritizes the visible viewport and re-sorts while you page through the document.
+- Glossary import/export with prompt injection for LLM backends and post-translation replacement for every backend, including Google. Cache keys include provider configuration and the glossary hash.
+- Translation cache, trailing-page skipping, configurable source/target languages, full appearance settings (font, size, color, line and paragraph spacing, theme, underline, ribbon), and a reading-assistant chat sidebar with selection/page/document context.
 - Export the current bilingual reading view as a searchable PDF attached to the Zotero item.
+- Non-blocking in-reader notices for errors instead of modal alerts.
 - UI available in English and Simplified Chinese.
 
-Install from **Releases** (`Tools → Plugins → gear → Install Plugin From File`), then open an English PDF in Zotero and click the Interlinear icon. Configuration lives in `Settings → Interlinear`. Please uninstall the original Bilingual Reader first; this plugin copies its preferences and cache into a new namespace on first start.
+**Install**
 
-Known limits: mainly English → Simplified Chinese; tables and math are not translated cell-by-cell; scanned PDFs depend on Zotero's text layer; Zotero reader internals may change between releases.
+Install from **Releases** (`Tools → Plugins → gear → Install Plugin From File`), then open an English PDF in Zotero and click the Interlinear icon. Please uninstall the original Bilingual Reader first; this plugin copies its preferences and cache into a new namespace on first start.
+
+**Configuration**
+
+Open `Settings → Interlinear`:
+
+- Backend: Google / OpenAI-compatible / Claude / Gemini / Ollama, each with its endpoint, model, and key. Keys are stored as plaintext in Zotero preferences and are never written to logs or cache keys.
+- Source and target languages, display mode.
+- Appearance of translations.
+- Hover translation toggle and dwell delay, shortcut toggle and key combination.
+- Glossary import/export, trailing pages to skip, concurrency, request gap, maximum characters and paragraphs per request, timeout, pause threshold, and cache cleanup.
+
+**Known limits**
+
+- Defaults to English → Simplified Chinese; other language pairs depend on the selected backend and model.
+- Tables and math are not translated cell-by-cell.
+- Scanned PDFs depend on Zotero's text layer.
+- Zotero reader internals may change between releases.
+
+**Acknowledgements**
+
+Based on [quillamio/bilingual-reader](https://github.com/quillamio/bilingual-reader). The original copyright notices and LICENSE are preserved.
+
+**License**
+
+AGPL-3.0-or-later.
 
 </details>
 
 ## 主要功能
 
 - 阅读器工具栏上的小型 Interlinear 图标：左键开启 / 关闭段落中英对照，右键打开全部功能菜单。
+- 工具栏另有显示模式按钮：单击在“译文在下 / 左右并排 / 仅译文 / 仅原文”之间循环切换。
 - 右键菜单：开启 / 关闭、重新翻译全文、取消任务、四种显示模式、导出双语 PDF、打开阅读助手、翻译设置。
 - 内置翻译后端：**Google 翻译**（默认，无需密钥）、**OpenAI 兼容接口**、**Anthropic Claude**、**Google Gemini**、**Ollama**，不再依赖其他插件。
 - 自动缓存已完成译文，并按后端、语言与术语表区分缓存。
-- 支持短段落合并、受控并发、请求节流、超时与连续失败暂停。
+- 支持短段落合并、受控并发、请求节流、超时与连续失败暂停；失败或暂停的段落可直接点击重试，错误以阅读器内非阻塞提示显示。
+- 翻译队列优先处理当前视口内的段落，并在翻页时重新排序。
 - 可设置“不翻译末尾页数”，用于跳过参考文献。
-- 支持术语表、单段翻译与选区翻译、阅读助手侧栏聊天。
+- 支持术语表、单段翻译与选区翻译、阅读助手侧栏聊天；术语表会注入 LLM 提示词，并在所有后端（包括 Google）返回后做统一替换。
 - 鼠标在段落上停留可自动翻译该段（停留时间可配置，可关闭）；也可用自定义快捷键翻译当前段落，单段请求会与全文翻译去重。
+- 可配置原文与译文语言；外观（字号、颜色、字体、行高、段落间距、主题、下划线、色带）均可调整。
 - 将当前双语阅读结果导出为 PDF，并添加为当前文献的 Zotero 附件。
 
 ## 环境
@@ -71,7 +105,7 @@ Known limits: mainly English → Simplified Chinese; tables and math are not tra
 
 可以配置：
 
-- 翻译后端（Google / OpenAI 兼容 / Claude / Gemini / Ollama）及各自的接口、模型与密钥；
+- 翻译后端（Google / OpenAI 兼容 / Claude / Gemini / Ollama）及各自的接口、模型与密钥；密钥以明文形式保存在 Zotero 偏好设置中，不会写入日志或缓存键；
 - 原文与译文语言；
 - 译文外观（字号、颜色、字体、行高、段落间距、主题、下划线、色带）；
 - 显示模式；
@@ -94,7 +128,7 @@ Known limits: mainly English → Simplified Chinese; tables and math are not tra
 
 ## 当前限制
 
-- 目前主要面向英文 → 简体中文。
+- 默认英文 → 简体中文，可在设置中调整原文与译文语言；其他语言对的实际效果取决于所选后端与模型。
 - 表格暂不逐单元格翻译。
 - 数学公式不会作为普通文本翻译。
 - 扫描版 PDF 取决于 Zotero 能否生成可用文本。

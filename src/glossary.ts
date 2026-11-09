@@ -194,6 +194,63 @@ export function glossaryHash(entries: readonly GlossaryEntry[]): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+interface GlossaryReplacer {
+  pattern: RegExp;
+  targets: Map<string, string>;
+}
+
+const replacerCache = new WeakMap<readonly GlossaryEntry[], GlossaryReplacer | null>();
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function isAsciiWordChar(char: string | undefined): boolean {
+  return !!char && /[A-Za-z0-9_]/u.test(char);
+}
+
+function buildGlossaryReplacer(entries: readonly GlossaryEntry[]): GlossaryReplacer | null {
+  const usable = normalizeGlossary(entries)
+    .filter((entry) => entry.source.toLowerCase() !== entry.target.toLowerCase())
+    .sort((a, b) => b.source.length - a.source.length);
+  if (!usable.length) return null;
+
+  const targets = new Map<string, string>();
+  const parts: string[] = [];
+  for (const entry of usable) {
+    targets.set(entry.source.toLowerCase(), entry.target);
+    let piece = escapeRegExp(entry.source);
+    // Only ASCII terms need word boundaries; CJK text has no word separators.
+    if (isAsciiWordChar(entry.source[0])) {
+      piece = `(?<![A-Za-z0-9_])${piece}`;
+    }
+    if (isAsciiWordChar(entry.source[entry.source.length - 1])) {
+      piece = `${piece}(?![A-Za-z0-9_])`;
+    }
+    parts.push(piece);
+  }
+  return { pattern: new RegExp(parts.join("|"), "giu"), targets };
+}
+
+/**
+ * Enforce glossary targets in provider output. LLM prompts already carry the
+ * glossary, but models still drift and Google never sees the prompt.
+ */
+export function applyGlossaryToTranslation(
+  text: string,
+  entries: readonly GlossaryEntry[],
+): string {
+  if (!text || !entries.length) return text;
+  let replacer = replacerCache.get(entries);
+  if (replacer === undefined) {
+    replacer = buildGlossaryReplacer(entries);
+    replacerCache.set(entries, replacer);
+  }
+  if (!replacer) return text;
+  const { pattern, targets } = replacer;
+  return text.replace(pattern, (match) => targets.get(match.toLowerCase()) ?? match);
+}
+
 const DIRECTIVE_HEADER =
   "以下是本文档的术语表。翻译时必须严格使用表中的译法，保持术语前后一致：";
 const DIRECTIVE_FOOTER =

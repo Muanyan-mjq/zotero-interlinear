@@ -174,24 +174,47 @@ describe("startup", function () {
   });
 
   it("should render every reader toolbar icon once without post-render DOM rewrites", function () {
-    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("toolbar-test");
-    const reader = { type: "pdf", itemID: 2147483644 };
-    const append = (...elements: HTMLElement[]) => doc.body.append(...elements);
+    const modePref = "extensions.zotero.interlinear.displayMode";
+    const previousMode = Zotero.Prefs.get(modePref, true);
+    Zotero.Prefs.set(modePref, "top-bottom", true);
+    try {
+      const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("toolbar-test");
+      const reader = { type: "pdf", itemID: 2147483644 };
+      const append = (...elements: HTMLElement[]) => doc.body.append(...elements);
 
-    renderReaderToolbar({ reader, doc, append });
-    renderReaderToolbar({ reader, doc, append });
+      renderReaderToolbar({ reader, doc, append });
+      renderReaderToolbar({ reader, doc, append });
 
-    assert.equal(doc.querySelectorAll(".interlinear-toolbar-button").length, 1);
-    assert.equal(doc.querySelectorAll(".interlinear-refresh-button").length, 1);
-    assert.equal(doc.querySelectorAll(".interlinear-export-button").length, 1);
-    const toggle = doc.querySelector(".interlinear-toolbar-button");
-    assert.equal(toggle?.textContent, "");
-    const toggleIcon = toggle?.querySelector("img") as HTMLImageElement | null;
-    assert.exists(toggleIcon);
-    assert.match(toggleIcon?.src || "", /content\/icons\/icon20\.png$/u);
-    assert.equal(doc.querySelector(".interlinear-export-button")?.textContent, "🖨️");
-    assert.notExists(doc.querySelector(".interlinear-settings-button"));
-    assert.notExists(doc.querySelector(".interlinear-wordwise-button"));
+      assert.equal(doc.querySelectorAll(".interlinear-toolbar-button").length, 1);
+      assert.equal(doc.querySelectorAll(".interlinear-display-button").length, 1);
+      assert.equal(doc.querySelectorAll(".interlinear-refresh-button").length, 1);
+      assert.equal(doc.querySelectorAll(".interlinear-export-button").length, 1);
+      const toggle = doc.querySelector(".interlinear-toolbar-button");
+      assert.equal(toggle?.textContent, "");
+      const toggleIcon = toggle?.querySelector("img") as HTMLImageElement | null;
+      assert.exists(toggleIcon);
+      assert.match(toggleIcon?.src || "", /content\/icons\/icon20\.png$/u);
+      const display = doc.querySelector(".interlinear-display-button") as HTMLButtonElement | null;
+      assert.equal(display?.textContent, "◫");
+      assert.isNotEmpty(display?.title || "");
+      assert.equal(display?.getAttribute("aria-label"), display?.title);
+      assert.equal(display?.dataset.mode, "top-bottom");
+      display?.dispatchEvent(
+        new (Zotero.getMainWindow() as any).MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      assert.equal(getDisplayMode(), "side-by-side");
+      assert.equal(display?.dataset.mode, "side-by-side");
+      assert.notEqual(display?.title, "");
+      assert.equal(doc.querySelector(".interlinear-export-button")?.textContent, "🖨️");
+      assert.notExists(doc.querySelector(".interlinear-settings-button"));
+      assert.notExists(doc.querySelector(".interlinear-wordwise-button"));
+    } finally {
+      if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
+      else Zotero.Prefs.set(modePref, previousMode, true);
+    }
   });
 
   it("should save the engine and trailing-page settings from Zotero preferences", async function () {
@@ -432,6 +455,21 @@ describe("startup", function () {
       const secondTag = getCacheEngineTag();
       assert.notEqual(firstTag, secondTag);
       assert.notInclude(secondTag, "遗传因子");
+
+      if (engine) {
+        engine.value = "google";
+        engine.dispatchEvent(new win!.Event("change"));
+      }
+      save.click();
+      const googleFirstTag = getCacheEngineTag();
+      assert.match(googleFirstTag, /^google:/u);
+      assert.match(googleFirstTag, /:g:[0-9a-f]{8}$/u);
+      if (textarea) {
+        textarea.value = "gene,基因\n";
+      }
+      save.click();
+      const googleSecondTag = getCacheEngineTag();
+      assert.notEqual(googleFirstTag, googleSecondTag);
     } finally {
       win?.close();
       for (const [key, value] of [
@@ -686,6 +724,145 @@ describe("startup", function () {
     }
   });
 
+  it("should prioritize the viewport again after the user pages during a run", async function () {
+    this.timeout(15000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const concurrentPref = "extensions.zotero.interlinear.maxConcurrent";
+    const batchPref = "extensions.zotero.interlinear.maxBatchParagraphs";
+    const gapPref = "extensions.zotero.interlinear.requestGapMs";
+    const previous = new Map<string, unknown>();
+    for (const key of [enginePref, concurrentPref, batchPref, gapPref]) {
+      previous.set(key, Zotero.Prefs.get(key, true));
+    }
+    const previousRequest = Zotero.HTTP.request;
+    const originalReaders = (Zotero.Reader as any)._readers;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("viewport-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const texts = ["Alpha viewport paragraph", "Beta far paragraph", "Gamma near paragraph"];
+    const elements: HTMLElement[] = texts.map((text, index) => {
+      const paragraph = doc.createElement("p");
+      paragraph.dataset.refPath = String(index);
+      paragraph.textContent = `${text} ${Date.now()}.`;
+      content.append(paragraph);
+      return paragraph;
+    });
+    doc.body.append(content);
+    const rect = (top: number) => () =>
+      ({ top, bottom: top + 10, left: 0, right: 100 }) as DOMRect;
+    elements[0].getBoundingClientRect = rect(0);
+    elements[1].getBoundingClientRect = rect(5000);
+    elements[2].getBoundingClientRect = rect(6000);
+
+    const reader = {
+      type: "pdf",
+      itemID: 2147483642,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+    (Zotero.Reader as any)._readers = [reader];
+
+    const bodies: string[] = [];
+    const resolvers: Array<(value: any) => void> = [];
+    (Zotero.HTTP as any).request = (_method: string, _url: string, options: any) => {
+      bodies.push(String(options?.body || ""));
+      return new Promise((resolve) => resolvers.push(resolve));
+    };
+
+    const waitFor = async (condition: () => boolean) => {
+      for (let attempt = 0; attempt < 200; attempt++) {
+        if (condition()) return;
+        await Zotero.Promise.delay(20);
+      }
+      throw new Error("Timed out waiting for the next translation request");
+    };
+    const requestedText = (body: string) => new URLSearchParams(body).get("q") || "";
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      Zotero.Prefs.set(concurrentPref, 1, true);
+      Zotero.Prefs.set(batchPref, 1, true);
+      Zotero.Prefs.set(gapPref, 0, true);
+
+      const run = toggleBilingualReading(reader);
+      await waitFor(() => bodies.length === 1);
+      assert.include(requestedText(bodies[0]), texts[0]);
+
+      // Simulate paging away from Beta and onto Gamma while Alpha is in flight.
+      elements[1].getBoundingClientRect = rect(10000);
+      elements[2].getBoundingClientRect = rect(0);
+      resolvers.shift()?.({ status: 200, response: [[["译文。", "", null, null]]] });
+
+      await waitFor(() => bodies.length === 2);
+      assert.include(requestedText(bodies[1]), texts[2]);
+      resolvers.shift()?.({ status: 200, response: [[["译文。", "", null, null]]] });
+
+      await waitFor(() => bodies.length === 3);
+      assert.include(requestedText(bodies[2]), texts[1]);
+      resolvers.shift()?.({ status: 200, response: [[["译文。", "", null, null]]] });
+
+      await run;
+    } finally {
+      clearTranslationCache();
+      (Zotero.Reader as any)._readers = originalReaders;
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
+    }
+  });
+
+  it("should report reader failures with a non-blocking in-reader notice", async function () {
+    this.timeout(10000);
+    const toolbarDoc =
+      Zotero.getMainWindow().document.implementation.createHTMLDocument("notice-test");
+    let alerts = 0;
+    const reader = {
+      type: "pdf",
+      itemID: 2147483641,
+      _iframeWindow: {
+        document: toolbarDoc,
+        alert: () => {
+          alerts += 1;
+        },
+      },
+      _internalReader: {},
+    };
+
+    await toggleBilingualReading(reader);
+
+    const notice = toolbarDoc.querySelector(
+      ".interlinear-error-notice",
+    ) as HTMLElement | null;
+    assert.exists(notice);
+    assert.equal(notice?.getAttribute("role"), "alert");
+    assert.isAbove((notice?.textContent || "").trim().length, 2);
+    assert.equal(alerts, 0);
+
+    // A second failure updates the existing toast instead of stacking a new one.
+    await toggleBilingualReading(reader);
+    assert.equal(toolbarDoc.querySelectorAll(".interlinear-error-notice").length, 1);
+
+    const close = notice?.querySelector(
+      ".interlinear-error-notice-close",
+    ) as HTMLButtonElement | null;
+    assert.exists(close);
+    assert.isNotEmpty(close?.getAttribute("aria-label") || "");
+    close?.dispatchEvent(
+      new (Zotero.getMainWindow() as any).MouseEvent("click", { bubbles: true }),
+    );
+    assert.isNull(toolbarDoc.querySelector(".interlinear-error-notice"));
+  });
+
   it("should translate through the selected Ollama engine", async function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
@@ -744,9 +921,11 @@ describe("startup", function () {
     const enginePref = "extensions.zotero.interlinear.engine";
     const sourcePref = "extensions.zotero.interlinear.language.source";
     const targetPref = "extensions.zotero.interlinear.language.target";
+    const glossaryPref = "extensions.zotero.interlinear.glossary";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSource = Zotero.Prefs.get(sourcePref, true);
     const previousTarget = Zotero.Prefs.get(targetPref, true);
+    const previousGlossary = Zotero.Prefs.get(glossaryPref, true);
     const previousRequest = Zotero.HTTP.request;
     let requestedMethod = "";
     let requestedURL = "";
@@ -777,6 +956,7 @@ describe("startup", function () {
       Zotero.Prefs.set(enginePref, "google", true);
       Zotero.Prefs.set(sourcePref, "en", true);
       Zotero.Prefs.set(targetPref, "zh-CN", true);
+      Zotero.Prefs.set(glossaryPref, "source,target\ngene,基因\n", true);
       (Zotero.HTTP as any).request = async (
         method: string,
         url: string,
@@ -787,7 +967,7 @@ describe("startup", function () {
         requestedBody = String(options?.body || "");
         return {
           status: 200,
-          response: JSON.stringify([[["谷歌集成测试译文。", "source", null, null, 1]]]),
+          response: JSON.stringify([[["This gene is useful.", "source", null, null, 1]]]),
         };
       };
 
@@ -798,10 +978,11 @@ describe("startup", function () {
       assert.match(requestedURL, /translate_a\/single$/u);
       assert.include(requestedBody, "sl=en");
       assert.include(requestedBody, "tl=zh-CN");
-      assert.equal(translated?.textContent, "谷歌集成测试译文。");
+      assert.equal(translated?.textContent, "This 基因 is useful.");
       assert.equal(translated?.getAttribute("data-state"), "done");
       assert.match(getCacheEngineTag(), /^google:/u);
       assert.include(getCacheEngineTag(), ":en>zh-CN");
+      assert.match(getCacheEngineTag(), /:g:[0-9a-f]{8}$/u);
     } finally {
       await toggleBilingualReading(reader);
       clearTranslationCache();
@@ -810,6 +991,7 @@ describe("startup", function () {
         [enginePref, previousEngine],
         [sourcePref, previousSource],
         [targetPref, previousTarget],
+        [glossaryPref, previousGlossary],
       ] as Array<[string, unknown]>) {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value, true);
@@ -1417,6 +1599,61 @@ describe("startup", function () {
         }),
       );
       assert.deepEqual(paragraphCalls, ["0", "1"]);
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("should retry failed and paused paragraphs from the translation block", function () {
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("retry-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const source = doc.createElement("p");
+    source.dataset.refPath = "0";
+    source.textContent = "A paragraph whose translation failed.";
+    const block = doc.createElement("div");
+    block.className = "interlinear-translation";
+    block.dataset.state = "error";
+    block.textContent = "Translation failed: offline";
+    content.append(source, block);
+    doc.body.append(content);
+
+    let collapsed = true;
+    const calls: string[] = [];
+    const controller = attachReaderInteractions(
+      doc,
+      {
+        translateSelection: async () => "",
+        translateParagraph: async (element) => {
+          calls.push(element.dataset.refPath || "");
+        },
+      },
+      {
+        getSelection: () => ({
+          toString: () => "selected error text",
+          isCollapsed: collapsed,
+          rangeCount: 1,
+          getRangeAt: () => ({ startContainer: block }),
+        }),
+      },
+    );
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      block.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+      assert.deepEqual(calls, ["0"]);
+
+      // Selecting text inside a failure message must not trigger a retry.
+      collapsed = false;
+      block.dataset.state = "paused";
+      block.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+      assert.deepEqual(calls, ["0"]);
+
+      collapsed = true;
+      block.dispatchEvent(
+        new win.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }),
+      );
+      assert.deepEqual(calls, ["0", "0"]);
     } finally {
       controller.dispose();
     }
