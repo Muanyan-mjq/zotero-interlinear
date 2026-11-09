@@ -22,6 +22,8 @@
     <html:select id="interlinear-engine" style="min-width: 320px; padding: 4px 8px">
       <html:option id="interlinear-engine-google" value="google"></html:option>
       <html:option id="interlinear-engine-openai" value="openai"></html:option>
+      <html:option id="interlinear-engine-claude" value="claude"></html:option>
+      <html:option id="interlinear-engine-gemini" value="gemini"></html:option>
       <html:option id="interlinear-engine-ollama" value="ollama"></html:option>
       <html:option id="interlinear-engine-pdftranslate" value="pdftranslate"></html:option>
     </html:select>
@@ -188,6 +190,178 @@
   ></html:p>
   <hbox align="center">
     <html:button id="interlinear-test-openai" type="button" style="padding: 5px 12px"
+    ></html:button>
+  </hbox>
+</groupbox>
+
+<groupbox id="interlinear-claude-section">
+  <label><html:h3 id="interlinear-claude-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-claude-endpoint-label"
+      for="interlinear-claude-endpoint"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-claude-endpoint"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="https://api.anthropic.com/v1/messages"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-claude-endpoint-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-claude-model-label"
+      for="interlinear-claude-model"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-claude-model"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="claude-sonnet-4-5"
+    />
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-claude-api-key-label"
+      for="interlinear-claude-api-key"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-claude-api-key"
+      type="password"
+      style="width: 430px; padding: 4px 6px"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-claude-api-key-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-claude-temperature-label"
+      for="interlinear-claude-temperature"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-claude-temperature"
+      type="number"
+      min="0"
+      max="1"
+      step="0.1"
+      style="width: 110px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-claude-temperature-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <html:p
+    id="interlinear-claude-prompt-label"
+    style="line-height: 1.6; margin: 0 0 4px 0; max-width: 760px"
+  ></html:p>
+  <html:textarea
+    id="interlinear-claude-prompt"
+    rows="5"
+    style="width: 760px; max-width: 100%; padding: 4px 6px"
+  ></html:textarea>
+  <html:p
+    id="interlinear-claude-prompt-help"
+    style="line-height: 1.6; margin: 4px 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center">
+    <html:button id="interlinear-test-claude" type="button" style="padding: 5px 12px"
+    ></html:button>
+  </hbox>
+</groupbox>
+
+<groupbox id="interlinear-gemini-section">
+  <label><html:h3 id="interlinear-gemini-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-gemini-base-label"
+      for="interlinear-gemini-base-url"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-gemini-base-url"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="https://generativelanguage.googleapis.com"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-gemini-base-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-gemini-model-label"
+      for="interlinear-gemini-model"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-gemini-model"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="gemini-2.5-flash"
+    />
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-gemini-api-key-label"
+      for="interlinear-gemini-api-key"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-gemini-api-key"
+      type="password"
+      style="width: 430px; padding: 4px 6px"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-gemini-api-key-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-gemini-temperature-label"
+      for="interlinear-gemini-temperature"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-gemini-temperature"
+      type="number"
+      min="0"
+      max="2"
+      step="0.1"
+      style="width: 110px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-gemini-temperature-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <html:p
+    id="interlinear-gemini-prompt-label"
+    style="line-height: 1.6; margin: 0 0 4px 0; max-width: 760px"
+  ></html:p>
+  <html:textarea
+    id="interlinear-gemini-prompt"
+    rows="5"
+    style="width: 760px; max-width: 100%; padding: 4px 6px"
+  ></html:textarea>
+  <html:p
+    id="interlinear-gemini-prompt-help"
+    style="line-height: 1.6; margin: 4px 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center">
+    <html:button id="interlinear-test-gemini" type="button" style="padding: 5px 12px"
     ></html:button>
   </hbox>
 </groupbox>

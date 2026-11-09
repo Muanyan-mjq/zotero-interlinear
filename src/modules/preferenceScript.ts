@@ -1,4 +1,6 @@
 import {
+  DEFAULT_CLAUDE_TEMPERATURE,
+  DEFAULT_GEMINI_TEMPERATURE,
   DEFAULT_GOOGLE_BASE_URL,
   DEFAULT_MAX_CHARS_PER_REQUEST,
   DEFAULT_MAX_BATCH_PARAGRAPHS,
@@ -18,8 +20,18 @@ import {
   SOURCE_LANGUAGES,
   TARGET_LANGUAGES,
   getAppearance,
+  getClaudeApiKey,
+  getClaudeEndpoint,
+  getClaudeModel,
+  getClaudePrompt,
+  getClaudeTemperature,
   getDisplayMode,
   getEngine,
+  getGeminiApiKey,
+  getGeminiBaseURL,
+  getGeminiModel,
+  getGeminiPrompt,
+  getGeminiTemperature,
   getGoogleBaseURL,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
@@ -37,9 +49,19 @@ import {
   getSkipLastPages,
   getSourceLanguage,
   getTargetLanguage,
+  setClaudeApiKey,
+  setClaudeEndpoint,
+  setClaudeModel,
+  setClaudePrompt,
+  setClaudeTemperature,
   setEngine,
   setAppearance,
   setDisplayMode,
+  setGeminiApiKey,
+  setGeminiBaseURL,
+  setGeminiModel,
+  setGeminiPrompt,
+  setGeminiTemperature,
   setGoogleBaseURL,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
@@ -63,7 +85,12 @@ import { DEFAULT_APPEARANCE, type AppearanceSettings } from "../appearance";
 import { getString } from "../utils/locale";
 import { refreshDisplayModes, refreshTranslationStyles } from "../bilingualReader";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
-import { testGoogleConnection, testOpenAIConnection } from "../providers";
+import {
+  testClaudeConnection,
+  testGeminiConnection,
+  testGoogleConnection,
+  testOpenAIConnection,
+} from "../providers";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -82,10 +109,14 @@ function updateBackendVisibility(doc: Document): void {
   const ollamaSection = getElement<HTMLElement>(doc, "interlinear-ollama-section");
   const googleSection = getElement<HTMLElement>(doc, "interlinear-google-section");
   const openaiSection = getElement<HTMLElement>(doc, "interlinear-openai-section");
+  const claudeSection = getElement<HTMLElement>(doc, "interlinear-claude-section");
+  const geminiSection = getElement<HTMLElement>(doc, "interlinear-gemini-section");
   if (pdfSection) pdfSection.hidden = engine !== "pdftranslate";
   if (ollamaSection) ollamaSection.hidden = engine !== "ollama";
   if (googleSection) googleSection.hidden = engine !== "google";
   if (openaiSection) openaiSection.hidden = engine !== "openai";
+  if (claudeSection) claudeSection.hidden = engine !== "claude";
+  if (geminiSection) geminiSection.hidden = engine !== "gemini";
 }
 
 type FluentKey = Parameters<typeof getString>[0];
@@ -97,6 +128,8 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-engine-label", "provider-engine-label"],
     ["interlinear-engine-google", "provider-engine-google"],
     ["interlinear-engine-openai", "provider-engine-openai"],
+    ["interlinear-engine-claude", "provider-engine-claude"],
+    ["interlinear-engine-gemini", "provider-engine-gemini"],
     ["interlinear-engine-ollama", "provider-engine-ollama"],
     ["interlinear-engine-pdftranslate", "provider-engine-pdftranslate"],
     ["interlinear-language-title", "language-title"],
@@ -117,8 +150,30 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-openai-temperature-help", "provider-openai-temperature-help"],
     ["interlinear-openai-prompt-label", "provider-openai-prompt-label"],
     ["interlinear-openai-prompt-help", "provider-openai-prompt-help"],
+    ["interlinear-claude-title", "provider-claude-title"],
+    ["interlinear-claude-endpoint-label", "provider-claude-endpoint-label"],
+    ["interlinear-claude-endpoint-help", "provider-claude-endpoint-help"],
+    ["interlinear-claude-model-label", "provider-claude-model-label"],
+    ["interlinear-claude-api-key-label", "provider-claude-api-key-label"],
+    ["interlinear-claude-api-key-help", "provider-claude-api-key-help"],
+    ["interlinear-claude-temperature-label", "provider-claude-temperature-label"],
+    ["interlinear-claude-temperature-help", "provider-claude-temperature-help"],
+    ["interlinear-claude-prompt-label", "provider-claude-prompt-label"],
+    ["interlinear-claude-prompt-help", "provider-claude-prompt-help"],
+    ["interlinear-gemini-title", "provider-gemini-title"],
+    ["interlinear-gemini-base-label", "provider-gemini-base-label"],
+    ["interlinear-gemini-base-help", "provider-gemini-base-help"],
+    ["interlinear-gemini-model-label", "provider-gemini-model-label"],
+    ["interlinear-gemini-api-key-label", "provider-gemini-api-key-label"],
+    ["interlinear-gemini-api-key-help", "provider-gemini-api-key-help"],
+    ["interlinear-gemini-temperature-label", "provider-gemini-temperature-label"],
+    ["interlinear-gemini-temperature-help", "provider-gemini-temperature-help"],
+    ["interlinear-gemini-prompt-label", "provider-gemini-prompt-label"],
+    ["interlinear-gemini-prompt-help", "provider-gemini-prompt-help"],
     ["interlinear-test-google", "provider-test-connection"],
     ["interlinear-test-openai", "provider-test-connection"],
+    ["interlinear-test-claude", "provider-test-connection"],
+    ["interlinear-test-gemini", "provider-test-connection"],
   ];
   for (const [id, key] of entries) {
     const element = getElement<HTMLElement>(doc, id);
@@ -212,6 +267,8 @@ function saveSettings(doc: Document): void {
   const validEngines: TranslationEngine[] = [
     "google",
     "openai",
+    "claude",
+    "gemini",
     "ollama",
     "pdftranslate",
   ];
@@ -244,6 +301,22 @@ function saveSettings(doc: Document): void {
   setOpenAIPrompt(readInputText(doc, "interlinear-openai-prompt") || DEFAULT_OPENAI_PROMPT);
   setOpenAITemperature(
     readNumberInput(doc, "interlinear-openai-temperature", DEFAULT_OPENAI_TEMPERATURE),
+  );
+  setClaudeEndpoint(
+    readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint(),
+  );
+  setClaudeModel(readInputText(doc, "interlinear-claude-model") || getClaudeModel());
+  setClaudeApiKey(readInputText(doc, "interlinear-claude-api-key"));
+  setClaudePrompt(readInputText(doc, "interlinear-claude-prompt") || getClaudePrompt());
+  setClaudeTemperature(
+    readNumberInput(doc, "interlinear-claude-temperature", DEFAULT_CLAUDE_TEMPERATURE),
+  );
+  setGeminiBaseURL(readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL());
+  setGeminiModel(readInputText(doc, "interlinear-gemini-model") || getGeminiModel());
+  setGeminiApiKey(readInputText(doc, "interlinear-gemini-api-key"));
+  setGeminiPrompt(readInputText(doc, "interlinear-gemini-prompt") || getGeminiPrompt());
+  setGeminiTemperature(
+    readNumberInput(doc, "interlinear-gemini-temperature", DEFAULT_GEMINI_TEMPERATURE),
   );
   setOllamaURL(url);
   setOllamaModel(model);
@@ -405,6 +478,66 @@ async function testOpenAI(doc: Document): Promise<void> {
   }
 }
 
+async function testClaude(doc: Document): Promise<void> {
+  const endpoint =
+    readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint();
+  const model = readInputText(doc, "interlinear-claude-model") || getClaudeModel();
+  const apiKey = readInputText(doc, "interlinear-claude-api-key") || getClaudeApiKey();
+  const temperature = readNumberInput(
+    doc,
+    "interlinear-claude-temperature",
+    DEFAULT_CLAUDE_TEMPERATURE,
+  );
+
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-test-claude");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  setStatus(doc, getString("provider-test-running"));
+  try {
+    const text = await testClaudeConnection({ endpoint, apiKey, model, temperature });
+    setStatus(doc, getString("provider-test-success", { args: { text } }));
+  } catch (error: any) {
+    setStatus(
+      doc,
+      getString("provider-test-failed", {
+        args: { detail: String(error?.message || error) },
+      }),
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function testGemini(doc: Document): Promise<void> {
+  const baseURL =
+    readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL();
+  const model = readInputText(doc, "interlinear-gemini-model") || getGeminiModel();
+  const apiKey = readInputText(doc, "interlinear-gemini-api-key") || getGeminiApiKey();
+  const temperature = readNumberInput(
+    doc,
+    "interlinear-gemini-temperature",
+    DEFAULT_GEMINI_TEMPERATURE,
+  );
+
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-test-gemini");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  setStatus(doc, getString("provider-test-running"));
+  try {
+    const text = await testGeminiConnection({ baseURL, apiKey, model, temperature });
+    setStatus(doc, getString("provider-test-success", { args: { text } }));
+  } catch (error: any) {
+    setStatus(
+      doc,
+      getString("provider-test-failed", {
+        args: { detail: String(error?.message || error) },
+      }),
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function updateCacheStatus(doc: Document): void {
   const status = getElement<HTMLElement>(doc, "interlinear-cache-status");
   if (!status) return;
@@ -517,6 +650,22 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     "interlinear-openai-temperature",
   );
   const openAIPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-openai-prompt");
+  const claudeEndpoint = getElement<HTMLInputElement>(doc, "interlinear-claude-endpoint");
+  const claudeModel = getElement<HTMLInputElement>(doc, "interlinear-claude-model");
+  const claudeApiKey = getElement<HTMLInputElement>(doc, "interlinear-claude-api-key");
+  const claudeTemperature = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-claude-temperature",
+  );
+  const claudePrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-claude-prompt");
+  const geminiBaseURL = getElement<HTMLInputElement>(doc, "interlinear-gemini-base-url");
+  const geminiModel = getElement<HTMLInputElement>(doc, "interlinear-gemini-model");
+  const geminiApiKey = getElement<HTMLInputElement>(doc, "interlinear-gemini-api-key");
+  const geminiTemperature = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-gemini-temperature",
+  );
+  const geminiPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-gemini-prompt");
   const displayMode = getElement<HTMLSelectElement>(doc, "interlinear-display-mode");
 
   if (engine) engine.value = getEngine();
@@ -528,6 +677,16 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (openAIApiKey) openAIApiKey.value = getOpenAIApiKey();
   if (openAITemperature) openAITemperature.value = String(getOpenAITemperature());
   if (openAIPrompt) openAIPrompt.value = getOpenAIPrompt();
+  if (claudeEndpoint) claudeEndpoint.value = getClaudeEndpoint();
+  if (claudeModel) claudeModel.value = getClaudeModel();
+  if (claudeApiKey) claudeApiKey.value = getClaudeApiKey();
+  if (claudeTemperature) claudeTemperature.value = String(getClaudeTemperature());
+  if (claudePrompt) claudePrompt.value = getClaudePrompt();
+  if (geminiBaseURL) geminiBaseURL.value = getGeminiBaseURL();
+  if (geminiModel) geminiModel.value = getGeminiModel();
+  if (geminiApiKey) geminiApiKey.value = getGeminiApiKey();
+  if (geminiTemperature) geminiTemperature.value = String(getGeminiTemperature());
+  if (geminiPrompt) geminiPrompt.value = getGeminiPrompt();
   if (displayMode) displayMode.value = getDisplayMode();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   if (maxConcurrent) maxConcurrent.value = String(getMaxConcurrent());
@@ -587,6 +746,20 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     "click",
     () => {
       void testOpenAI(doc);
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-test-claude")?.addEventListener(
+    "click",
+    () => {
+      void testClaude(doc);
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-test-gemini")?.addEventListener(
+    "click",
+    () => {
+      void testGemini(doc);
     },
   );
 

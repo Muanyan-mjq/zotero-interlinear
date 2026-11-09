@@ -4,6 +4,15 @@ import {
   normalizeAppearance,
   type AppearanceSettings,
 } from "./appearance";
+import {
+  DEFAULT_CLAUDE_ENDPOINT,
+  normalizeClaudeEndpoint,
+} from "./providers/claudeProtocol";
+import {
+  DEFAULT_GEMINI_BASE_URL,
+  DEFAULT_GEMINI_MODEL,
+  normalizeGeminiModel,
+} from "./providers/geminiProtocol";
 import { DEFAULT_GOOGLE_BASE_URL, normalizeGoogleEndpoint } from "./providers/googleProtocol";
 import { normalizeChatCompletionsEndpoint } from "./providers/openaiProtocol";
 import { buildLanguageDirective } from "./providers/prompts";
@@ -28,6 +37,11 @@ export const DEFAULT_OLLAMA_MODEL = "gpt-oss:20b";
 export const DEFAULT_OPENAI_ENDPOINT = "http://127.0.0.1:11434/v1/chat/completions";
 export const DEFAULT_OPENAI_MODEL = "gpt-oss:20b";
 export const DEFAULT_OPENAI_TEMPERATURE = 0.2;
+export const DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5";
+export const DEFAULT_CLAUDE_TEMPERATURE = 0.2;
+export const DEFAULT_CLAUDE_MAX_TOKENS = 4096;
+export const DEFAULT_GEMINI_TEMPERATURE = 0.2;
+export { DEFAULT_GEMINI_MODEL };
 export const DEFAULT_OPENAI_PROMPT = `你是学术论文翻译专家。把用户提供的段落准确翻译为指定的目标语言。
 
 要求：
@@ -74,6 +88,16 @@ const OPENAI_MODEL_PREF = `${BASE}.openai.model`;
 const OPENAI_API_KEY_PREF = `${BASE}.openai.apiKey`;
 const OPENAI_PROMPT_PREF = `${BASE}.openai.prompt`;
 const OPENAI_TEMPERATURE_PREF = `${BASE}.openai.temperature`;
+const CLAUDE_ENDPOINT_PREF = `${BASE}.claude.endpoint`;
+const CLAUDE_MODEL_PREF = `${BASE}.claude.model`;
+const CLAUDE_API_KEY_PREF = `${BASE}.claude.apiKey`;
+const CLAUDE_PROMPT_PREF = `${BASE}.claude.prompt`;
+const CLAUDE_TEMPERATURE_PREF = `${BASE}.claude.temperature`;
+const GEMINI_BASE_URL_PREF = `${BASE}.gemini.baseUrl`;
+const GEMINI_MODEL_PREF = `${BASE}.gemini.model`;
+const GEMINI_API_KEY_PREF = `${BASE}.gemini.apiKey`;
+const GEMINI_PROMPT_PREF = `${BASE}.gemini.prompt`;
+const GEMINI_TEMPERATURE_PREF = `${BASE}.gemini.temperature`;
 const LANGUAGE_SOURCE_PREF = `${BASE}.language.source`;
 const LANGUAGE_TARGET_PREF = `${BASE}.language.target`;
 const REQUEST_GAP_PREF = `${BASE}.requestGapMs`;
@@ -133,7 +157,11 @@ function setNumberPref(key: string, value: number, min: number, max: number): vo
 
 export function getEngine(): TranslationEngine {
   const value = getStringPref(ENGINE_PREF, "google");
-  return value === "ollama" || value === "openai" || value === "pdftranslate"
+  return value === "ollama" ||
+    value === "openai" ||
+    value === "claude" ||
+    value === "gemini" ||
+    value === "pdftranslate"
     ? value
     : "google";
 }
@@ -247,6 +275,129 @@ export function setOpenAITemperature(value: number): void {
 /** The user-editable prompt plus the languages selected for this run. */
 export function getOpenAISystemPrompt(): string {
   return `${getOpenAIPrompt()}\n\n${buildLanguageDirective(
+    getSourceLanguage(),
+    getTargetLanguage(),
+  )}`;
+}
+
+export function getClaudeEndpoint(): string {
+  return getStringPref(CLAUDE_ENDPOINT_PREF, DEFAULT_CLAUDE_ENDPOINT);
+}
+
+export function setClaudeEndpoint(endpoint: string): void {
+  setStringPref(
+    CLAUDE_ENDPOINT_PREF,
+    normalizeClaudeEndpoint(endpoint) || DEFAULT_CLAUDE_ENDPOINT,
+  );
+}
+
+export function getClaudeModel(): string {
+  return getStringPref(CLAUDE_MODEL_PREF, DEFAULT_CLAUDE_MODEL);
+}
+
+export function setClaudeModel(model: string): void {
+  setStringPref(CLAUDE_MODEL_PREF, model.trim() || DEFAULT_CLAUDE_MODEL);
+}
+
+export function getClaudeApiKey(): string {
+  return getRawStringPref(CLAUDE_API_KEY_PREF).trim();
+}
+
+export function setClaudeApiKey(apiKey: string): void {
+  setStringPref(CLAUDE_API_KEY_PREF, apiKey.trim());
+}
+
+export function getClaudePrompt(): string {
+  return getRawStringPref(CLAUDE_PROMPT_PREF).trim() || DEFAULT_OPENAI_PROMPT;
+}
+
+export function setClaudePrompt(prompt: string): void {
+  setStringPref(CLAUDE_PROMPT_PREF, prompt.trim() || DEFAULT_OPENAI_PROMPT);
+}
+
+export function getClaudeTemperature(): number {
+  const value = Number(
+    getStringPref(CLAUDE_TEMPERATURE_PREF, String(DEFAULT_CLAUDE_TEMPERATURE)),
+  );
+  if (!Number.isFinite(value)) return DEFAULT_CLAUDE_TEMPERATURE;
+  return Math.min(1, Math.max(0, value));
+}
+
+export function setClaudeTemperature(value: number): void {
+  const normalized = Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : DEFAULT_CLAUDE_TEMPERATURE;
+  setStringPref(CLAUDE_TEMPERATURE_PREF, String(normalized));
+}
+
+export function getClaudeSystemPrompt(): string {
+  return `${getClaudePrompt()}\n\n${buildLanguageDirective(
+    getSourceLanguage(),
+    getTargetLanguage(),
+  )}`;
+}
+
+export function getGeminiBaseURL(): string {
+  return getStringPref(GEMINI_BASE_URL_PREF, DEFAULT_GEMINI_BASE_URL).replace(
+    /\/+$/u,
+    "",
+  );
+}
+
+export function setGeminiBaseURL(url: string): void {
+  setStringPref(
+    GEMINI_BASE_URL_PREF,
+    url.trim().replace(/\/+$/u, "") || DEFAULT_GEMINI_BASE_URL,
+  );
+}
+
+export function getGeminiModel(): string {
+  return (
+    normalizeGeminiModel(getStringPref(GEMINI_MODEL_PREF, DEFAULT_GEMINI_MODEL)) ||
+    DEFAULT_GEMINI_MODEL
+  );
+}
+
+export function setGeminiModel(model: string): void {
+  setStringPref(
+    GEMINI_MODEL_PREF,
+    normalizeGeminiModel(model) || DEFAULT_GEMINI_MODEL,
+  );
+}
+
+export function getGeminiApiKey(): string {
+  return getRawStringPref(GEMINI_API_KEY_PREF).trim();
+}
+
+export function setGeminiApiKey(apiKey: string): void {
+  setStringPref(GEMINI_API_KEY_PREF, apiKey.trim());
+}
+
+export function getGeminiPrompt(): string {
+  return getRawStringPref(GEMINI_PROMPT_PREF).trim() || DEFAULT_OPENAI_PROMPT;
+}
+
+export function setGeminiPrompt(prompt: string): void {
+  setStringPref(GEMINI_PROMPT_PREF, prompt.trim() || DEFAULT_OPENAI_PROMPT);
+}
+
+export function getGeminiTemperature(): number {
+  const value = Number(
+    getStringPref(GEMINI_TEMPERATURE_PREF, String(DEFAULT_GEMINI_TEMPERATURE)),
+  );
+  if (!Number.isFinite(value)) return DEFAULT_GEMINI_TEMPERATURE;
+  return Math.min(2, Math.max(0, value));
+}
+
+export function setGeminiTemperature(value: number): void {
+  const normalized = Number.isFinite(value)
+    ? Math.min(2, Math.max(0, value))
+    : DEFAULT_GEMINI_TEMPERATURE;
+  setStringPref(GEMINI_TEMPERATURE_PREF, String(normalized));
+}
+
+export function getGeminiSystemPrompt(): string {
+  return `${getGeminiPrompt()}\n\n${buildLanguageDirective(
     getSourceLanguage(),
     getTargetLanguage(),
   )}`;
@@ -397,6 +548,16 @@ export function getCacheEngineTag(actualPDFTranslateService?: string): string {
     // translations, and cache keys must never carry secrets.
     return `openai:${normalizeChatCompletionsEndpoint(getOpenAIEndpoint())}:${getOpenAIModel()}:${hashTag(
       `${getOpenAIPrompt()}\u0000${getOpenAITemperature()}`,
+    )}${language}`;
+  }
+  if (engine === "claude") {
+    return `claude:${normalizeClaudeEndpoint(getClaudeEndpoint())}:${getClaudeModel()}:${hashTag(
+      `${getClaudePrompt()}\u0000${getClaudeTemperature()}`,
+    )}${language}`;
+  }
+  if (engine === "gemini") {
+    return `gemini:${getGeminiBaseURL()}:${getGeminiModel()}:${hashTag(
+      `${getGeminiPrompt()}\u0000${getGeminiTemperature()}`,
     )}${language}`;
   }
   if (engine === "google") {

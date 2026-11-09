@@ -2,6 +2,17 @@
 // Interlinear — provider registry.
 
 import {
+  DEFAULT_CLAUDE_MAX_TOKENS,
+  getClaudeApiKey,
+  getClaudeEndpoint,
+  getClaudeModel,
+  getClaudeSystemPrompt,
+  getClaudeTemperature,
+  getGeminiApiKey,
+  getGeminiBaseURL,
+  getGeminiModel,
+  getGeminiSystemPrompt,
+  getGeminiTemperature,
   getGoogleBaseURL,
   getOllamaModel,
   getOllamaURL,
@@ -12,6 +23,8 @@ import {
   getOpenAITemperature,
   type TranslationEngine,
 } from "../settings";
+import { requestClaudeTranslation, testClaudeConnection } from "./claude";
+import { requestGeminiTranslation, testGeminiConnection } from "./gemini";
 import { requestGoogleTranslation, testGoogleConnection } from "./google";
 import { requestOllamaTranslation } from "./ollama";
 import { requestOpenAITranslation, testOpenAIConnection } from "./openai";
@@ -19,7 +32,12 @@ import { requestPDFTranslate } from "./pdftranslate";
 import { buildOllamaSystemPrompt } from "./prompts";
 import type { TranslationProvider } from "./types";
 
-export { testGoogleConnection, testOpenAIConnection };
+export {
+  testClaudeConnection,
+  testGeminiConnection,
+  testGoogleConnection,
+  testOpenAIConnection,
+};
 
 export function getTranslationProvider(engine: TranslationEngine): TranslationProvider {
   if (engine === "google") {
@@ -50,6 +68,45 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
             model: getOpenAIModel(),
             systemPrompt: getOpenAISystemPrompt(),
             temperature: getOpenAITemperature(),
+            timeoutMs: context.timeoutMs,
+          },
+          text,
+        ),
+      }),
+    };
+  }
+
+  if (engine === "claude") {
+    return {
+      id: "claude",
+      translate: async (text, context) => ({
+        text: await requestClaudeTranslation(
+          {
+            endpoint: getClaudeEndpoint(),
+            apiKey: getClaudeApiKey(),
+            model: getClaudeModel(),
+            systemPrompt: getClaudeSystemPrompt(),
+            temperature: getClaudeTemperature(),
+            maxTokens: DEFAULT_CLAUDE_MAX_TOKENS,
+            timeoutMs: context.timeoutMs,
+          },
+          text,
+        ),
+      }),
+    };
+  }
+
+  if (engine === "gemini") {
+    return {
+      id: "gemini",
+      translate: async (text, context) => ({
+        text: await requestGeminiTranslation(
+          {
+            baseURL: getGeminiBaseURL(),
+            apiKey: getGeminiApiKey(),
+            model: getGeminiModel(),
+            systemPrompt: getGeminiSystemPrompt(),
+            temperature: getGeminiTemperature(),
             timeoutMs: context.timeoutMs,
           },
           text,

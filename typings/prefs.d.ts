@@ -14,6 +14,16 @@ declare namespace _ZoteroTypes {
       "openai.apiKey": string;
       "openai.prompt": string;
       "openai.temperature": string;
+      "claude.endpoint": string;
+      "claude.model": string;
+      "claude.apiKey": string;
+      "claude.prompt": string;
+      "claude.temperature": string;
+      "gemini.baseUrl": string;
+      "gemini.model": string;
+      "gemini.apiKey": string;
+      "gemini.prompt": string;
+      "gemini.temperature": string;
       "ollama.url": string;
       "ollama.model": string;
       "language.source": string;

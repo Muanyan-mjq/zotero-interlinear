@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Interlinear — provider contracts shared by translators and settings.
 
-export type ProviderId = "google" | "openai" | "ollama" | "pdftranslate";
+export type ProviderId =
+  | "google"
+  | "openai"
+  | "claude"
+  | "gemini"
+  | "ollama"
+  | "pdftranslate";
 
 export interface ProviderContext {
   itemID: number;

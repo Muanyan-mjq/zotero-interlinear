@@ -286,3 +286,55 @@
 5. 把 Google 地址改成不可达并刷新，连续失败到上限。预期：未完成段落显示“已暂停：连续翻译失败…”，改回可用服务后点 🔄 只重跑未完成段落。
 6. 深色主题下查看弹窗背景与悬停虚线。预期：弹窗可见、文字可读；若对比不足请附截图。
 7. 在 `target-only`（只看译文）模式下选中译文文字。预期：不弹出翻译弹窗（弹窗只针对原文段落）。
+
+## Step 6：Claude 与 Gemini provider
+
+### 做了什么
+- `TranslationEngine` / `ProviderId` 扩展为 6 值：`google | openai | claude | gemini | ollama | pdftranslate`；默认仍是 Google。
+- 新增 **Anthropic Claude**（官方 Messages API）：
+  - `src/providers/claudeProtocol.ts`：`normalizeClaudeEndpoint()` 接受官方域名、代理前缀或完整 `/v1/messages` 地址；`buildClaudeRequestBody()` 生成 `model/max_tokens/temperature/system/messages[{role:user,content:[{type:text,text}]}]`；`extractClaudeContent()` 只拼接 `type === "text"` 的块（忽略 thinking/tool_use）；错误详情截断 300 字符。
+  - `src/providers/claude.ts`：`Zotero.HTTP.request` POST，请求头 `x-api-key`、`anthropic-version: 2023-06-01`、`anthropic-dangerous-direct-browser-access: true`；`max_tokens` 固定 4096；错误信息不含密钥。`testClaudeConnection()` 用 64 token 的最小请求探测。
+- 新增 **Google Gemini**（官方 `generateContent`）：
+  - `src/providers/geminiProtocol.ts`：`buildGeminiEndpoint()` 支持官方 base、代理前缀、完整 `:generateContent` 地址，自动补 `/v1beta/models/<model>:generateContent`；`normalizeGeminiModel()` 去掉 `models/` 前缀；请求体为 `systemInstruction` + `contents[{role:user,parts}]` + `generationConfig.temperature`；`extractGeminiContent()` 拼接文本 part 并跳过 `thought: true` 的思考内容。
+  - `src/providers/gemini.ts`：API 密钥通过 `x-goog-api-key` 请求头发送（不放进 URL），错误详情截断 300 字符。
+- `src/providers/index.ts`：注册两个新 provider，并导出 `testClaudeConnection` / `testGeminiConnection`。
+- `src/settings.ts`：新增 `claude.{endpoint,model,apiKey,prompt,temperature}` 与 `gemini.{baseUrl,model,apiKey,prompt,temperature}` 读写与校验（Claude 温度 0–1，Gemini 0–2；端点保存时归一化；模型去 `models/` 前缀）。系统提示词 = 用户提示词 + 自动语言指令。
+- **缓存键**：`claude:<归一化端点>:<模型>:<提示词+温度哈希><语言对>`、`gemini:<baseUrl>:<模型>:<提示词+温度哈希><语言对>`；两个 API 密钥都不进入缓存键，轮换密钥不会使缓存失效。
+- 设置页：引擎下拉 6 项；新增 Claude / Gemini 两个分组（端点、模型、API 密钥 password 输入、温度、系统提示词、测试连接按钮），按当前引擎显示/隐藏；保存时写入全部字段；测试连接使用 provider 探测函数并输出本地化状态。
+- `addon/prefs.js` 新增 10 个默认值：`claude.endpoint=https://api.anthropic.com/v1/messages`、`claude.model=claude-sonnet-4-5`、`claude.temperature=0.2`、`gemini.baseUrl=https://generativelanguage.googleapis.com`、`gemini.model=gemini-2.5-flash`、`gemini.temperature=0.2`，提示词默认为空（读取时回退通用学术提示词）。
+- en-US / zh-CN `addon.ftl` 新增引擎名、两组标签/帮助、测试状态与全部 provider 错误文案；介绍文案同步提及 Claude 与 Gemini。
+- 未新增 npm 依赖；未复制上游代码，Claude/Gemini 协议按官方 API 文档实现。
+
+### 改动文件
+- 新增：`src/providers/claudeProtocol.ts`、`src/providers/claude.ts`、`src/providers/geminiProtocol.ts`、`src/providers/gemini.ts`。
+- 修改：`src/providers/types.ts`、`src/providers/index.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`addon/prefs.js`、`test/providers.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`、`typings/prefs.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**49 pass / 0 fail**（新增 9 个协议用例：Claude 端点归一化/请求体/内容提取/错误截断；Gemini 端点拼接/模型归一化/请求体/内容提取（跳过 thought）/错误截断）。
+- `npm run test:review`（Zotero headless 独立 profile）：**26 pass / 0 fail**。新增 3 个用例：
+  - 偏好页：6 个引擎选项；Google 引擎下 Claude/Gemini 分组隐藏；`interlinear-claude-endpoint/model`、`interlinear-gemini-base-url/model` 默认值正确；两个测试按钮存在。
+  - 偏好保存：切到 Claude 时只显示 Claude 分组，切到 Gemini 时只显示 Gemini 分组；保存后 10 个新 prefs 全部正确（Claude 端点由 `/v1` 补全为 `/v1/messages`）。
+  - Claude 翻译链路：断言 POST 到 `https://api.anthropic.com/v1/messages`、`x-api-key`、`anthropic-version`、消息体与 `system` 含语言指令、译文写入 DOM、缓存标签以 `claude:` 开头且不含密钥（响应中的 thinking 块被忽略）。
+  - Gemini 翻译链路：断言 URL 为 `…/v1beta/models/gemini-2.5-flash:generateContent`、`x-goog-api-key`、`contents` 与 `systemInstruction`、译文写入 DOM、缓存标签以 `gemini:` 开头且不含密钥（thought part 被忽略）。
+- 首跑失败 1 项：测试误以为引擎选 Claude 时 Gemini 分组也应可见；改为双向切换断言后通过。
+
+### 不确定项
+- **默认模型名未对真实 API 验证**：`claude-sonnet-4-5`、`gemini-2.5-flash` 是截至实现时官方文档中的名称，可能随服务商更新而失效；两个模型字段都可由用户修改。没有可用 API 密钥，未做真实网络请求。
+- Zotero 的 XHR 是否会被 Anthropic 视为浏览器来源、是否必须带 `anthropic-dangerous-direct-browser-access` 头**不确定**；带上该头在官方 API 下无害，但某些中转可能拒绝未知头。
+- Gemini 密钥按官方推荐的 `x-goog-api-key` 头发送；若某些中转只接受 `?key=` 查询参数，当前实现不兼容。
+- Claude `max_tokens` 固定 4096，未做设置项；超长批次（2800 字符输入）理论上足够，但若目标语言显著膨胀可能被截断（`stop_reason=max_tokens` 未单独提示）。
+- 两个新 provider 与现有 BRSEG 批量标记的兼容性只在单元/集成 mock 中验证，未用真实模型跑长文档；若模型改写了分段标记，批量会回退为逐段请求（已有逻辑）。
+- Claude/Gemini 的真实并发/限流行为未知；沿用“自定义并发上限”，Google 仍限制为 2、Ollama 串行。
+- 错误详情可能包含服务商返回的提示文字，已截断 300 字符；未发现密钥进入错误路径，但未逐字审计所有中转的响应格式。
+
+### 需要手动验证的清单
+1. 打开设置→Interlinear，引擎下拉应出现 **Anthropic Claude** 与 **Google Gemini**；切换时只显示对应分组。
+2. 填入真实 Claude API 密钥，点“测试连接”。预期：返回 “Hello” 的译文；若失败显示 HTTP 状态与 detail，且 detail 中不含密钥。
+3. 填入真实 Gemini API 密钥，点“测试连接”。预期：同上；URL 不包含密钥。
+4. 分别用 Claude / Gemini 翻译一段英文论文。预期：译文写入对应段落、`data-state=done`；再次刷新命中缓存（不再发请求）。
+5. 轮换 API 密钥后重新翻译同一段落。预期：仍命中缓存（密钥不参与缓存键）。
+6. 把模型改成不存在的名称 / 删除密钥后测试。预期：分别提示模型错误、密钥未填写；不会静默回退到其他后端。
+7. 若使用中转：填写自定义端点/服务地址，确认最终请求路径符合中转要求（Claude 以 `/v1/messages` 结尾，Gemini 以 `:generateContent` 结尾）。
+8. 打开 Zotero 调试输出，确认日志中没有出现两个密钥字符串。

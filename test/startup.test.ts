@@ -47,7 +47,7 @@ describe("startup", function () {
 
       assert.deepEqual(
         Array.from(engine?.options || []).map((option) => option.value),
-        ["google", "openai", "ollama", "pdftranslate"],
+        ["google", "openai", "claude", "gemini", "ollama", "pdftranslate"],
       );
       assert.equal(engine?.value, "google");
       assert.equal(skipLastPages?.value, "1");
@@ -97,6 +97,34 @@ describe("startup", function () {
       assert.isTrue(
         win?.document.getElementById("interlinear-openai-section")?.hidden ?? false,
       );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-claude-section")?.hidden ?? false,
+      );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-gemini-section")?.hidden ?? false,
+      );
+      assert.equal(
+        (win?.document.getElementById("interlinear-claude-endpoint") as HTMLInputElement | null)
+          ?.value,
+        "https://api.anthropic.com/v1/messages",
+      );
+      assert.equal(
+        (win?.document.getElementById("interlinear-claude-model") as HTMLInputElement | null)
+          ?.value,
+        "claude-sonnet-4-5",
+      );
+      assert.equal(
+        (win?.document.getElementById("interlinear-gemini-base-url") as HTMLInputElement | null)
+          ?.value,
+        "https://generativelanguage.googleapis.com",
+      );
+      assert.equal(
+        (win?.document.getElementById("interlinear-gemini-model") as HTMLInputElement | null)
+          ?.value,
+        "gemini-2.5-flash",
+      );
+      assert.exists(win?.document.getElementById("interlinear-test-claude"));
+      assert.exists(win?.document.getElementById("interlinear-test-gemini"));
       assert.isTrue(
         win?.document.getElementById("interlinear-pdftranslate-section")?.hidden ?? false,
       );
@@ -180,6 +208,110 @@ describe("startup", function () {
       else Zotero.Prefs.set(skipPref, previousSkip, true);
       if (previousDisplayMode === undefined) Zotero.Prefs.clear(displayModePref, true);
       else Zotero.Prefs.set(displayModePref, previousDisplayMode, true);
+    }
+  });
+
+  it("should save Claude and Gemini provider settings from Zotero preferences", async function () {
+    this.timeout(10000);
+    const keys = [
+      "extensions.zotero.interlinear.engine",
+      "extensions.zotero.interlinear.claude.endpoint",
+      "extensions.zotero.interlinear.claude.model",
+      "extensions.zotero.interlinear.claude.apiKey",
+      "extensions.zotero.interlinear.claude.temperature",
+      "extensions.zotero.interlinear.claude.prompt",
+      "extensions.zotero.interlinear.gemini.baseUrl",
+      "extensions.zotero.interlinear.gemini.model",
+      "extensions.zotero.interlinear.gemini.apiKey",
+      "extensions.zotero.interlinear.gemini.temperature",
+      "extensions.zotero.interlinear.gemini.prompt",
+    ];
+    const previous = new Map<string, unknown>(
+      keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
+    );
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as
+        | (HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement)
+        | null;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const root = win?.document.getElementById("interlinear-settings-root");
+        if (root?.dataset.initialized === "true") break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const engine = byId("interlinear-engine");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
+      assert.exists(engine);
+      assert.exists(save);
+
+      if (engine) {
+        engine.value = "claude";
+        engine.dispatchEvent(new win!.Event("change"));
+      }
+      assert.isFalse(
+        win?.document.getElementById("interlinear-claude-section")?.hidden ?? true,
+      );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-gemini-section")?.hidden ?? false,
+      );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-openai-section")?.hidden ?? false,
+      );
+      if (engine) {
+        engine.value = "gemini";
+        engine.dispatchEvent(new win!.Event("change"));
+      }
+      assert.isFalse(
+        win?.document.getElementById("interlinear-gemini-section")?.hidden ?? true,
+      );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-claude-section")?.hidden ?? false,
+      );
+      if (engine) {
+        engine.value = "claude";
+        engine.dispatchEvent(new win!.Event("change"));
+      }
+
+      const values: Array<[string, string]> = [
+        ["interlinear-claude-endpoint", "https://api.anthropic.com/v1"],
+        ["interlinear-claude-model", "claude-sonnet-4-5"],
+        ["interlinear-claude-api-key", "claude-secret"],
+        ["interlinear-claude-temperature", "0.5"],
+        ["interlinear-claude-prompt", "Claude 自定义提示词。"],
+        ["interlinear-gemini-base-url", "https://generativelanguage.googleapis.com"],
+        ["interlinear-gemini-model", "gemini-2.5-pro"],
+        ["interlinear-gemini-api-key", "gemini-secret"],
+        ["interlinear-gemini-temperature", "0.3"],
+        ["interlinear-gemini-prompt", "Gemini 自定义提示词。"],
+      ];
+      for (const [id, value] of values) {
+        const input = byId(id);
+        assert.exists(input, id);
+        if (input) input.value = value;
+      }
+      save.click();
+
+      assert.equal(Zotero.Prefs.get(keys[0], true), "claude");
+      assert.equal(Zotero.Prefs.get(keys[1], true), "https://api.anthropic.com/v1/messages");
+      assert.equal(Zotero.Prefs.get(keys[2], true), "claude-sonnet-4-5");
+      assert.equal(Zotero.Prefs.get(keys[3], true), "claude-secret");
+      assert.equal(Zotero.Prefs.get(keys[4], true), "0.5");
+      assert.equal(Zotero.Prefs.get(keys[5], true), "Claude 自定义提示词。");
+      assert.equal(Zotero.Prefs.get(keys[6], true), "https://generativelanguage.googleapis.com");
+      assert.equal(Zotero.Prefs.get(keys[7], true), "gemini-2.5-pro");
+      assert.equal(Zotero.Prefs.get(keys[8], true), "gemini-secret");
+      assert.equal(Zotero.Prefs.get(keys[9], true), "0.3");
+      assert.equal(Zotero.Prefs.get(keys[10], true), "Gemini 自定义提示词。");
+    } finally {
+      win?.close();
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
     }
   });
 
@@ -691,6 +823,179 @@ describe("startup", function () {
       for (const [key, value] of [
         [enginePref, previousEngine],
         [apiKeyPref, previousApiKey],
+      ] as Array<[string, unknown]>) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value, true);
+      }
+    }
+  });
+
+  it("should translate through Claude without leaking the key", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const apiKeyPref = "extensions.zotero.interlinear.claude.apiKey";
+    const endpointPref = "extensions.zotero.interlinear.claude.endpoint";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousApiKey = Zotero.Prefs.get(apiKeyPref, true);
+    const previousEndpoint = Zotero.Prefs.get(endpointPref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const secret = `sk-ant-integration-${Date.now()}`;
+    let requestedURL = "";
+    let requestedHeaders: Record<string, string> = {};
+    let requestedBody: any = null;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("claude-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `A synthetic Claude paragraph ${Date.now()}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483639,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "claude", true);
+      Zotero.Prefs.set(apiKeyPref, secret, true);
+      Zotero.Prefs.set(endpointPref, "https://api.anthropic.com", true);
+      (Zotero.HTTP as any).request = async (
+        _method: string,
+        url: string,
+        options: any,
+      ) => {
+        requestedURL = url;
+        requestedHeaders = options?.headers || {};
+        requestedBody = JSON.parse(String(options?.body || "{}"));
+        return {
+          status: 200,
+          response: JSON.stringify({
+            content: [
+              { type: "thinking", thinking: "hidden" },
+              { type: "text", text: "Claude 集成测试译文。" },
+            ],
+          }),
+        };
+      };
+
+      await toggleBilingualReading(reader);
+
+      const translated = doc.querySelector(".interlinear-translation");
+      assert.equal(requestedURL, "https://api.anthropic.com/v1/messages");
+      assert.equal(requestedHeaders["x-api-key"], secret);
+      assert.equal(requestedHeaders["anthropic-version"], "2023-06-01");
+      assert.equal(requestedBody?.messages?.[0]?.content?.[0]?.text, paragraph.textContent);
+      assert.include(requestedBody?.system || "", "源语言");
+      assert.equal(translated?.textContent, "Claude 集成测试译文。");
+      assert.match(getCacheEngineTag(), /^claude:/u);
+      assert.notInclude(getCacheEngineTag(), secret);
+    } finally {
+      await toggleBilingualReading(reader);
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of [
+        [enginePref, previousEngine],
+        [apiKeyPref, previousApiKey],
+        [endpointPref, previousEndpoint],
+      ] as Array<[string, unknown]>) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value, true);
+      }
+    }
+  });
+
+  it("should translate through Gemini without leaking the key", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const apiKeyPref = "extensions.zotero.interlinear.gemini.apiKey";
+    const baseURLPref = "extensions.zotero.interlinear.gemini.baseUrl";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousApiKey = Zotero.Prefs.get(apiKeyPref, true);
+    const previousBaseURL = Zotero.Prefs.get(baseURLPref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const secret = `AIza-integration-${Date.now()}`;
+    let requestedURL = "";
+    let requestedHeaders: Record<string, string> = {};
+    let requestedBody: any = null;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("gemini-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `A synthetic Gemini paragraph ${Date.now()}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483638,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "gemini", true);
+      Zotero.Prefs.set(apiKeyPref, secret, true);
+      Zotero.Prefs.set(baseURLPref, "https://generativelanguage.googleapis.com", true);
+      (Zotero.HTTP as any).request = async (
+        _method: string,
+        url: string,
+        options: any,
+      ) => {
+        requestedURL = url;
+        requestedHeaders = options?.headers || {};
+        requestedBody = JSON.parse(String(options?.body || "{}"));
+        return {
+          status: 200,
+          response: JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [{ thought: true, text: "hidden" }, { text: "Gemini 集成测试译文。" }],
+                },
+              },
+            ],
+          }),
+        };
+      };
+
+      await toggleBilingualReading(reader);
+
+      const translated = doc.querySelector(".interlinear-translation");
+      assert.equal(
+        requestedURL,
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      );
+      assert.equal(requestedHeaders["x-goog-api-key"], secret);
+      assert.equal(requestedBody?.contents?.[0]?.parts?.[0]?.text, paragraph.textContent);
+      assert.include(requestedBody?.systemInstruction?.parts?.[0]?.text || "", "源语言");
+      assert.equal(translated?.textContent, "Gemini 集成测试译文。");
+      assert.match(getCacheEngineTag(), /^gemini:/u);
+      assert.notInclude(getCacheEngineTag(), secret);
+    } finally {
+      await toggleBilingualReading(reader);
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of [
+        [enginePref, previousEngine],
+        [apiKeyPref, previousApiKey],
+        [baseURLPref, previousBaseURL],
       ] as Array<[string, unknown]>) {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value, true);
