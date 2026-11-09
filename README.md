@@ -14,6 +14,25 @@
 
 > 本插件由 GPT 编写。
 
+<details>
+<summary><b>English</b></summary>
+
+**Interlinear** shows source paragraphs and their translations consecutively inside Zotero 10's PDF reader.
+
+- Small toolbar icon: left-click toggles paragraph translation; right-click opens a menu with every action.
+- Built-in backends: Google Translate (default, no key), OpenAI-compatible APIs, Anthropic Claude, Google Gemini, and Ollama. No other plugin is required.
+- Display modes: translation above/below, side by side, target only, source only.
+- Per-paragraph and selection triggers, short-paragraph batching, concurrency limits, throttling, timeouts, and automatic pause after repeated failures.
+- Glossary import/export, translation cache, trailing-page skipping, and a reading-assistant chat sidebar for LLM backends.
+- Export the current bilingual reading view as a searchable PDF attached to the Zotero item.
+- UI available in English and Simplified Chinese.
+
+Install from **Releases** (`Tools → Plugins → gear → Install Plugin From File`), then open an English PDF in Zotero and click the Interlinear icon. Configuration lives in `Settings → Interlinear`. Please uninstall the original Bilingual Reader first; this plugin copies its preferences and cache into a new namespace on first start.
+
+Known limits: mainly English → Simplified Chinese; tables and math are not translated cell-by-cell; scanned PDFs depend on Zotero's text layer; Zotero reader internals may change between releases.
+
+</details>
+
 ## 主要功能
 
 - 阅读器工具栏上的小型 Interlinear 图标：左键开启 / 关闭段落中英对照，右键打开全部功能菜单。
@@ -28,7 +47,7 @@
 ## 环境
 
 - Zotero 10.x
-- macOS 为主要测试平台
+- Windows 上完成开发与 Zotero headless 集成测试；CI 在 Ubuntu 与 macOS 上执行构建
 - 翻译后端自行选择：Google 翻译开箱即用；OpenAI 兼容 / Claude / Gemini 需要填写对应的接口、模型与密钥；Ollama 需要本地或可访问的 Ollama 服务。
 
 ## 安装
@@ -91,8 +110,8 @@
 | `addon/content/icons/icon32.png` | 32×32 | 中尺寸备用 |
 | `addon/content/icons/icon48.png` | 48×48 | 插件管理器图标 |
 | `addon/content/icons/icon96.png` | 96×96 | 插件管理器高清图标、设置页顶部 |
-| `addon/content/icons/favicon.png` | 32×32 | 模板工具栏 / 菜单图标 |
-| `addon/content/icons/favicon@0.5x.png` | 16×16 | 模板菜单小图标 |
+| `addon/content/icons/favicon.png` | 32×32 | ztoolkit 进度窗口默认图标 |
+| `addon/content/icons/favicon@0.5x.png` | 16×16 | 小尺寸备用 |
 
 重译（🔄）与导出（🖨️）按钮仍使用 emoji，与主图标一起缩小显示。
 
@@ -100,9 +119,13 @@
 
 ```bash
 npm install
-npm run build
-npm run test
+npm run build        # 类型检查 + 打包 xpi
+npm run lint:check
+npm run test:unit    # Node 单元测试
+npm run test:review  # Zotero headless 集成测试（需设置 ZOTERO_PLUGIN_ZOTERO_BIN_PATH）
 ```
+
+构建产物位于 `.scaffold/build/interlinear.xpi`。
 
 ## 许可证
 

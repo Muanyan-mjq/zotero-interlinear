@@ -475,3 +475,40 @@
 6. 将界面切换为英文，重新打开偏好设置与阅读器，确认设置页、工具栏提示、导出对话框与错误提示全部为英文，无残留中文。
 7. 用旧配置（引擎曾为 Translate for Zotero）启动，确认自动使用 Google 且不再出现 PDFTranslate 相关选项或错误。
 
+## Step 10：清理与发布准备
+
+### 做了什么
+- 删除未被任何代码引用的模板示例：`src/modules/examples.ts`、`addon/content/zoteroPane.css`、`addon/locale/*/preferences.ftl`；同时移除 `preferences.xhtml` 中对已删除 FTL 的 `<linkset>` 引用。
+- 清理模板本地化条目：`mainWindow.ftl` 只保留阅读助手 section 文案；`addon.ftl` 删除 `startup-*`、`menuitem-*`、`prefs-title`、`prefs-table-*`、`tabpanel-*` 等示例键。
+- 简化模板状态：`src/addon.ts` 删除未使用的 `env`、`prefs`（columns/rows）、`dialog` 与空 `api`；`src/hooks.ts` 删除无人调用的 `onNotify`、`onShortcuts`、`onDialogEvents` 及 dialog 清理。
+- README：增加英文概览（功能、后端、安装、使用、限制）；更新测试平台说明、图标表中 favicon 的真实用途、开发命令与构建产物路径。
+- CHANGELOG 增加 v0.5.1 发布条目，汇总更名、原生后端、右键菜单、外观/显示模式、术语表、聊天、导出与完整 i18n。
+- 修复发布工作流：产物名从 `bilingual-reader.xpi` 改为实际生成的 `interlinear.xpi`，Release 标题改为 Interlinear；更新元数据 Release 标题同步更名。
+- 未新增 npm 依赖；未修改 addonID（`interlinear@muanyan-mjq`）与 `update.json` 生成逻辑。
+
+### 改动文件
+- 删除：`src/modules/examples.ts`、`addon/content/zoteroPane.css`、`addon/locale/en-US/preferences.ftl`、`addon/locale/zh-CN/preferences.ftl`。
+- 修改：`src/addon.ts`、`src/hooks.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/mainWindow.ftl`、`addon/locale/zh-CN/mainWindow.ftl`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`README.md`、`CHANGELOG.md`、`.github/workflows/ci.yml`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**68 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**33 pass / 0 fail**。
+- 构建产物确认：`.scaffold/build/interlinear.xpi`，`update.json` 中的 addonID 与下载路径均为 Interlinear。
+
+### 不确定项
+- GitHub Actions 未在本机实际触发；发布 job 的产物名、标题与 `[release]` 触发条件只做了静态修改，未做真实 Release 演练。
+- README 的英文部分是概览而非逐句对照翻译，中文仍为主文档。
+- `docs/ANALYSIS.md` 是改造前的代码分析快照，保留了旧 PDFTranslate 相关内容，后续可作为历史资料，不再代表当前实现。
+- `addon/bootstrap.js` 顶部仍保留对 Make It Red 示例的注释来源说明，属许可证/来源标注，未删除。
+- 未在真实 Zotero 图形界面中手工回归右键菜单与英文界面（集成测试为 headless + 合成事件）。
+
+### 需要手动验证的清单
+1. 安装 `.scaffold/build/interlinear.xpi`，确认插件管理器显示名称 Interlinear、图标正常、无模板示例菜单或面板。
+2. 打开偏好设置，确认页面、速度、缓存、Ollama、刷新说明与项目主页各区块文案完整，中英文切换无空标签。
+3. 右键阅读器小图标，逐项验证 10 个动作；确认“阅读助手”能展开右侧栏并切换到聊天面板。
+4. 切换英文界面，检查工具栏提示、导出确认框、错误提示与设置页无残留中文。
+5. 在 GitHub 上以 `[release]` 提交信息触发一次发布流程（或手动 dry-run），确认上传的是 `interlinear.xpi` 且 Release 标题为 Interlinear。
+6. 检查 Zotero 自动更新：`update.json` 的版本、下载链接与本次 xpi 的哈希一致。
+

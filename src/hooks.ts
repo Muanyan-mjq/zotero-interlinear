@@ -82,19 +82,9 @@ function onShutdown(): void {
   cleanupAllReadingLayouts();
   flushTranslationCacheIndex();
   ztoolkit.unregisterAll();
-  addon.data.dialog?.window?.close();
   addon.data.alive = false;
   // @ts-expect-error - Plugin instance is not typed
   delete Zotero[addon.data.config.addonInstance];
-}
-
-async function onNotify(
-  _event: string,
-  _type: string,
-  _ids: Array<string | number>,
-  _extraData: { [key: string]: any },
-) {
-  // Reserved for future Zotero notifier integration.
 }
 
 async function onPrefsEvent(type: string, data: { [key: string]: any }) {
@@ -105,21 +95,10 @@ async function onPrefsEvent(type: string, data: { [key: string]: any }) {
   }
 }
 
-function onShortcuts(_type: string) {
-  // Reserved for future keyboard shortcuts.
-}
-
-function onDialogEvents(_type: string) {
-  // Reserved for future dialogs.
-}
-
 export default {
   onStartup,
   onShutdown,
   onMainWindowLoad,
   onMainWindowUnload,
-  onNotify,
   onPrefsEvent,
-  onShortcuts,
-  onDialogEvents,
 };
