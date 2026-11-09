@@ -22,16 +22,26 @@ import {
   getOpenAIModel,
   getOpenAISystemPrompt,
   getOpenAITemperature,
+  getRequestTimeoutMs,
+  getTargetLanguage,
   type TranslationEngine,
 } from "../settings";
 import { requestClaudeTranslation, testClaudeConnection } from "./claude";
+import {
+  requestClaudeChat,
+  requestGeminiChat,
+  requestOllamaChat,
+  requestOpenAIChat,
+} from "./chat";
+import { buildChatSystemPrompt } from "./chatPrompts";
+import type { ChatTurn } from "./chatProtocol";
 import { requestGeminiTranslation, testGeminiConnection } from "./gemini";
 import { requestGoogleTranslation, testGoogleConnection } from "./google";
 import { requestOllamaTranslation } from "./ollama";
 import { requestOpenAITranslation, testOpenAIConnection } from "./openai";
 import { requestPDFTranslate } from "./pdftranslate";
-import { buildOllamaSystemPrompt } from "./prompts";
-import type { TranslationProvider } from "./types";
+import { buildOllamaSystemPrompt, languageNameZh } from "./prompts";
+import type { ChatProvider, TranslationProvider } from "./types";
 
 export {
   testClaudeConnection,
@@ -143,5 +153,87 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
   return {
     id: "pdftranslate",
     translate: (text, context) => requestPDFTranslate(text, context),
+  };
+}
+
+/**
+ * Chat reuses the same backend configuration as translation. Google Translate
+ * and Translate for Zotero have no conversational API, so the sidebar reports
+ * them as unsupported instead of guessing an endpoint.
+ */
+export function getChatProvider(engine: TranslationEngine): ChatProvider | null {
+  if (engine === "google" || engine === "pdftranslate") return null;
+
+  const systemPrompt = () =>
+    buildChatSystemPrompt(languageNameZh(getTargetLanguage()), getGlossaryDirective());
+
+  if (engine === "openai") {
+    return {
+      id: "openai",
+      chat: (turns: readonly ChatTurn[]) =>
+        requestOpenAIChat(
+          {
+            endpoint: getOpenAIEndpoint(),
+            apiKey: getOpenAIApiKey(),
+            model: getOpenAIModel(),
+            systemPrompt: systemPrompt(),
+            temperature: getOpenAITemperature(),
+            timeoutMs: getRequestTimeoutMs(),
+          },
+          turns,
+        ),
+    };
+  }
+
+  if (engine === "claude") {
+    return {
+      id: "claude",
+      chat: (turns: readonly ChatTurn[]) =>
+        requestClaudeChat(
+          {
+            endpoint: getClaudeEndpoint(),
+            apiKey: getClaudeApiKey(),
+            model: getClaudeModel(),
+            systemPrompt: systemPrompt(),
+            temperature: getClaudeTemperature(),
+            maxTokens: DEFAULT_CLAUDE_MAX_TOKENS,
+            timeoutMs: getRequestTimeoutMs(),
+          },
+          turns,
+        ),
+    };
+  }
+
+  if (engine === "gemini") {
+    return {
+      id: "gemini",
+      chat: (turns: readonly ChatTurn[]) =>
+        requestGeminiChat(
+          {
+            baseURL: getGeminiBaseURL(),
+            apiKey: getGeminiApiKey(),
+            model: getGeminiModel(),
+            systemPrompt: systemPrompt(),
+            temperature: getGeminiTemperature(),
+            timeoutMs: getRequestTimeoutMs(),
+          },
+          turns,
+        ),
+    };
+  }
+
+  return {
+    id: "ollama",
+    chat: (turns: readonly ChatTurn[]) =>
+      requestOllamaChat(
+        {
+          baseURL: getOllamaURL(),
+          model: getOllamaModel(),
+          systemPrompt: systemPrompt(),
+          temperature: 0.3,
+          timeoutMs: getRequestTimeoutMs(),
+        },
+        turns,
+      ),
   };
 }

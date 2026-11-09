@@ -9,3 +9,7 @@ item-section-example2-sidenav-tooltip =
 item-section-example2-button-tooltip =
     .tooltiptext = Unregister this section
 item-info-row-example-label = Example Row
+item-section-chat-head-text =
+    .label = Reading assistant
+item-section-chat-sidenav-tooltip =
+    .tooltiptext = Ask questions about the open document

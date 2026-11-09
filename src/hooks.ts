@@ -1,6 +1,7 @@
 import { initLocale } from "./utils/locale";
 import { createZToolkit } from "./utils/ztoolkit";
 import { registerReaderToolbar, unregisterReaderToolbar } from "./readerToolbar";
+import { registerChatPane, unregisterChatPane } from "./chatPane";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { migrateLegacyPreferences } from "./settings";
 import { flushTranslationCacheIndex } from "./translationCache";
@@ -46,7 +47,12 @@ async function onStartup() {
   await Zotero.uiReadyPromise;
   if (!addon.data.alive) return;
 
-  for (const initialize of [migrateLegacyPreferences, initLocale, registerPreferencesPane]) {
+  for (const initialize of [
+    migrateLegacyPreferences,
+    initLocale,
+    registerPreferencesPane,
+    registerChatPane,
+  ]) {
     if (!addon.data.alive) return;
     try {
       await initialize();
@@ -71,6 +77,7 @@ async function onMainWindowUnload(_win: Window): Promise<void> {
 }
 
 function onShutdown(): void {
+  unregisterChatPane();
   unregisterReaderToolbar();
   cleanupAllReadingLayouts();
   flushTranslationCacheIndex();

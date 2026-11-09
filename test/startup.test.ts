@@ -10,6 +10,8 @@ import { attachReaderInteractions } from "../src/readerInteractions";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
 import { getCacheEngineTag } from "../src/settings";
+import { collectChatContext } from "../src/chatContext";
+import { getChatProvider } from "../src/providers";
 
 describe("startup", function () {
   it("should have plugin instance defined", function () {
@@ -1433,6 +1435,210 @@ describe("startup", function () {
       (Zotero as any).PDFTranslate = previousPDFTranslate;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
+    }
+  });
+});
+
+describe("chat", function () {
+  function createSdtDocument(texts: string[]) {
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "chat-context-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    doc.body.append(content);
+    const paragraphs = texts.map((text, index) => {
+      const paragraph = doc.createElement("p");
+      paragraph.dataset.refPath = `0/${index}`;
+      paragraph.textContent = text;
+      content.append(paragraph);
+      return paragraph;
+    });
+    return { doc, paragraphs };
+  }
+
+  it("registers a reader-only chat section", function () {
+    const data = (Zotero.ItemPaneManager as any).customSectionData;
+    // Zotero namespaces custom pane IDs with the plugin ID before validation.
+    const section = (data.options as any[]).find((option) =>
+      String(option.paneID).endsWith("-interlinear-chat"),
+    );
+    assert.exists(section);
+    assert.equal(section.pluginID, config.addonID);
+    assert.equal(
+      section.header.l10nID,
+      `${config.addonRef}-item-section-chat-head-text`,
+    );
+    assert.include(section.bodyXHTML, "interlinear-chat-root");
+    assert.include(section.bodyXHTML, "interlinear-chat-privacy");
+
+    const states: boolean[] = [];
+    const setEnabled = (value: boolean) => states.push(value);
+    section.onItemChange({ tabType: "reader", setEnabled });
+    section.onItemChange({ tabType: "library", setEnabled });
+    assert.deepEqual(states, [true, false]);
+  });
+
+  it("collects document, selection and viewport context", function () {
+    const { doc, paragraphs } = createSdtDocument([
+      "第一段内容。",
+      "第二段内容。",
+      "第三段内容。",
+    ]);
+
+    const whole = collectChatContext(doc, "document");
+    assert.exists(whole);
+    assert.equal(whole?.paragraphCount, 3);
+    assert.include(whole?.text, "第一段内容。");
+    assert.include(whole?.text, "第三段内容。");
+
+    const selected = collectChatContext(doc, "selection", {
+      selection: { anchorNode: paragraphs[1].firstChild },
+    });
+    assert.exists(selected);
+    assert.equal(selected?.paragraphCount, 1);
+    assert.equal(selected?.text, "第二段内容。");
+
+    paragraphs[0].getBoundingClientRect = () =>
+      ({ top: -200, bottom: -50 }) as unknown as DOMRect;
+    paragraphs[1].getBoundingClientRect = () =>
+      ({ top: 10, bottom: 60 }) as unknown as DOMRect;
+    paragraphs[2].getBoundingClientRect = () =>
+      ({ top: 900, bottom: 960 }) as unknown as DOMRect;
+
+    const page = collectChatContext(doc, "page", { viewportHeight: 500 });
+    assert.exists(page);
+    assert.equal(page?.paragraphCount, 1);
+    assert.equal(page?.text, "第二段内容。");
+
+    assert.isNull(collectChatContext(doc, "selection", { selection: null }));
+
+    const emptyDoc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "chat-empty-test",
+    );
+    assert.isNull(collectChatContext(emptyDoc, "document"));
+  });
+
+  it("truncates chat context at a paragraph boundary", function () {
+    const { doc } = createSdtDocument(["甲".repeat(40), "乙".repeat(40)]);
+    const result = collectChatContext(doc, "document", { limit: 50 });
+    assert.exists(result);
+    assert.isTrue(result?.truncated);
+    assert.equal(result?.text, "甲".repeat(40));
+  });
+
+  it("exposes chat only for LLM-backed engines", function () {
+    assert.isNull(getChatProvider("google"));
+    assert.isNull(getChatProvider("pdftranslate"));
+    for (const engine of ["openai", "claude", "gemini", "ollama"] as const) {
+      assert.exists(getChatProvider(engine));
+    }
+  });
+
+  it("sends chat turns with the glossary and extracts the reply", async function () {
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const glossaryPref = "extensions.zotero.interlinear.glossary";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousGlossary = Zotero.Prefs.get(glossaryPref, true);
+    const originalRequest = (Zotero.HTTP as any).request;
+    let captured: any = null;
+
+    (Zotero.HTTP as any).request = async (
+      method: string,
+      url: string,
+      options: any,
+    ) => {
+      captured = { method, url, options };
+      const payload = JSON.stringify({ choices: [{ message: { content: "这是回答。" } }] });
+      return {
+        status: 200,
+        statusText: "OK",
+        responseType: "text",
+        responseText: payload,
+        response: payload,
+      };
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "openai", true);
+      Zotero.Prefs.set(glossaryPref, "gene\t基因", true);
+
+      const provider = getChatProvider("openai");
+      assert.exists(provider);
+      const answer = await provider!.chat([
+        { role: "user", content: "问题一" },
+        { role: "assistant", content: "回答一" },
+        { role: "user", content: "问题二" },
+      ]);
+
+      assert.equal(answer, "这是回答。");
+      assert.equal(captured.method, "POST");
+      assert.match(captured.url, /\/v1\/chat\/completions$/u);
+      const body = JSON.parse(captured.options.body);
+      assert.equal(body.messages[0].role, "system");
+      assert.include(body.messages[0].content, "gene => 基因");
+      assert.equal(body.messages.length, 4);
+      assert.deepEqual(body.messages.slice(1), [
+        { role: "user", content: "问题一" },
+        { role: "assistant", content: "回答一" },
+        { role: "user", content: "问题二" },
+      ]);
+      assert.isFalse(captured.options.body.includes("test-api-key"));
+    } finally {
+      (Zotero.HTTP as any).request = originalRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+      if (previousGlossary === undefined) Zotero.Prefs.clear(glossaryPref, true);
+      else Zotero.Prefs.set(glossaryPref, previousGlossary, true);
+    }
+  });
+
+  it("sends Gemini chat requests with the key in a header", async function () {
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const keyPref = "extensions.zotero.interlinear.gemini.apiKey";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousKey = Zotero.Prefs.get(keyPref, true);
+    const originalRequest = (Zotero.HTTP as any).request;
+    let captured: any = null;
+
+    (Zotero.HTTP as any).request = async (
+      method: string,
+      url: string,
+      options: any,
+    ) => {
+      captured = { method, url, options };
+      const payload = JSON.stringify({
+        candidates: [{ content: { parts: [{ text: "Gemini 回答" }] } }],
+      });
+      return {
+        status: 200,
+        statusText: "OK",
+        responseType: "text",
+        responseText: payload,
+        response: payload,
+      };
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "gemini", true);
+      Zotero.Prefs.set(keyPref, "gemini-test-key", true);
+
+      const provider = getChatProvider("gemini");
+      assert.exists(provider);
+      const answer = await provider!.chat([{ role: "user", content: "问题" }]);
+
+      assert.equal(answer, "Gemini 回答");
+      assert.match(captured.url, /:generateContent$/u);
+      assert.equal(captured.options.headers["x-goog-api-key"], "gemini-test-key");
+      assert.notInclude(captured.url, "gemini-test-key");
+      const body = JSON.parse(captured.options.body);
+      assert.deepEqual(body.contents, [{ role: "user", parts: [{ text: "问题" }] }]);
+    } finally {
+      (Zotero.HTTP as any).request = originalRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+      if (previousKey === undefined) Zotero.Prefs.clear(keyPref, true);
+      else Zotero.Prefs.set(keyPref, previousKey, true);
     }
   });
 });

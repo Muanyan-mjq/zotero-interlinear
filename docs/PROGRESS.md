@@ -389,3 +389,50 @@
 7. 选择 Google 翻译或 Translate for Zotero，填入术语表后翻译。预期：行为不受影响（这两个后端不读取术语表）。
 8. 导入一个超过 3000 字符的术语表，用 LLM 后端翻译。预期：提示词只包含部分条目并注明未列入数量，翻译仍能完成。
 
+## Step 8：阅读器侧边栏聊天
+
+### 做了什么
+- 用官方 `Zotero.ItemPaneManager.registerSection()` 注册 `interlinear-chat` 面板（`src/chatPane.ts`），仅在阅读器标签页启用（`onItemChange` 中 `setEnabled(tabType === "reader")`）；header 用 16px 图标、sidenav 用 20px 图标；正文由 `bodyXHTML` 提供：隐私提示、上下文范围下拉、对话记录、输入框、发送/清空按钮、状态行。
+- 复用 Step 3 的 provider 层：`src/providers/types.ts` 新增 `ChatProvider` 接口，`src/providers/index.ts` 新增 `getChatProvider()`。OpenAI 兼容 / Claude / Gemini / Ollama 四种 LLM 后端支持聊天；Google 翻译与 Translate for Zotero 不支持，界面提示“当前引擎不支持聊天”，不发送请求。
+- 上下文范围三选一：选中段落 / 当前页（视口附近段落）/ 全文。`src/chatContext.ts` 从 SDT 视图收集段落文本，排除参考文献区、译文节点、隐藏节点和嵌套列表；全文统一 12000 字符预算，超出时优先在段落边界截断（边界位置需大于预算 60%，否则硬截断），并在状态行提示已截断。
+- 会话按 itemKey 存内存（`src/chatSession.ts`）：最多保留 20 轮，超出丢弃最旧；不同条目互不影响；重启 Zotero 即清空。
+- 聊天 system prompt（`src/providers/chatPrompts.ts`）包含目标语言显示名，并在术语表非空时追加 `buildGlossaryDirective()` 的指令。
+- 隐私提示常驻面板顶部：“聊天内容会发送到你选择的模型服务。请勿粘贴敏感信息。”
+- 上下文块只注入最新一条用户提问；历史里只存原始问答，避免每轮重复携带全文。请求期间禁用发送；失败时保留输入内容可直接重试；切换条目后，旧请求的响应不会写入新条目的界面。
+- 阅读器解析：优先在 `Zotero.Reader._readers` 中按 `itemID` 匹配；父条目没有阅读器时，回退到其 PDF 附件对应的 reader。
+- 新增 FTL 键：en-US / zh-CN `addon.ftl` 共 24 个（隐私、范围、输入框、按钮、空态、思考中、角色标签、截断提示、各类状态与错误）；`mainWindow.ftl` 各 2 个 section 头键。全部 UI 文案走 Fluent。
+- 未新增 npm 依赖；无上游代码复制。
+
+### 改动文件
+- 新增：`src/chatContext.ts`、`src/chatSession.ts`、`src/chatPane.ts`、`src/providers/chatProtocol.ts`、`src/providers/chatPrompts.ts`、`src/providers/chat.ts`、`test/chat.node.test.mjs`。
+- 修改：`src/providers/types.ts`、`src/providers/index.ts`、`src/hooks.ts`（启动时注册、关闭时注销）、`src/bilingualReader.ts`（导出 `getReaderDocument`）、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`addon/locale/en-US/mainWindow.ftl`、`addon/locale/zh-CN/mainWindow.ftl`、`package.json`（`test:unit` 与 lint 列表）、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- TDD：先写 `test/chat.node.test.mjs` 的 12 个用例，因模块不存在而失败（RED）；实现后转 GREEN。期间发现 Node 24 类型剥离无法解析 src 模块间的无扩展名 import，因此 `chatPrompts.ts` 改为只依赖类型、目标语言显示名由调用方传入。
+- `npm run build`：通过。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**68 pass / 0 fail**（56 个旧用例 + 12 个聊天用例）。
+- `npm run test:review`（Zotero headless 独立 profile）：**33 pass / 0 fail，退出码 0**。新增 6 个集成用例：面板注册（仅阅读器启用、l10n 键、bodyXHTML 结构）、三种上下文收集、段落边界截断、仅 LLM 后端暴露聊天、OpenAI 请求含术语表并能解析回复、Gemini 密钥走 header 且 URL 不含密钥。
+- 集成测试中 Zotero 会把 paneID 以 pluginID 命名空间化（变为 `interlinear-interlinear-chat`），断言改用 `endsWith`。
+
+### 不确定项
+- `Zotero.ItemPaneManager.registerSection()` 属于 Zotero 7+ 的扩展 API，版本敏感；使用点已集中在 `src/chatPane.ts` 并注释。未在 Zotero 6 验证（模板最低版本本身要求 7+，低风险）。
+- 全文上下文来自 SDT 段落：若尚未完成全文翻译，聊天只能看到已渲染的段落文本；不会读取 PDF 原始文字层。
+- 12000 字符预算按 JS 字符数计算，中英文同权；极长单段会硬截断，可能断在句子中间。
+- 第一版不流式输出（需求允许）：等待期间只显示“思考中…”，长回答需等完整响应。
+- 历史只保留 20 轮且只存原始问答；上下文快照只在当次请求注入。追问时模型不保留旧的全文上下文，这是有意的体积取舍。
+- 不显示 token 用量，不做费用估算。
+- 只支持已打开阅读器的条目；没有 reader 时提示“未找到阅读器”。
+
+### 需要手动验证的清单
+1. 安装 xpi，打开一篇 PDF 阅读器标签，右侧条目面板应出现“阅读助手”图标；在条目信息（library）标签页不应显示该面板。
+2. 打开面板：顶部隐私提示、范围下拉（选中段落/当前页/全文）、空对话占位、输入框与发送/清空按钮均显示当前界面语言文案。
+3. 选 OpenAI 兼容引擎并配置好密钥，选中一段英文，范围选“选中段落”，提问“这段在说什么？”。预期：中文回答且引用了该段；对话区出现“你/助手”两条气泡。
+4. 范围改为“当前页”再次提问；滚动到文档别处再问。预期：上下文跟随当前视口段落变化。
+5. 范围改为“全文”提问概括性问题；用一篇超长文档验证状态行出现“上下文已截断（N 字符）”提示。
+6. 连续追问两轮，确认模型能理解“它/这个方法”等指代（内存历史生效）；切换到其他条目再切回，对话仍在；重启 Zotero 后清空。
+7. 选择 Google 翻译后打开聊天面板，预期提示“当前引擎不支持聊天”，不会发出请求。
+8. 填错密钥或断网发送，预期状态行显示 HTTP/网络错误详情（不含密钥），输入框内容保留，可直接重试。
+9. 在设置里填 `gene,基因` 后提问“解释 gene 这个概念”，预期回答遵守术语表译法。
+10. 对含 PDF 附件的父条目通过条目信息面板打开聊天，预期能定位到附件阅读器的上下文，而不是提示未找到阅读器。
+

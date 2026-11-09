@@ -235,6 +235,11 @@ function getSDTStructure(reader: any): any | null {
   }
 }
 
+/** Exposed to the chat sidebar, which reads the same active SDT view. */
+export function getReaderDocument(reader: any): Document | null {
+  return getSDTDocument(reader);
+}
+
 function getDocumentRoot(doc: Document): HTMLElement | null {
   try {
     return doc.documentElement as HTMLElement | null;

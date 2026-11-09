@@ -9,3 +9,7 @@ item-section-example2-sidenav-tooltip =
 item-section-example2-button-tooltip =
     .tooltiptext = 移除此面板
 item-info-row-example-label = 示例行
+item-section-chat-head-text =
+    .label = 阅读助手
+item-section-chat-sidenav-tooltip =
+    .tooltiptext = 针对当前文献提问
