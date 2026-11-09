@@ -120,3 +120,65 @@
 4. 取消“显示左侧色带”，保存。预期：译文块左侧红线消失；重新勾选并把色带颜色改为 `#123456`，预期竖线变蓝黑。
 5. 点 🖨️ 导出打印版，用打印预览查看。预期：译文为白底黑字、字号按设置换算为 pt、色带/下划线仍保留；深色主题不会带入打印稿。
 6. 在文字颜色里输入 `red; } body { display:none` 并保存。预期：设置被拒绝（pref 变空、译文恢复跟随主题），页面无任何异常样式。
+
+## Step 3：Provider 层（Google 默认 + OpenAI 兼容 + Ollama + Translate for Zotero）
+
+### 做了什么
+- 新增 `src/providers/` 独立 provider 层：
+  - `types.ts`：`ProviderId`、`ProviderContext`、`ProviderTranslation`、`TranslationProvider` 接口。
+  - `googleProtocol.ts` / `openaiProtocol.ts`：纯协议函数（无 Zotero API），供 Node 单测直接导入。Google 负责 base URL 归一化、`client=gtx` 查询构造、响应 segment 合并；OpenAI 负责 Chat Completions 地址归一化、请求体构造、`choices[0].message.content`（含数组与 `<think>` 剥离）、XHR 响应体与错误详情提取。
+  - `google.ts`：POST 表单到 `…/translate_a/single`，无需 API 密钥；`testGoogleConnection()` 用 “Hello” 做 15 秒超时探测。
+  - `openai.ts`：OpenAI 兼容 Chat Completions，适配 Ollama `/v1`、LM Studio、中转服务与官方 API；API Key 为空时不发 `Authorization`；错误详情截断 300 字符且**永不包含密钥**；`testOpenAIConnection()` 使用最小 system prompt。
+  - `ollama.ts`：原生 `/api/chat`，`stream:false`、`keep_alive:"30m"`、temperature 0.1。
+  - `pdftranslate.ts`：把原有 Translate for Zotero 调用迁入 provider，保留 `langto` 与 `isFailureText` 判定。
+  - `prompts.ts`：语言名映射、`buildLanguageDirective()`（OpenAI 系统提示词追加）、`buildOllamaSystemPrompt()`（中性学术翻译 + BRSEG 保留规则的 PR #19 思路）。
+  - `index.ts`：按 `getEngine()` 构造 provider；设置页只依赖纯协议模块，避免循环依赖。
+- 新增 `src/translationFailure.ts`：把 `isFailureText()` 从 `bilingualReader.ts` 抽出，并补充 Google/OpenAI 的新失败文案特征。
+- `bilingualReader.ts`：删除本地 `translateWithPDFTranslate`/`translateWithOllama` 与重复失败判定，统一走 `getTranslationProvider(engine)`；缓存读写传入目标语言；并发上限按引擎调整（Ollama 串行、Google 最多 2、其余按设置）。
+- `settings.ts`：
+  - `TranslationEngine` 改为 4 值 `google | openai | ollama | pdftranslate`，默认 **google**。
+  - 新增 `google.baseUrl`、`openai.{endpoint,model,apiKey,prompt,temperature}`、`language.{source,target}` 读写与校验；OpenAI 端点保存时归一化为完整 Chat Completions 地址。
+  - `getOpenAISystemPrompt()` = 用户提示词 + 自动语言指令。
+  - `getCacheEngineTag()` 纳入 provider 配置：Google 含归一化端点；OpenAI 含端点/模型/提示词与温度哈希；Ollama 含地址/模型；语言对非默认时追加 `:{source}>{target}`。**任何 API Key 都不进入缓存键**。
+- `translationCache.ts`：新增 `DEFAULT_TARGET_LANG = "zh-CN"` 与 `safeLanguage()`；键格式为 `…{targetLang}`，默认目标语言保持旧键兼容；迁移写入也带目标语言。
+- 设置页重构：
+  - 引擎下拉 4 项（Google 默认 / OpenAI 兼容 / Ollama / Translate for Zotero），选项文字通过 Fluent。
+  - 新增“语言”分组：原文语言 14 项（含自动检测）、译文语言 13 项；选项在运行时由 `SOURCE_LANGUAGES`/`TARGET_LANGUAGES` + Fluent 生成。
+  - 新增 Google 分组：服务地址 + 测试连接。
+  - 新增 OpenAI 兼容分组：接口地址、模型、API 密钥（password 输入）、温度、系统提示词（textarea）+ 测试连接。
+  - 顶部新增隐私提示（Fluent）：**段落文本会发送到你选择的翻译服务**。
+  - 四个后端分组按当前引擎显示/隐藏；测试按钮使用 provider 的探测函数并输出本地化状态。
+- `addon/prefs.js`：默认引擎改 `google`，新增 `google.baseUrl`、`openai.*`、`language.*` 默认值；Ollama/外观默认保持。
+- en-US / zh-CN `addon.ftl` 新增 provider 界面、语言名、测试状态与全部 provider 错误文案。
+- OpenAI provider 代码改编自 quillamio/bilingual-reader PR #20（作者 daxiaxiong88，AGPL-3.0-or-later）：文件头已注明来源与改动；本提交说明同样注明。Ollama 提示词采用上游 PR #19 的中性学术翻译与分段标记保留规则。
+
+### 改动文件
+- 新增：`src/providers/{types,googleProtocol,openaiProtocol,prompts,google,openai,ollama,pdftranslate,index}.ts`、`src/translationFailure.ts`、`test/providers.node.test.mjs`。
+- 修改：`src/settings.ts`、`src/translationCache.ts`、`src/bilingualReader.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/prefs.js`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`package.json`（lint 与 unit 列表）、`test/startup.test.ts`、`typings/i10n.d.ts`、`typings/prefs.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过（先 `npx zotero-plugin build` 生成新 FTL/prefs typings）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**34 pass / 0 fail**（pipeline 5 + appearance 19 + providers 10）。provider 测试覆盖 Google 端点/查询/响应解析、OpenAI 端点归一化/请求体/内容提取/错误截断/XHR 响应体。
+- `npm run test:review`（Zotero 内集成，headless 独立 profile）：**19 pass / 0 fail**。新增用例：
+  - 偏好页 4 个引擎选项、默认 google、14/13 个语言选项、Google 默认地址与分组可见性。
+  - Google 翻译链路：断言 POST、`/translate_a/single`、`sl=en`、`tl=zh-CN`、译文写入 DOM、缓存标签含 `google:` 与 `:en>zh-CN`。
+  - OpenAI 链路：断言完整 `/v1/chat/completions`、`Bearer` 头、请求体消息，且**缓存标签不含 API Key**。
+- 实网探测（非集成断言）：`translate.googleapis.com` 直连超时；经 `HTTPS_PROXY=http://127.0.0.1:7897` 的 curl 返回有效 JSON。Zotero.HTTP 是否继承系统代理**未在 headless 中实测**（集成用例全部 stub 了 HTTP）。
+
+### 不确定项
+- Google 免费 `client=gtx` 端点不是官方付费 API，稳定性与条款风险**不确定**；部分网络环境可能直接不可用，需用户填写可信镜像/代理或改用其他后端。
+- Google 的 POST 表单在该端点可用性只经 curl 验证；Zotero 内真实请求未跑通实网（仅 mock）。
+- 默认 OpenAI 端点指向本机 Ollama 的 `/v1`。未装 Ollama 的用户点“测试连接”会得到网络错误，这是预期行为，但设置页尚未做“首次使用引导”文案。
+- 语言代码直接透传：Google 接受 `auto`/`zh-CN` 等；OpenAI/Ollama 走自然语言指令。个别中转服务对 `zh-CN` 这类代码的接受度**不确定**。
+- `preferences.xhtml` 中“翻译范围/速度/缓存/Ollama/刷新说明”等旧分组仍是硬编码中文；按计划留给 Step 9 统一 i18n。Step 3 新增的所有文本均为 Fluent。
+- API Key 仅存于 Zotero prefs（明文偏好存储，与 Zotero 其他插件一致）；未额外接入系统钥匙串。
+
+### 需要手动验证的清单
+1. 安装 `.scaffold/build/interlinear.xpi` 后打开设置→Interlinear。预期：引擎默认 **Google 翻译**；顶部显示隐私提示；下方只显示 Google 分组。
+2. 点 Google 分组的“测试连接”。预期：能联网时显示“连接成功，测试译文：你好”；无法直连时显示带 detail 的网络错误。若失败，把服务地址改为你信任的镜像后重试。
+3. 改引擎为 **OpenAI 兼容接口**。预期：Google 分组隐藏，出现接口地址/模型/API 密钥/温度/系统提示词。填本机 Ollama `http://127.0.0.1:11434/v1/chat/completions`、模型 `gpt-oss:20b`，密钥留空，测试连接。预期：成功且请求无 Authorization 头。
+4. 填一个需要密钥的服务（如官方 OpenAI），输入密钥后测试连接。预期：成功；随后打开 Zotero 调试输出，确认日志中没有密钥字符串。
+5. 把原文语言设为英语、译文语言设为日语，保存并翻译一段。预期：Google 请求含 `sl=en&tl=ja`；切换回中文后重新翻译不会命中日语缓存。
+6. 打开一篇论文，先 Google 翻两段，再切到 pdftranslate 刷新。预期：两种后端的缓存互不串用；切回 Google 时已翻段落直接命中缓存。
+7. 在 OpenAI 接口地址填 `not-a-url` 并保存。预期：回退到默认 `http://127.0.0.1:11434/v1/chat/completions`，不会保存非法值。

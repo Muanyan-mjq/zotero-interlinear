@@ -1,41 +1,67 @@
 import {
+  DEFAULT_GOOGLE_BASE_URL,
   DEFAULT_MAX_CHARS_PER_REQUEST,
   DEFAULT_MAX_BATCH_PARAGRAPHS,
   DEFAULT_MAX_CONCURRENT,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_OLLAMA_MODEL,
   DEFAULT_OLLAMA_URL,
+  DEFAULT_OPENAI_ENDPOINT,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_PROMPT,
+  DEFAULT_OPENAI_TEMPERATURE,
   DEFAULT_REQUEST_GAP_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   DEFAULT_SKIP_LAST_PAGES,
+  DEFAULT_SOURCE_LANGUAGE,
+  DEFAULT_TARGET_LANGUAGE,
+  SOURCE_LANGUAGES,
+  TARGET_LANGUAGES,
   getAppearance,
   getEngine,
+  getGoogleBaseURL,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
   getMaxConcurrent,
   getMaxConsecutiveErrors,
   getOllamaModel,
   getOllamaURL,
+  getOpenAIApiKey,
+  getOpenAIEndpoint,
+  getOpenAIModel,
+  getOpenAIPrompt,
+  getOpenAITemperature,
   getRequestGapMs,
   getRequestTimeoutMs,
   getSkipLastPages,
+  getSourceLanguage,
+  getTargetLanguage,
   setEngine,
   setAppearance,
+  setGoogleBaseURL,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
   setMaxConcurrent,
   setMaxConsecutiveErrors,
   setOllamaModel,
   setOllamaURL,
+  setOpenAIApiKey,
+  setOpenAIEndpoint,
+  setOpenAIModel,
+  setOpenAIPrompt,
+  setOpenAITemperature,
   setRequestGapMs,
   setRequestTimeoutMs,
   setSkipLastPages,
+  setSourceLanguage,
+  setTargetLanguage,
   type TranslationEngine,
 } from "../settings";
 import { DEFAULT_APPEARANCE, type AppearanceSettings } from "../appearance";
 import { getString } from "../utils/locale";
 import { refreshTranslationStyles } from "../bilingualReader";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
+import { testGoogleConnection, testOpenAIConnection } from "../providers";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -52,8 +78,75 @@ function updateBackendVisibility(doc: Document): void {
   const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
   const pdfSection = getElement<HTMLElement>(doc, "interlinear-pdftranslate-section");
   const ollamaSection = getElement<HTMLElement>(doc, "interlinear-ollama-section");
+  const googleSection = getElement<HTMLElement>(doc, "interlinear-google-section");
+  const openaiSection = getElement<HTMLElement>(doc, "interlinear-openai-section");
   if (pdfSection) pdfSection.hidden = engine !== "pdftranslate";
   if (ollamaSection) ollamaSection.hidden = engine !== "ollama";
+  if (googleSection) googleSection.hidden = engine !== "google";
+  if (openaiSection) openaiSection.hidden = engine !== "openai";
+}
+
+type FluentKey = Parameters<typeof getString>[0];
+
+function fillProviderLabels(doc: Document): void {
+  const entries: Array<[string, FluentKey]> = [
+    ["interlinear-introduction", "settings-intro"],
+    ["interlinear-privacy-notice", "settings-privacy-notice"],
+    ["interlinear-engine-label", "provider-engine-label"],
+    ["interlinear-engine-google", "provider-engine-google"],
+    ["interlinear-engine-openai", "provider-engine-openai"],
+    ["interlinear-engine-ollama", "provider-engine-ollama"],
+    ["interlinear-engine-pdftranslate", "provider-engine-pdftranslate"],
+    ["interlinear-language-title", "language-title"],
+    ["interlinear-source-language-label", "language-source-label"],
+    ["interlinear-target-language-label", "language-target-label"],
+    ["interlinear-language-help", "language-help"],
+    ["interlinear-google-title", "provider-google-title"],
+    ["interlinear-google-base-label", "provider-google-base-label"],
+    ["interlinear-google-base-help", "provider-google-base-help"],
+    ["interlinear-google-help", "provider-google-help"],
+    ["interlinear-openai-title", "provider-openai-title"],
+    ["interlinear-openai-endpoint-label", "provider-openai-endpoint-label"],
+    ["interlinear-openai-endpoint-help", "provider-openai-endpoint-help"],
+    ["interlinear-openai-model-label", "provider-openai-model-label"],
+    ["interlinear-openai-api-key-label", "provider-openai-api-key-label"],
+    ["interlinear-openai-api-key-help", "provider-openai-api-key-help"],
+    ["interlinear-openai-temperature-label", "provider-openai-temperature-label"],
+    ["interlinear-openai-temperature-help", "provider-openai-temperature-help"],
+    ["interlinear-openai-prompt-label", "provider-openai-prompt-label"],
+    ["interlinear-openai-prompt-help", "provider-openai-prompt-help"],
+    ["interlinear-test-google", "provider-test-connection"],
+    ["interlinear-test-openai", "provider-test-connection"],
+  ];
+  for (const [id, key] of entries) {
+    const element = getElement<HTMLElement>(doc, id);
+    if (element) element.textContent = getString(key);
+  }
+}
+
+function languageName(code: string): string {
+  return getString(`language-name-${code}` as FluentKey);
+}
+
+function fillLanguageOptions(
+  doc: Document,
+  id: string,
+  codes: readonly string[],
+  selected: string,
+): void {
+  const select = getElement<HTMLSelectElement>(doc, id);
+  if (!select) return;
+  const options = codes.map((code) => {
+    const option = doc.createElementNS(
+      "http://www.w3.org/1999/xhtml",
+      "option",
+    ) as HTMLOptionElement;
+    option.value = code;
+    option.textContent = languageName(code);
+    return option;
+  });
+  select.replaceChildren(...options);
+  select.value = selected;
 }
 
 function fillAppearanceLabels(doc: Document): void {
@@ -106,7 +199,15 @@ function readInputText(doc: Document, id: string, fallback = ""): string {
 
 function saveSettings(doc: Document): void {
   const engineValue = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
-  const engine: TranslationEngine = engineValue === "ollama" ? "ollama" : "pdftranslate";
+  const validEngines: TranslationEngine[] = [
+    "google",
+    "openai",
+    "ollama",
+    "pdftranslate",
+  ];
+  const engine = validEngines.includes(engineValue as TranslationEngine)
+    ? (engineValue as TranslationEngine)
+    : "google";
   const url =
     getElement<HTMLInputElement>(doc, "interlinear-ollama-url")?.value || DEFAULT_OLLAMA_URL;
   const model =
@@ -114,6 +215,26 @@ function saveSettings(doc: Document): void {
     DEFAULT_OLLAMA_MODEL;
 
   setEngine(engine);
+  setSourceLanguage(
+    getElement<HTMLSelectElement>(doc, "interlinear-source-language")?.value ||
+      DEFAULT_SOURCE_LANGUAGE,
+  );
+  setTargetLanguage(
+    getElement<HTMLSelectElement>(doc, "interlinear-target-language")?.value ||
+      DEFAULT_TARGET_LANGUAGE,
+  );
+  setGoogleBaseURL(
+    readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL,
+  );
+  setOpenAIEndpoint(
+    readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT,
+  );
+  setOpenAIModel(readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL);
+  setOpenAIApiKey(readInputText(doc, "interlinear-openai-api-key"));
+  setOpenAIPrompt(readInputText(doc, "interlinear-openai-prompt") || DEFAULT_OPENAI_PROMPT);
+  setOpenAITemperature(
+    readNumberInput(doc, "interlinear-openai-temperature", DEFAULT_OPENAI_TEMPERATURE),
+  );
   setOllamaURL(url);
   setOllamaModel(model);
   setSkipLastPages(
@@ -208,6 +329,62 @@ async function testOllama(doc: Document): Promise<void> {
     }
   } catch (error: any) {
     setStatus(doc, `Ollama 连接失败：${error?.message || String(error)}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function testGoogle(doc: Document): Promise<void> {
+  const baseURL =
+    readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL;
+  const targetLanguage =
+    getElement<HTMLSelectElement>(doc, "interlinear-target-language")?.value ||
+    getTargetLanguage();
+
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-test-google");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  setStatus(doc, getString("provider-test-running"));
+  try {
+    const text = await testGoogleConnection(baseURL, targetLanguage);
+    setStatus(doc, getString("provider-test-success", { args: { text } }));
+  } catch (error: any) {
+    setStatus(
+      doc,
+      getString("provider-test-failed", {
+        args: { detail: String(error?.message || error) },
+      }),
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function testOpenAI(doc: Document): Promise<void> {
+  const endpoint =
+    readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT;
+  const model = readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL;
+  const apiKey = readInputText(doc, "interlinear-openai-api-key");
+  const temperature = readNumberInput(
+    doc,
+    "interlinear-openai-temperature",
+    DEFAULT_OPENAI_TEMPERATURE,
+  );
+
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-test-openai");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  setStatus(doc, getString("provider-test-running"));
+  try {
+    const text = await testOpenAIConnection({ endpoint, apiKey, model, temperature });
+    setStatus(doc, getString("provider-test-success", { args: { text } }));
+  } catch (error: any) {
+    setStatus(
+      doc,
+      getString("provider-test-failed", {
+        args: { detail: String(error?.message || error) },
+      }),
+    );
   } finally {
     if (button) button.disabled = false;
   }
@@ -316,10 +493,25 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     doc,
     "interlinear-appearance-ribbon-color",
   );
+  const googleBaseURL = getElement<HTMLInputElement>(doc, "interlinear-google-base-url");
+  const openAIEndpoint = getElement<HTMLInputElement>(doc, "interlinear-openai-endpoint");
+  const openAIModel = getElement<HTMLInputElement>(doc, "interlinear-openai-model");
+  const openAIApiKey = getElement<HTMLInputElement>(doc, "interlinear-openai-api-key");
+  const openAITemperature = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-openai-temperature",
+  );
+  const openAIPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-openai-prompt");
 
   if (engine) engine.value = getEngine();
   if (url) url.value = getOllamaURL();
   if (model) model.value = getOllamaModel();
+  if (googleBaseURL) googleBaseURL.value = getGoogleBaseURL();
+  if (openAIEndpoint) openAIEndpoint.value = getOpenAIEndpoint();
+  if (openAIModel) openAIModel.value = getOpenAIModel();
+  if (openAIApiKey) openAIApiKey.value = getOpenAIApiKey();
+  if (openAITemperature) openAITemperature.value = String(getOpenAITemperature());
+  if (openAIPrompt) openAIPrompt.value = getOpenAIPrompt();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   if (maxConcurrent) maxConcurrent.value = String(getMaxConcurrent());
   if (gap) gap.value = String(getRequestGapMs());
@@ -343,6 +535,9 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (appearanceRibbonColor) appearanceRibbonColor.value = appearance.ribbonColor;
 
   fillAppearanceLabels(doc);
+  fillProviderLabels(doc);
+  fillLanguageOptions(doc, "interlinear-source-language", SOURCE_LANGUAGES, getSourceLanguage());
+  fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
   updateBackendVisibility(doc);
   updatePDFTranslateStatus(doc);
   updateCacheStatus(doc);
@@ -361,6 +556,20 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     "click",
     () => {
       void testOllama(doc);
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-test-google")?.addEventListener(
+    "click",
+    () => {
+      void testGoogle(doc);
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-test-openai")?.addEventListener(
+    "click",
+    () => {
+      void testOpenAI(doc);
     },
   );
 

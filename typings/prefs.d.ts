@@ -8,8 +8,16 @@ declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
       "engine": string;
+      "google.baseUrl": string;
+      "openai.endpoint": string;
+      "openai.model": string;
+      "openai.apiKey": string;
+      "openai.prompt": string;
+      "openai.temperature": string;
       "ollama.url": string;
       "ollama.model": string;
+      "language.source": string;
+      "language.target": string;
       "requestGapMs": number;
       "maxConcurrent": number;
       "maxCharsPerRequest": number;

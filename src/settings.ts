@@ -4,16 +4,53 @@ import {
   normalizeAppearance,
   type AppearanceSettings,
 } from "./appearance";
+import { DEFAULT_GOOGLE_BASE_URL, normalizeGoogleEndpoint } from "./providers/googleProtocol";
+import { normalizeChatCompletionsEndpoint } from "./providers/openaiProtocol";
+import { buildLanguageDirective } from "./providers/prompts";
+import type { ProviderId } from "./providers/types";
 
 export type { AppearanceSettings } from "./appearance";
+export { DEFAULT_GOOGLE_BASE_URL };
 
 const BASE = "extensions.zotero.interlinear";
 const LEGACY_BASE = "extensions.zotero.bilingualreader";
 
-export type TranslationEngine = "pdftranslate" | "ollama";
+export type TranslationEngine = ProviderId;
 
 export const DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434";
 export const DEFAULT_OLLAMA_MODEL = "gpt-oss:20b";
+export const DEFAULT_OPENAI_ENDPOINT = "http://127.0.0.1:11434/v1/chat/completions";
+export const DEFAULT_OPENAI_MODEL = "gpt-oss:20b";
+export const DEFAULT_OPENAI_TEMPERATURE = 0.2;
+export const DEFAULT_OPENAI_PROMPT = `你是学术论文翻译专家。把用户提供的段落准确翻译为指定的目标语言。
+
+要求：
+1. 只输出译文，不要解释、总结或添加原文没有的内容。
+2. 保持学术语体，术语使用领域通行译法并前后一致。
+3. 原样保留数字、单位、公式、变量、基因/蛋白/药物名称、文献引用和图表编号。
+4. 若原文含 [[BRSEG_0000]] 这类分段标记，必须逐字保留并保持顺序，不得翻译、删除或合并段落。
+5. 被标记分隔的段落逐段翻译，输出顺序与输入一致。`;
+export const DEFAULT_SOURCE_LANGUAGE = "auto";
+export const DEFAULT_TARGET_LANGUAGE = "zh-CN";
+export const SOURCE_LANGUAGES = [
+  "auto",
+  "en",
+  "zh-CN",
+  "zh-TW",
+  "ja",
+  "ko",
+  "fr",
+  "de",
+  "es",
+  "ru",
+  "pt",
+  "it",
+  "ar",
+  "hi",
+] as const;
+export const TARGET_LANGUAGES = SOURCE_LANGUAGES.filter(
+  (code) => code !== "auto",
+) as readonly string[];
 export const DEFAULT_REQUEST_GAP_MS = 250;
 export const DEFAULT_MAX_CONCURRENT = 2;
 export const DEFAULT_MAX_CHARS_PER_REQUEST = 2800;
@@ -25,6 +62,14 @@ export const DEFAULT_SKIP_LAST_PAGES = 1;
 const ENGINE_PREF = `${BASE}.engine`;
 const OLLAMA_URL_PREF = `${BASE}.ollama.url`;
 const OLLAMA_MODEL_PREF = `${BASE}.ollama.model`;
+const GOOGLE_BASE_URL_PREF = `${BASE}.google.baseUrl`;
+const OPENAI_ENDPOINT_PREF = `${BASE}.openai.endpoint`;
+const OPENAI_MODEL_PREF = `${BASE}.openai.model`;
+const OPENAI_API_KEY_PREF = `${BASE}.openai.apiKey`;
+const OPENAI_PROMPT_PREF = `${BASE}.openai.prompt`;
+const OPENAI_TEMPERATURE_PREF = `${BASE}.openai.temperature`;
+const LANGUAGE_SOURCE_PREF = `${BASE}.language.source`;
+const LANGUAGE_TARGET_PREF = `${BASE}.language.target`;
 const REQUEST_GAP_PREF = `${BASE}.requestGapMs`;
 const MAX_CONCURRENT_PREF = `${BASE}.maxConcurrent`;
 const MAX_CHARS_PREF = `${BASE}.maxCharsPerRequest`;
@@ -80,11 +125,42 @@ function setNumberPref(key: string, value: number, min: number, max: number): vo
 }
 
 export function getEngine(): TranslationEngine {
-  return getStringPref(ENGINE_PREF, "pdftranslate") === "ollama" ? "ollama" : "pdftranslate";
+  const value = getStringPref(ENGINE_PREF, "google");
+  return value === "ollama" || value === "openai" || value === "pdftranslate"
+    ? value
+    : "google";
 }
 
 export function setEngine(engine: TranslationEngine): void {
   setStringPref(ENGINE_PREF, engine);
+}
+
+export function getSourceLanguage(): string {
+  const value = getStringPref(LANGUAGE_SOURCE_PREF, DEFAULT_SOURCE_LANGUAGE);
+  return (SOURCE_LANGUAGES as readonly string[]).includes(value)
+    ? value
+    : DEFAULT_SOURCE_LANGUAGE;
+}
+
+export function setSourceLanguage(language: string): void {
+  setStringPref(
+    LANGUAGE_SOURCE_PREF,
+    (SOURCE_LANGUAGES as readonly string[]).includes(language)
+      ? language
+      : DEFAULT_SOURCE_LANGUAGE,
+  );
+}
+
+export function getTargetLanguage(): string {
+  const value = getStringPref(LANGUAGE_TARGET_PREF, DEFAULT_TARGET_LANGUAGE);
+  return TARGET_LANGUAGES.includes(value) ? value : DEFAULT_TARGET_LANGUAGE;
+}
+
+export function setTargetLanguage(language: string): void {
+  setStringPref(
+    LANGUAGE_TARGET_PREF,
+    TARGET_LANGUAGES.includes(language) ? language : DEFAULT_TARGET_LANGUAGE,
+  );
 }
 
 export function getOllamaURL(): string {
@@ -101,6 +177,72 @@ export function getOllamaModel(): string {
 
 export function setOllamaModel(model: string): void {
   setStringPref(OLLAMA_MODEL_PREF, model.trim() || DEFAULT_OLLAMA_MODEL);
+}
+
+export function getGoogleBaseURL(): string {
+  return getStringPref(GOOGLE_BASE_URL_PREF, DEFAULT_GOOGLE_BASE_URL);
+}
+
+export function setGoogleBaseURL(url: string): void {
+  setStringPref(GOOGLE_BASE_URL_PREF, url.trim() || DEFAULT_GOOGLE_BASE_URL);
+}
+
+export function getOpenAIEndpoint(): string {
+  return getStringPref(OPENAI_ENDPOINT_PREF, DEFAULT_OPENAI_ENDPOINT);
+}
+
+export function setOpenAIEndpoint(endpoint: string): void {
+  setStringPref(
+    OPENAI_ENDPOINT_PREF,
+    normalizeChatCompletionsEndpoint(endpoint) || DEFAULT_OPENAI_ENDPOINT,
+  );
+}
+
+export function getOpenAIModel(): string {
+  return getStringPref(OPENAI_MODEL_PREF, DEFAULT_OPENAI_MODEL);
+}
+
+export function setOpenAIModel(model: string): void {
+  setStringPref(OPENAI_MODEL_PREF, model.trim() || DEFAULT_OPENAI_MODEL);
+}
+
+export function getOpenAIApiKey(): string {
+  return getRawStringPref(OPENAI_API_KEY_PREF).trim();
+}
+
+export function setOpenAIApiKey(apiKey: string): void {
+  setStringPref(OPENAI_API_KEY_PREF, apiKey.trim());
+}
+
+export function getOpenAIPrompt(): string {
+  return (
+    getRawStringPref(OPENAI_PROMPT_PREF).trim() || DEFAULT_OPENAI_PROMPT
+  );
+}
+
+export function setOpenAIPrompt(prompt: string): void {
+  setStringPref(OPENAI_PROMPT_PREF, prompt.trim() || DEFAULT_OPENAI_PROMPT);
+}
+
+export function getOpenAITemperature(): number {
+  const value = Number(getStringPref(OPENAI_TEMPERATURE_PREF, String(DEFAULT_OPENAI_TEMPERATURE)));
+  if (!Number.isFinite(value)) return DEFAULT_OPENAI_TEMPERATURE;
+  return Math.min(2, Math.max(0, value));
+}
+
+export function setOpenAITemperature(value: number): void {
+  const normalized = Number.isFinite(value)
+    ? Math.min(2, Math.max(0, value))
+    : DEFAULT_OPENAI_TEMPERATURE;
+  setStringPref(OPENAI_TEMPERATURE_PREF, String(normalized));
+}
+
+/** The user-editable prompt plus the languages selected for this run. */
+export function getOpenAISystemPrompt(): string {
+  return `${getOpenAIPrompt()}\n\n${buildLanguageDirective(
+    getSourceLanguage(),
+    getTargetLanguage(),
+  )}`;
 }
 
 export function getRequestGapMs(): number {
@@ -212,13 +354,42 @@ export function getResolvedPDFTranslateService(): string {
   }
 }
 
+function hashTag(text: string): string {
+  let result = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    result = Math.imul(result ^ text.charCodeAt(i), 16777619);
+  }
+  return (result >>> 0).toString(16);
+}
+
+function languageTag(): string {
+  const source = getSourceLanguage();
+  const target = getTargetLanguage();
+  // Keep the historical tag for the default pair so existing caches still hit.
+  return source === DEFAULT_SOURCE_LANGUAGE && target === DEFAULT_TARGET_LANGUAGE
+    ? ""
+    : `:${source}>${target}`;
+}
+
 export function getCacheEngineTag(actualPDFTranslateService?: string): string {
-  if (getEngine() === "ollama") {
-    return `ollama:${getOllamaURL()}:${getOllamaModel()}`;
+  const engine = getEngine();
+  const language = languageTag();
+  if (engine === "ollama") {
+    return `ollama:${getOllamaURL()}:${getOllamaModel()}${language}`;
+  }
+  if (engine === "openai") {
+    // The API key is intentionally absent: rotating a key must not invalidate
+    // translations, and cache keys must never carry secrets.
+    return `openai:${normalizeChatCompletionsEndpoint(getOpenAIEndpoint())}:${getOpenAIModel()}:${hashTag(
+      `${getOpenAIPrompt()}\u0000${getOpenAITemperature()}`,
+    )}${language}`;
+  }
+  if (engine === "google") {
+    return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}`;
   }
   return `pdftranslate:${
     actualPDFTranslateService || getResolvedPDFTranslateService() || "default"
-  }`;
+  }${language}`;
 }
 
 /**

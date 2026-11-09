@@ -1,6 +1,14 @@
-pref("engine", "pdftranslate");
+pref("engine", "google");
+pref("google.baseUrl", "https://translate.googleapis.com");
+pref("openai.endpoint", "http://127.0.0.1:11434/v1/chat/completions");
+pref("openai.model", "gpt-oss:20b");
+pref("openai.apiKey", "");
+pref("openai.prompt", "");
+pref("openai.temperature", "0.2");
 pref("ollama.url", "http://127.0.0.1:11434");
 pref("ollama.model", "gpt-oss:20b");
+pref("language.source", "auto");
+pref("language.target", "zh-CN");
 pref("requestGapMs", 250);
 pref("maxConcurrent", 2);
 pref("maxCharsPerRequest", 2800);

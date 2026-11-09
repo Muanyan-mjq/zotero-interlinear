@@ -3,6 +3,7 @@ import { config } from "../package.json";
 import { toggleBilingualReading } from "../src/bilingualReader";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
+import { getCacheEngineTag } from "../src/settings";
 
 describe("startup", function () {
   it("should have plugin instance defined", function () {
@@ -40,16 +41,44 @@ describe("startup", function () {
 
       assert.deepEqual(
         Array.from(engine?.options || []).map((option) => option.value),
-        ["pdftranslate", "ollama"],
+        ["google", "openai", "ollama", "pdftranslate"],
       );
-      assert.equal(engine?.value, "pdftranslate");
+      assert.equal(engine?.value, "google");
       assert.equal(skipLastPages?.value, "1");
-      assert.equal(
+      assert.isNotEmpty(
         win?.document
           .getElementById("interlinear-introduction")
           ?.textContent?.replace(/\s+/gu, " ")
           .trim(),
-        "Interlinear 在 Zotero 10 新 PDF 阅读模式中按段落显示英文原文和中文译文。默认使用 Translate for Zotero（推荐使用google，其次必应）；Ollama 作为可选后端保留。",
+      );
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-privacy-notice")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+      );
+      const sourceLanguage = win?.document.getElementById(
+        "interlinear-source-language",
+      ) as HTMLSelectElement | null;
+      const targetLanguage = win?.document.getElementById(
+        "interlinear-target-language",
+      ) as HTMLSelectElement | null;
+      assert.equal(sourceLanguage?.options.length, 14);
+      assert.equal(targetLanguage?.options.length, 13);
+      assert.equal(sourceLanguage?.value, "auto");
+      assert.equal(targetLanguage?.value, "zh-CN");
+      const googleBaseURL = win?.document.getElementById(
+        "interlinear-google-base-url",
+      ) as HTMLInputElement | null;
+      assert.equal(googleBaseURL?.value, "https://translate.googleapis.com");
+      assert.isFalse(
+        win?.document.getElementById("interlinear-google-section")?.hidden ?? true,
+      );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-openai-section")?.hidden ?? false,
+      );
+      assert.isTrue(
+        win?.document.getElementById("interlinear-pdftranslate-section")?.hidden ?? false,
       );
       assert.notExists(win?.document.getElementById("interlinear-pdftranslate-service"));
       assert.include(
@@ -390,6 +419,158 @@ describe("startup", function () {
       (Zotero.HTTP as any).request = previousRequest;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
+    }
+  });
+
+  it("should translate through Google with the selected language pair", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const sourcePref = "extensions.zotero.interlinear.language.source";
+    const targetPref = "extensions.zotero.interlinear.language.target";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousSource = Zotero.Prefs.get(sourcePref, true);
+    const previousTarget = Zotero.Prefs.get(targetPref, true);
+    const previousRequest = Zotero.HTTP.request;
+    let requestedMethod = "";
+    let requestedURL = "";
+    let requestedBody = "";
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("google-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `A synthetic Google paragraph ${Date.now()}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483642,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "google", true);
+      Zotero.Prefs.set(sourcePref, "en", true);
+      Zotero.Prefs.set(targetPref, "zh-CN", true);
+      (Zotero.HTTP as any).request = async (
+        method: string,
+        url: string,
+        options: any,
+      ) => {
+        requestedMethod = method;
+        requestedURL = url;
+        requestedBody = String(options?.body || "");
+        return {
+          status: 200,
+          response: JSON.stringify([[["谷歌集成测试译文。", "source", null, null, 1]]]),
+        };
+      };
+
+      await toggleBilingualReading(reader);
+
+      const translated = doc.querySelector(".interlinear-translation");
+      assert.equal(requestedMethod, "POST");
+      assert.match(requestedURL, /translate_a\/single$/u);
+      assert.include(requestedBody, "sl=en");
+      assert.include(requestedBody, "tl=zh-CN");
+      assert.equal(translated?.textContent, "谷歌集成测试译文。");
+      assert.equal(translated?.getAttribute("data-state"), "done");
+      assert.match(getCacheEngineTag(), /^google:/u);
+      assert.include(getCacheEngineTag(), ":en>zh-CN");
+    } finally {
+      await toggleBilingualReading(reader);
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of [
+        [enginePref, previousEngine],
+        [sourcePref, previousSource],
+        [targetPref, previousTarget],
+      ] as Array<[string, unknown]>) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value, true);
+      }
+    }
+  });
+
+  it("should translate through OpenAI-compatible endpoints without leaking the key", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const apiKeyPref = "extensions.zotero.interlinear.openai.apiKey";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousApiKey = Zotero.Prefs.get(apiKeyPref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const secret = `sk-integration-${Date.now()}`;
+    let requestedURL = "";
+    let requestedHeaders: Record<string, string> = {};
+    let requestedBody: any = null;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("openai-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `A synthetic OpenAI paragraph ${Date.now()}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483641,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "openai", true);
+      Zotero.Prefs.set(apiKeyPref, secret, true);
+      (Zotero.HTTP as any).request = async (
+        _method: string,
+        url: string,
+        options: any,
+      ) => {
+        requestedURL = url;
+        requestedHeaders = options?.headers || {};
+        requestedBody = JSON.parse(String(options?.body || "{}"));
+        return {
+          status: 200,
+          response: JSON.stringify({
+            choices: [{ message: { content: "OpenAI 集成测试译文。" } }],
+          }),
+        };
+      };
+
+      await toggleBilingualReading(reader);
+
+      const translated = doc.querySelector(".interlinear-translation");
+      assert.match(requestedURL, /\/v1\/chat\/completions$/u);
+      assert.equal(requestedHeaders.Authorization, `Bearer ${secret}`);
+      assert.equal(requestedBody?.messages?.[1]?.content, paragraph.textContent);
+      assert.equal(translated?.textContent, "OpenAI 集成测试译文。");
+      assert.notInclude(getCacheEngineTag(), secret);
+    } finally {
+      await toggleBilingualReading(reader);
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of [
+        [enginePref, previousEngine],
+        [apiKeyPref, previousApiKey],
+      ] as Array<[string, unknown]>) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value, true);
+      }
     }
   });
 

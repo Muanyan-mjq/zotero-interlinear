@@ -6,21 +6,164 @@
   id="interlinear-settings-root"
   onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
 >
-  <label><html:h2>Interlinear 中英对照阅读</html:h2></label>
+  <label><html:h2>Interlinear</html:h2></label>
   <html:p
     id="interlinear-introduction"
-    style="margin: 0 0 12px 0; line-height: 1.6; max-width: 760px"
-  >
-    Interlinear 在 Zotero 10 新 PDF 阅读模式中按段落显示英文原文和中文译文。默认使用 Translate
-    for Zotero（推荐使用google，其次必应）；Ollama 作为可选后端保留。
-  </html:p>
+    style="margin: 0 0 8px 0; line-height: 1.6; max-width: 760px"
+  ></html:p>
+  <html:p
+    id="interlinear-privacy-notice"
+    style="margin: 0 0 12px 0; line-height: 1.6; max-width: 760px; font-weight: 600"
+  ></html:p>
 
   <hbox align="center" style="margin-bottom: 10px">
-    <html:label for="interlinear-engine" style="min-width: 130px">翻译后端</html:label>
+    <html:label id="interlinear-engine-label" for="interlinear-engine" style="min-width: 130px"
+    ></html:label>
     <html:select id="interlinear-engine" style="min-width: 320px; padding: 4px 8px">
-      <html:option value="pdftranslate">Translate for Zotero（推荐）</html:option>
-      <html:option value="ollama">Ollama</html:option>
+      <html:option id="interlinear-engine-google" value="google"></html:option>
+      <html:option id="interlinear-engine-openai" value="openai"></html:option>
+      <html:option id="interlinear-engine-ollama" value="ollama"></html:option>
+      <html:option id="interlinear-engine-pdftranslate" value="pdftranslate"></html:option>
     </html:select>
+  </hbox>
+</groupbox>
+
+<groupbox id="interlinear-language-section">
+  <label><html:h3 id="interlinear-language-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-source-language-label"
+      for="interlinear-source-language"
+      style="min-width: 180px"
+    ></html:label>
+    <html:select id="interlinear-source-language" style="width: 220px; padding: 4px 8px"
+    ></html:select>
+    <html:label
+      id="interlinear-target-language-label"
+      for="interlinear-target-language"
+      style="margin-left: 24px"
+    ></html:label>
+    <html:select
+      id="interlinear-target-language"
+      style="width: 220px; padding: 4px 8px; margin-left: 6px"
+    ></html:select>
+  </hbox>
+  <html:p id="interlinear-language-help" style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
+</groupbox>
+
+<groupbox id="interlinear-google-section">
+  <label><html:h3 id="interlinear-google-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-google-base-label"
+      for="interlinear-google-base-url"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-google-base-url"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="https://translate.googleapis.com"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-google-base-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <html:p
+    id="interlinear-google-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center">
+    <html:button id="interlinear-test-google" type="button" style="padding: 5px 12px"
+    ></html:button>
+  </hbox>
+</groupbox>
+
+<groupbox id="interlinear-openai-section">
+  <label><html:h3 id="interlinear-openai-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-openai-endpoint-label"
+      for="interlinear-openai-endpoint"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-openai-endpoint"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="https://api.openai.com/v1/chat/completions"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-openai-endpoint-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-openai-model-label"
+      for="interlinear-openai-model"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-openai-model"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="gpt-4o-mini"
+    />
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-openai-api-key-label"
+      for="interlinear-openai-api-key"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-openai-api-key"
+      type="password"
+      style="width: 430px; padding: 4px 6px"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-openai-api-key-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-openai-temperature-label"
+      for="interlinear-openai-temperature"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-openai-temperature"
+      type="number"
+      min="0"
+      max="2"
+      step="0.1"
+      style="width: 110px; padding: 4px 6px"
+    />
+    <html:span
+      id="interlinear-openai-temperature-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
+  </hbox>
+  <html:p
+    id="interlinear-openai-prompt-label"
+    style="line-height: 1.6; margin: 0 0 4px 0; max-width: 760px"
+  ></html:p>
+  <html:textarea
+    id="interlinear-openai-prompt"
+    rows="5"
+    style="width: 760px; max-width: 100%; padding: 4px 6px"
+  ></html:textarea>
+  <html:p
+    id="interlinear-openai-prompt-help"
+    style="line-height: 1.6; margin: 4px 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center">
+    <html:button id="interlinear-test-openai" type="button" style="padding: 5px 12px"
+    ></html:button>
   </hbox>
 </groupbox>
 

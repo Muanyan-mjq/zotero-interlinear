@@ -13,6 +13,8 @@ import {
   getRequestGapMs,
   getRequestTimeoutMs,
   getSkipLastPages,
+  getSourceLanguage,
+  getTargetLanguage,
   setEngine,
   setOllamaModel,
   setOllamaURL,
@@ -30,13 +32,13 @@ import {
   splitTextForRequest,
   type BatchInput,
 } from "./translationPipeline";
+import { isFailureText } from "./translationFailure";
+import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
 import { buildTranslationCSS } from "./appearance";
 import { cleanupReadingLayout, observeReadingLayout } from "./readingLayout";
 import { config } from "../package.json";
 
-const PLUGIN_ID = config.addonID;
-const TARGET_LANG = "zh-CN";
 const TRANSLATION_CLASS = "interlinear-translation";
 const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
 const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
@@ -68,18 +70,6 @@ interface TranslationResponse {
 
 interface TranslationJobItem extends BatchInput {
   paragraphIndex: number;
-}
-
-function isFailureText(text: string): boolean {
-  const value = text.trim();
-  if (!value) return true;
-  return (
-    /^\[请求错误\]/u.test(value) ||
-    /此翻译服务不可用/u.test(value) ||
-    /(?:request|service|parse) error\s*:/iu.test(value) ||
-    /HTTP\s+(?:GET|POST)?[^\n]*failed with status code/iu.test(value) ||
-    /Translate for Zotero 未返回译文/u.test(value)
-  );
 }
 
 class RunCancelledError extends Error {
@@ -151,98 +141,24 @@ async function cancellableDelay(
   });
 }
 
-async function translateWithPDFTranslate(
-  text: string,
-  itemID: number,
-): Promise<TranslationResponse> {
-  const pdfTranslate = (Zotero as any).PDFTranslate;
-  if (!pdfTranslate?.api?.translate) {
-    throw new Error(
-      "未检测到 Translate for Zotero。请先安装并启用 zotero-pdf-translate，或在设置中切换为 Ollama。",
-    );
-  }
-
-  const options: Record<string, any> = {
-    pluginID: PLUGIN_ID,
-    itemID,
-    langto: TARGET_LANG,
-  };
-  const task = await pdfTranslate.api.translate(text, options);
-  const result = String(task?.result || "").trim();
-
-  if (task?.status && task.status !== "success") {
-    throw new Error(result || "Translate for Zotero 翻译任务失败。");
-  }
-  if (!result || isFailureText(result)) {
-    throw new Error(result || "Translate for Zotero 未返回译文，请检查翻译服务配置或网络状态。");
-  }
-  const actualService = String(task?.service || "").trim();
-  return { text: result, engineTag: getCacheEngineTag(actualService) };
-}
-
-async function translateWithOllama(text: string): Promise<TranslationResponse> {
-  const baseURL = getOllamaURL();
-  const model = getOllamaModel();
-  const url = `${baseURL}/api/chat`;
-
-  const body = {
-    model,
-    stream: false,
-    keep_alive: "30m",
-    messages: [
-      {
-        role: "system",
-        content:
-          "你是专业的生物医学论文翻译助手。把用户提供的英文准确翻译为简体中文。保留基因、蛋白、药物、统计学符号、数字、单位、图表编号和文献引用；不要总结，不要解释，不要添加前言，只输出译文。如果出现 [[BRSEG_0000]] 这类分段标记，必须逐字原样保留标记及其顺序。",
-      },
-      {
-        role: "user",
-        content: text,
-      },
-    ],
-    options: {
-      temperature: 0.1,
-    },
-  };
-
-  const xhr = await Zotero.HTTP.request("POST", url, {
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    responseType: "json",
-    timeout: getRequestTimeoutMs(),
-  });
-
-  if (!xhr || xhr.status < 200 || xhr.status >= 300) {
-    throw new Error(`Ollama 请求失败：HTTP ${xhr?.status || "unknown"}`);
-  }
-
-  let response: any = xhr.response;
-  if (typeof response === "string") {
-    try {
-      response = JSON.parse(response);
-    } catch (_) {
-      // Common validation below handles malformed responses.
-    }
-  }
-
-  const result = response?.message?.content;
-  if (!result || typeof result !== "string") {
-    throw new Error("Ollama 未返回有效译文。请确认 Ollama 已启动、模型名称正确并可正常运行。");
-  }
-  return { text: result.trim(), engineTag: getCacheEngineTag() };
-}
-
 async function translateText(
   text: string,
   itemID: number,
   engine: TranslationEngine,
 ): Promise<TranslationResponse> {
-  if (engine === "ollama") {
-    return translateWithOllama(text);
-  }
-  return translateWithPDFTranslate(text, itemID);
+  const provider = getTranslationProvider(engine);
+  const result = await provider.translate(text, {
+    itemID,
+    sourceLanguage: getSourceLanguage(),
+    targetLanguage: getTargetLanguage(),
+    timeoutMs: getRequestTimeoutMs(),
+  });
+  return {
+    text: result.text,
+    // Translate for Zotero resolves its service per request; the tag must
+    // follow it so caches never mix different services.
+    engineTag: getCacheEngineTag(result.actualService),
+  };
 }
 
 async function translateTextLimited(
@@ -519,7 +435,13 @@ function collectParagraphs(
       sourceText,
       sourceElement: element,
       pageIndex,
-      translation: loadCachedTranslation(itemKey, sourceText, engineTag, isFailureText),
+      translation: loadCachedTranslation(
+        itemKey,
+        sourceText,
+        engineTag,
+        isFailureText,
+        getTargetLanguage(),
+      ),
     });
   }
 
@@ -545,7 +467,7 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
 
   const block = doc.createElement("div");
   block.className = TRANSLATION_CLASS;
-  block.lang = TARGET_LANG;
+  block.lang = getTargetLanguage();
   block.dataset.sourceRefPath = paragraph.refPath;
   if (paragraph.pageIndex !== undefined) {
     block.dataset.sourcePage = String(paragraph.pageIndex + 1);
@@ -630,7 +552,10 @@ async function translateParagraphs(
   const requestGapMs = getRequestGapMs();
   const requestTimeoutMs = getRequestTimeoutMs();
   const configuredConcurrent = getMaxConcurrent();
-  const concurrency = engine === "ollama" ? 1 : configuredConcurrent;
+  // Local LLM servers and the free Google endpoint are rate sensitive; the
+  // paid/remote relays can use the configured concurrency.
+  const concurrency =
+    engine === "ollama" ? 1 : engine === "google" ? Math.min(configuredConcurrent, 2) : configuredConcurrent;
   const pendingIndexes = paragraphs
     .map((paragraph, index) => (paragraph.translation ? -1 : index))
     .filter((index) => index >= 0);
@@ -737,6 +662,7 @@ async function translateParagraphs(
             response.text,
             response.engineTag || engineTag,
             isFailureText,
+            getTargetLanguage(),
           );
 
           const liveBlock = paragraph.block;
