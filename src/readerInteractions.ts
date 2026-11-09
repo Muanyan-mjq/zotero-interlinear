@@ -2,11 +2,13 @@
 // Interlinear — reader selection popup and per-paragraph triggers.
 
 import { getString } from "./utils/locale";
+import { DEFAULT_SHORTCUT, matchesShortcut, parseShortcut, type ShortcutSpec } from "./shortcut";
 
 const SOURCE_SELECTOR = "[data-ref-path]";
 const TRANSLATION_CLASS = "interlinear-translation";
 const POPUP_CLASS = "interlinear-selection-popup";
 const HOVER_CLASS = "interlinear-source-hover";
+const AUTO_HOVER_CLASS = "interlinear-source-hover-auto";
 
 interface SelectionLike {
   toString(): string;
@@ -24,6 +26,12 @@ export interface InteractionOptions {
   /** Tests inject a selection because createHTMLDocument has no defaultView. */
   getSelection?: () => SelectionLike | null;
   setTimer?: (callback: () => void, delay: number) => void;
+  /** Read at gesture time so settings changes apply without re-attaching. */
+  getHoverSettings?: () => { enabled: boolean; delayMs: number };
+  getShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
+  /** Tests can replace the dwell timer with a manual handle. */
+  setHoverTimer?: (callback: () => void, delay: number) => any;
+  clearHoverTimer?: (handle: any) => void;
 }
 
 export interface InteractionController {
@@ -178,7 +186,29 @@ export function attachReaderInteractions(
     });
   let disposed = false;
   let hovered: HTMLElement | null = null;
+  let hoverMode: "alt" | "auto" | null = null;
+  let hoverTimer: any = null;
+  let hoverPoint: { x: number; y: number } | null = null;
   let popup: ReturnType<typeof createPopup> | null = null;
+
+  const getHoverSettings =
+    options.getHoverSettings ||
+    (() => ({ enabled: false, delayMs: 800 }));
+  const getShortcutSettings =
+    options.getShortcutSettings ||
+    (() => ({ enabled: true, spec: parseShortcut(DEFAULT_SHORTCUT) }));
+  const setHoverTimeout =
+    options.setHoverTimer ||
+    ((callback: () => void, delay: number) => {
+      const target = win || Zotero.getMainWindow();
+      return target.setTimeout(callback, delay);
+    });
+  const clearHoverTimeout =
+    options.clearHoverTimer ||
+    ((handle: any) => {
+      const target = win || Zotero.getMainWindow();
+      target.clearTimeout(handle);
+    });
 
   const getSelection = (): SelectionLike | null => {
     if (options.getSelection) return options.getSelection();
@@ -189,36 +219,103 @@ export function attachReaderInteractions(
     }
   };
 
+  const shouldSkipAutoTranslate = (source: HTMLElement): boolean => {
+    const next = source.nextElementSibling as HTMLElement | null;
+    if (next?.classList?.contains(TRANSLATION_CLASS)) return true;
+    const text = (source.textContent || "").replace(/\s+/gu, " ").trim();
+    return text.length < 2;
+  };
+
   const clearHover = () => {
+    if (hoverTimer !== null) {
+      try {
+        clearHoverTimeout(hoverTimer);
+      } catch (_) {
+        // The reader can replace its content document.
+      }
+      hoverTimer = null;
+    }
     if (hovered) {
       try {
         hovered.classList.remove(HOVER_CLASS);
+        hovered.classList.remove(AUTO_HOVER_CLASS);
       } catch (_) {
         // The reader can replace its content document.
       }
       hovered = null;
     }
+    hoverMode = null;
+    hoverPoint = null;
   };
 
   const hidePopup = () => {
     popup?.hide();
   };
 
+  const armAutoHover = (source: HTMLElement, event: MouseEvent) => {
+    const settings = getHoverSettings();
+    if (!settings.enabled || shouldSkipAutoTranslate(source)) return;
+
+    hovered = source;
+    hoverMode = "auto";
+    hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
+    source.classList.add(AUTO_HOVER_CLASS);
+
+    let fired = false;
+    const handle = setHoverTimeout(() => {
+      fired = true;
+      hoverTimer = null;
+      if (disposed || hovered !== source || hoverMode !== "auto") return;
+      if (!getHoverSettings().enabled) return;
+      if (!source.isConnected) {
+        clearHover();
+        return;
+      }
+      if (hoverPoint && (hoverPoint.x || hoverPoint.y)) {
+        try {
+          const at = (doc as any).elementFromPoint?.(hoverPoint.x, hoverPoint.y);
+          if (at && findSource(at) !== source) {
+            clearHover();
+            return;
+          }
+        } catch (_) {
+          // elementFromPoint is best-effort geometry validation.
+        }
+      }
+      const selection = getSelection();
+      if (selection?.rangeCount && !selection.isCollapsed) return;
+      if (popup && !popup.root.hidden) return;
+      if (shouldSkipAutoTranslate(source)) return;
+      invokeParagraph(host, source);
+    }, Math.max(0, Number(settings.delayMs) || 0));
+    if (!fired) hoverTimer = handle;
+  };
+
   const onMouseMove = (event: MouseEvent) => {
-    if (!event.altKey) {
+    const source = findSource(event.target);
+    if (event.altKey) {
+      if (hoverMode === "alt" && source === hovered) return;
+      clearHover();
+      if (source) {
+        hovered = source;
+        hoverMode = "alt";
+        source.classList.add(HOVER_CLASS);
+      }
+      return;
+    }
+
+    if (!getHoverSettings().enabled) {
       clearHover();
       return;
     }
-    const source = findSource(event.target);
-    if (source === hovered) return;
+    if (hoverMode === "auto" && source === hovered) return;
     clearHover();
-    if (source) {
-      hovered = source;
-      source.classList.add(HOVER_CLASS);
-    }
+    if (source) armAutoHover(source, event);
   };
 
   const onMouseLeave = () => clearHover();
+
+  const onScroll = () => clearHover();
 
   const onMouseUp = () => {
     schedule(() => {
@@ -262,9 +359,14 @@ export function attachReaderInteractions(
       clearHover();
       return;
     }
-    if (!event.altKey || event.key !== "Enter") return;
 
-    let source = hovered;
+    const shortcut = getShortcutSettings();
+    if (!shortcut.enabled || !shortcut.spec || event.repeat) return;
+    if (!matchesShortcut(event, shortcut.spec)) return;
+    const target = elementOf(event.target as Node);
+    if (target?.closest(`.${POPUP_CLASS}`)) return;
+
+    let source = hovered && hovered.isConnected ? hovered : null;
     if (!source) {
       const selection = getSelection();
       if (selection?.rangeCount) {
@@ -280,6 +382,7 @@ export function attachReaderInteractions(
 
   const onMouseDown = (event: MouseEvent) => {
     if (popup && !popup.contains(event.target)) hidePopup();
+    if (hoverMode === "auto") clearHover();
   };
 
   doc.addEventListener("mousemove", onMouseMove, true);
@@ -288,6 +391,7 @@ export function attachReaderInteractions(
   doc.addEventListener("click", onClick, true);
   doc.addEventListener("keydown", onKeyDown, true);
   doc.addEventListener("mousedown", onMouseDown, true);
+  doc.addEventListener("scroll", onScroll, true);
 
   return {
     dispose() {
@@ -305,6 +409,7 @@ export function attachReaderInteractions(
       doc.removeEventListener("click", onClick, true);
       doc.removeEventListener("keydown", onKeyDown, true);
       doc.removeEventListener("mousedown", onMouseDown, true);
+      doc.removeEventListener("scroll", onScroll, true);
     },
   };
 }
