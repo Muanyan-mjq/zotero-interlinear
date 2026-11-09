@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyGlossaryToTranslation,
   buildGlossaryDirective,
   glossaryHash,
   normalizeGlossary,
@@ -92,4 +93,36 @@ test("buildGlossaryDirective lists terms and reports truncation", () => {
   const truncated = buildGlossaryDirective(entries, 90);
   assert.ok(truncated.includes("未列入"));
   assert.ok(truncated.length <= 140);
+});
+
+test("applyGlossaryToTranslation enforces terms case-insensitively with boundaries", () => {
+  const entries = [
+    { source: "Gene", target: "基因" },
+    { source: "neural network", target: "神经网络" },
+    { source: "network", target: "网络" },
+  ];
+  assert.equal(
+    applyGlossaryToTranslation("A GENE drives the neural Network, not a generic network.", entries),
+    "A 基因 drives the 神经网络, not a generic 网络.",
+  );
+  assert.equal(applyGlossaryToTranslation("genes and networks", entries), "genes and networks");
+});
+
+test("applyGlossaryToTranslation handles regex metacharacters and literal dollar targets", () => {
+  assert.equal(
+    applyGlossaryToTranslation("Use C++ (not C#).", [
+      { source: "C++", target: "$& 语言" },
+      { source: "C#", target: "C Sharp" },
+    ]),
+    "Use $& 语言 (not C Sharp).",
+  );
+});
+
+test("applyGlossaryToTranslation skips identity entries and empty input", () => {
+  assert.equal(applyGlossaryToTranslation("", [{ source: "gene", target: "基因" }]), "");
+  assert.equal(
+    applyGlossaryToTranslation("gene model", [{ source: "gene", target: "gene" }]),
+    "gene model",
+  );
+  assert.equal(applyGlossaryToTranslation("gene model", []), "gene model");
 });

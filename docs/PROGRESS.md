@@ -580,23 +580,63 @@
 6. 开启全文翻译的同时把鼠标停在正在排队的段落上，确认该段只出现一次请求（译文最终一致，无重复错误块）。
 
 
-## Step 13：还原阅读器图标，并在侧边栏聊天页内加入“功能与设置”面板
+
+## Step 13：补齐剩余需求缺口（重试 / 视口重排 / 术语表替换 / 显示按钮 / 文档）
+
+### 做了什么
+- **非阻塞错误提示**：`showError` 不再调用 `alert`，改为在阅读器文档顶部显示可关闭、12 秒自动消失的提示条（`role="alert"`），同时写入 `Zotero.logError`。全文/刷新/设置打开失败与聊天不可用都走该路径；同一文档重复出错只更新文本，不堆叠提示条。
+- **失败段落点击重试**：译文块在 `error` / `paused` 状态下显示“点击重试该段翻译”提示，并具备 `role="button"`、`tabIndex=0`。单击或按 Enter/Space 会找到前一个原文段落并复用单段翻译流程；若用户正在选中错误文本复制，则不会触发重试。状态切换到 loading/done 时自动移除按钮语义与提示。
+- **视口动态重排**：全文队列从一次性 `packBatchItems` + 游标改为 `remaining` 集合 + `claimNextJob()`；每次领取任务前重新读取剩余段落相对视口的位置并排序。小文档（≤120 段）每次领取都重排；大文档最多每 400 ms 测量一次，避免反复布局测量拖慢队列。
+- **术语表结果替换**：新增 `applyGlossaryToTranslation()`，按最长术语优先、单次正则替换、拉丁术语加 ASCII 词边界、大小写不敏感，支持正则特殊字符与 `$` 目标文本；源与目标相同的条目跳过。`translateText` 在所有后端返回后统一调用，因此 Google 也能保证术语一致。
+- **Google 缓存键**：`getCacheEngineTag()` 的 Google 分支补上 `:g:<hash>`，术语表变化会使 Google 缓存失效；对术语表条目增加按原文文本的模块级缓存，避免每段重复解析 CSV。
+- **显示模式工具栏按钮**：工具栏新增 `◫` 按钮，单击按“译文在下 → 左右并排 → 仅译文 → 仅原文”循环，`title/aria-label` 随当前模式更新；右键仍打开完整菜单。清理阅读器时一并移除该按钮。
+- **文档与说明**：设置页三种 API 密钥说明明确写出“以明文形式保存在 Zotero 偏好设置中”；README 英文部分补全功能、安装、配置、限制、致谢与许可证，中文限制改为“可配置语言对”；新增 `docs/RELEASE-CHECKLIST.md` 汇总版本、自动化、隐私、Zotero 手测与发布步骤；CHANGELOG 补充本轮功能。
+
+### 改动文件
+- 新增：`docs/RELEASE-CHECKLIST.md`。
+- 修改：`src/bilingualReader.ts`、`src/readerInteractions.ts`、`src/settings.ts`、`src/glossary.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/startup.test.ts`、`test/glossary.node.test.mjs`、`README.md`、`CHANGELOG.md`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**76 pass / 0 fail**（新增 3 个术语替换用例）。
+- `npm run test:review`（Zotero headless 独立 profile）：**38 pass / 0 fail**（新增视口重排、非阻塞提示、失败块重试用例；工具栏与 Google 用例已扩展）。
+
+### 不确定项
+- 视口重排依赖 `getBoundingClientRect()`；真实 Zotero 阅读模式中懒加载页面可能先返回 0 高度，段落会在后续领取时再次测量并纠正顺序，但短时间内可能仍按旧顺序发出 1–2 个请求。
+- 点击重试会替换错误文本；若用户想复制错误信息，需在按下鼠标拖选后直接复制，单击会触发重试（代码会检测非折叠选区并跳过）。
+- 术语表替换对拉丁术语使用严格词边界，“gene”不会替换“genes”内部；如需覆盖词形变化，应在术语表中显式添加复数形式。
+- 非阻塞提示条固定在阅读器内容顶部；真实阅读器缩放或全屏下的位置与主题对比度尚未人工截图确认。
+- 显示按钮使用 `◫` 字符；若系统字体缺少该字形，可能显示为方框，需实机确认。
+
+### 需要手动验证的清单
+1. 制造一次翻译失败（例如断网或填错端点），确认没有阻塞弹窗，阅读器顶部出现提示条；点击 × 可关闭，12 秒后自动消失。
+2. 让某段翻译失败或触发连续失败暂停，点击该译文块或聚焦后按 Enter，确认只重试该段；选中错误文本后单击不应触发重试。
+3. 开启全文翻译后立即滚动到文末，确认后续请求优先翻译当前可见段落；再滚回开头，确认顺序随视口变化。
+4. Google 后端下导入 `gene,基因` 与 `neural network,神经网络`，确认返回英文中的术语被替换；修改术语表后确认缓存重新生成（不会复用旧译文）。
+5. 点击工具栏 `◫` 按钮四次，确认四种模式依次切换、标题同步更新、Zotero 高亮坐标不偏移。
+6. 在设置页查看 OpenAI/Claude/Gemini 密钥说明，确认包含“明文形式保存在 Zotero 偏好设置中”。
+7. 按 `docs/RELEASE-CHECKLIST.md` 完整走一遍手动验收。
+
+
+## Step 14：还原阅读器图标，并在侧边栏聊天页内加入“功能与设置”面板
 
 ### 做了什么
 - 工具栏图标改为直接使用插件自带的 `addon/content/icons/icon32.png`：生成 `src/interlinearIcon.ts`（base64 data URI 常量），运行期用 16×16 的 `<img>` 渲染，外观与提供的 Logo 像素一致。阅读器文档基准 URL 是 `resource://zotero/reader/...`，`chrome://` 图片地址在其中无法加载；data: 图片可正常显示。
 - 针对右键菜单在用户机器上仍无响应的问题，在右侧边栏已有的 Interlinear 聊天页顶部新增可折叠的“功能与设置”面板（不占用阅读器工具栏）。面板提供：开启/停止对照、刷新译文、取消翻译、导出 PDF、打开设置，以及四种显示模式下拉框。
 - 面板按钮先通过 `findReaderForItem` 定位当前条目对应的阅读器再执行动作；没有打开的阅读器时点击不产生副作用。文案经 Fluent 渲染，其余按钮复用既有 `toolbar-menu-*` 词条。
-- 集成测试同步更新：图标断言改为 `img` + `data:image/png;base64,` 前缀 + 16px 尺寸；侧边栏 section 的 `bodyXHTML` 断言新增 7 个控件 ID。
+- 合并 dev 的 Step 13 时，把新增的 `◫` 显示按钮从“节点级监听 + createToolbarButton 扩展参数”改为既有的 document 级委托（`registerToolbarHandlers`），与开关/刷新按钮保持一致；避免在真实阅读器中再次依赖不可靠的节点监听。
+- 集成测试同步更新：图标断言改为 `img` + `data:image/png;base64,` 前缀 + 16px 尺寸；侧边栏 section 的 `bodyXHTML` 断言新增 7 个控件 ID；保留并验证显示按钮的循环切换断言。
 
 ### 改动文件
 - 新增：`src/interlinearIcon.ts`（由图标生成的 base64 常量）。
-- 修改：`src/bilingualReader.ts`、`src/chatPane.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`typings/i10n.d.ts`、`package.json`（lint 文件列表）、`test/startup.test.ts`、`test/readerToolbar.test.ts`。
+- 修改：`src/bilingualReader.ts`、`src/chatPane.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`typings/i10n.d.ts`、`package.json`（lint 文件列表）、`test/startup.test.ts`、`test/readerToolbar.test.ts`、`docs/PROGRESS.md`。
 
 ### 测试结果
 - `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。
 - `npm run lint:check`：通过，无告警。
-- `npm run test:unit`：**73 pass / 0 fail**。
-- `npm run test:review`（Zotero headless 独立 profile）：**35 pass / 0 fail**。
+- `npm run test:unit`：**76 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**38 pass / 0 fail**。
 - 另用临时探针在真实 Zotero 阅读器中以原生鼠标事件复核：document 捕获阶段能收到指向插件按钮的 `contextmenu`，菜单节点可见且可命中；该探针为排查用途，验证后已删除。
 
 ### 不确定项
@@ -611,4 +651,4 @@
 3. 在有打开阅读器的条目上依次点击开启/停止、刷新、取消、导出、设置，并切换四种显示模式，确认行为与工具栏一致。
 4. 在未打开阅读器的条目上打开侧边栏页面并点击面板按钮，确认不报错。
 5. 再次右键工具栏图标，确认在你的环境中是否仍然无反应，以便决定是否需要继续排查。
-
+6. 点击工具栏 `◫` 显示按钮，确认四种模式仍能循环切换（合并后改走 document 委托）。

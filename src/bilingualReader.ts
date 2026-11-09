@@ -3,6 +3,7 @@ import {
   getCacheEngineTag,
   getDisplayMode,
   getEngine,
+  getGlossaryEntries,
   getHoverDelayMs,
   getHoverTranslateEnabled,
   getMaxBatchParagraphs,
@@ -26,16 +27,16 @@ import {
 } from "./translationCache";
 import {
   buildBatchPayload,
-  packBatchItems,
   parseBatchResult,
   splitTextForRequest,
   type BatchInput,
 } from "./translationPipeline";
 import { isFailureText } from "./translationFailure";
+import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
 import { buildTranslationCSS } from "./appearance";
-import { buildDisplayModeCSS, type DisplayMode } from "./displayMode";
+import { buildDisplayModeCSS, DISPLAY_MODES, type DisplayMode } from "./displayMode";
 import {
   cleanupReadingLayout,
   observeReadingLayout,
@@ -59,7 +60,9 @@ const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
 const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
 const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
+const DISPLAY_BUTTON_CLASS = "interlinear-display-button";
 const PROGRESS_CLASS = "interlinear-progress";
+const ERROR_NOTICE_CLASS = "interlinear-error-notice";
 const STYLE_ID = "interlinear-style";
 const PREFERENCES_PANE_ID = "interlinear-preferences";
 
@@ -90,6 +93,7 @@ const interactionControllers = new WeakMap<object, ReaderInteractions>();
 // Shared by the full-document scheduler and on-demand triggers so the same
 // paragraph is never requested twice at once.
 const paragraphRequests = new WeakMap<HTMLElement, Promise<void>>();
+const errorNotices = new WeakMap<Document, { element: HTMLElement; timer: any }>();
 
 function defaultRunState(): RunState {
   return { generation: 0, running: false, completed: 0, total: 0 };
@@ -196,7 +200,7 @@ async function translateText(
     timeoutMs: getRequestTimeoutMs(),
   });
   return {
-    text: result.text,
+    text: applyGlossaryToTranslation(result.text, getGlossaryEntries()),
     engineTag: getCacheEngineTag(),
   };
 }
@@ -445,6 +449,43 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
       opacity: 0.75;
       white-space: nowrap;
     }
+    .${TRANSLATION_CLASS}[data-state="error"],
+    .${TRANSLATION_CLASS}[data-state="paused"] {
+      cursor: pointer;
+    }
+    .${ERROR_NOTICE_CLASS} {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2147483001;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      max-width: min(680px, calc(100% - 32px));
+      padding: 8px 10px;
+      border: 1px solid rgba(179, 38, 30, 0.55);
+      border-radius: 6px;
+      background: Canvas;
+      color: CanvasText;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .${ERROR_NOTICE_CLASS} .interlinear-error-notice-text {
+      user-select: text;
+    }
+    .${ERROR_NOTICE_CLASS} .interlinear-error-notice-close {
+      flex: none;
+      padding: 0 4px;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
   `;
 
   let style = doc.getElementById(STYLE_ID) as HTMLStyleElement | null;
@@ -468,6 +509,40 @@ function applyDisplayMode(doc: Document, mode: DisplayMode = getDisplayMode()): 
   refreshReadingLayout(doc);
 }
 
+function getDisplayModeLabel(mode: DisplayMode): string {
+  switch (mode) {
+    case "side-by-side":
+      return getString("display-mode-side-by-side");
+    case "target-only":
+      return getString("display-mode-target-only");
+    case "source-only":
+      return getString("display-mode-source-only");
+    default:
+      return getString("display-mode-top-bottom");
+  }
+}
+
+function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {
+  if (!toolbarDoc) {
+    try {
+      toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+    } catch (_) {
+      toolbarDoc = undefined;
+    }
+  }
+  const button = toolbarDoc?.querySelector(
+    `.${DISPLAY_BUTTON_CLASS}`,
+  ) as HTMLButtonElement | null;
+  if (!button) return;
+  const mode = getDisplayMode();
+  button.dataset.mode = mode;
+  const title = getString("toolbar-display-title", {
+    args: { mode: getDisplayModeLabel(mode) },
+  });
+  button.title = title;
+  button.setAttribute("aria-label", title);
+}
+
 /** Re-apply the display mode to readers that are already open. */
 export function refreshDisplayModes(): void {
   const readers = ((Zotero.Reader as any)._readers || []) as any[];
@@ -476,6 +551,7 @@ export function refreshDisplayModes(): void {
       if (reader.type !== "pdf") continue;
       const doc = getSDTDocument(reader);
       if (doc?.querySelector("#sdt-content")) applyDisplayMode(doc);
+      updateDisplayButtonState(reader);
     } catch (error) {
       Zotero.logError(error as Error);
     }
@@ -636,11 +712,9 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
   }
 
   if (paragraph.translation) {
-    block.dataset.state = "done";
-    block.textContent = paragraph.translation;
+    setBlockState(block, "done", paragraph.translation);
   } else {
-    block.dataset.state = "loading";
-    block.textContent = getString("paragraph-waiting");
+    setBlockState(block, "loading", getString("paragraph-waiting"));
   }
 
   source.classList.add(SOURCE_CELL_CLASS);
@@ -785,14 +859,12 @@ async function requestReaderParagraph(
   if (!block) return;
 
   if (paragraph.translation) {
-    block.dataset.state = "done";
-    block.textContent = paragraph.translation;
+    setBlockState(block, "done", paragraph.translation);
     refreshReadingLayout(doc);
     return;
   }
 
-  block.dataset.state = "loading";
-  block.textContent = getString("paragraph-translating");
+  setBlockState(block, "loading", getString("paragraph-translating"));
   try {
     const response = await raceWithTimeoutAndCancellation(
       translateTextLimited(sourceText, (chunk) => translateText(chunk, itemID, engine)),
@@ -813,15 +885,17 @@ async function requestReaderParagraph(
     );
     flushTranslationCacheIndex();
     if (block.isConnected) {
-      block.dataset.state = "done";
-      block.textContent = response.text;
+      setBlockState(block, "done", response.text);
     }
   } catch (error: any) {
     if (block.isConnected) {
-      block.dataset.state = "error";
-      block.textContent = getString("paragraph-translate-failed", {
-        args: { detail: String(error?.message || error) },
-      });
+      setBlockState(
+        block,
+        "error",
+        getString("paragraph-translate-failed", {
+          args: { detail: String(error?.message || error) },
+        }),
+      );
     }
     throw error;
   } finally {
@@ -854,18 +928,106 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
   interactionControllers.set(reader, { doc, controller });
 }
 
+function getNoticeDocument(reader: any): Document | null {
+  try {
+    const sdt = getSDTDocument(reader);
+    if (sdt?.body || sdt?.documentElement) return sdt;
+  } catch (_) {
+    // The SDT view may not exist before reading mode is initialized.
+  }
+  try {
+    const doc = reader?._iframeWindow?.document as Document | undefined;
+    if (doc?.body || doc?.documentElement) return doc;
+  } catch (_) {
+    // The reader may already be closed.
+  }
+  return null;
+}
+
+function clearNoticeTimer(doc: Document): void {
+  const state = errorNotices.get(doc);
+  if (!state?.timer) return;
+  try {
+    const win: any = doc.defaultView || Zotero.getMainWindow();
+    win?.clearTimeout?.(state.timer);
+  } catch (_) {
+    // The iframe may have been replaced.
+  }
+}
+
+function dismissErrorNotice(doc: Document): void {
+  clearNoticeTimer(doc);
+  const state = errorNotices.get(doc);
+  errorNotices.delete(doc);
+  try {
+    state?.element.remove();
+  } catch (_) {
+    // The iframe may already be gone.
+  }
+}
+
+/** Non-blocking replacement for window.alert: a dismissible in-reader toast. */
 function showError(reader: any, message: string): void {
   try {
-    reader?._iframeWindow?.alert?.(message);
-    return;
+    Zotero.logError(new Error(message));
   } catch (_) {
-    // Fall through to the Zotero main window.
+    // Outside Zotero there is nowhere to report.
   }
 
+  const doc = getNoticeDocument(reader);
+  const host = doc?.body || doc?.documentElement;
+  if (!doc || !host) return;
+
+  clearNoticeTimer(doc);
+  let notice = doc.querySelector(`.${ERROR_NOTICE_CLASS}`) as HTMLElement | null;
+  if (!notice) {
+    notice = doc.createElement("div");
+    notice.className = ERROR_NOTICE_CLASS;
+    notice.setAttribute("role", "alert");
+
+    const text = doc.createElement("span");
+    text.className = "interlinear-error-notice-text";
+
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.className = "interlinear-error-notice-close";
+    close.textContent = "×";
+    close.title = getString("error-notice-close");
+    close.setAttribute("aria-label", getString("error-notice-close"));
+    close.addEventListener("click", () => dismissErrorNotice(doc));
+
+    notice.append(text, close);
+    host.append(notice);
+  }
+
+  const text = notice.querySelector(".interlinear-error-notice-text");
+  if (text) text.textContent = message;
+
   try {
-    Zotero.getMainWindow()?.alert(message);
+    const win: any = doc.defaultView || Zotero.getMainWindow();
+    const timer = win?.setTimeout?.(() => dismissErrorNotice(doc), 12000);
+    errorNotices.set(doc, { element: notice, timer });
   } catch (_) {
-    Zotero.logError(new Error(message));
+    errorNotices.set(doc, { element: notice, timer: null });
+  }
+}
+
+function setBlockState(
+  block: HTMLElement | null | undefined,
+  state: "loading" | "done" | "error" | "paused",
+  text: string,
+): void {
+  if (!block) return;
+  block.dataset.state = state;
+  block.textContent = text;
+  if (state === "error" || state === "paused") {
+    block.title = getString("paragraph-retry-title");
+    block.setAttribute("role", "button");
+    block.tabIndex = 0;
+  } else {
+    block.removeAttribute("title");
+    block.removeAttribute("role");
+    block.removeAttribute("tabindex");
   }
 }
 
@@ -874,8 +1036,7 @@ function markUnfinishedPaused(doc: Document, paragraphs: ReaderParagraph[]): voi
     if (paragraph.translation) continue;
     const block = ensureTranslationBlock(doc, paragraph);
     if (!block || block.dataset.state === "error") continue;
-    block.dataset.state = "paused";
-    block.textContent = getString("paragraph-paused");
+    setBlockState(block, "paused", getString("paragraph-paused"));
   }
 }
 
@@ -928,14 +1089,45 @@ async function translateParagraphs(
 
   setRunProgress(reader, generation, 0, pendingIndexes.length);
   const cancellation = getRunCancellation(reader, generation);
-  const jobItems: TranslationJobItem[] = pendingIndexes.map((paragraphIndex) => ({
-    id: String(paragraphIndex),
-    paragraphIndex,
-    text: paragraphs[paragraphIndex].sourceText,
-  }));
-  const jobs = packBatchItems(jobItems, getMaxCharsPerRequest(), getMaxBatchParagraphs());
+  const maxItems = Math.max(1, getMaxBatchParagraphs());
+  const maxChars = getMaxCharsPerRequest();
+  const remaining = new Set<number>(pendingIndexes);
+  let orderedIndexes = pendingIndexes.slice();
+  let lastViewportPoll = Date.now();
 
-  let cursor = 0;
+  // Re-read geometry as the user pages through the document. Small documents
+  // re-sort on every claim; large ones poll at most twice per second so the
+  // queue does not spend its time measuring off-screen paragraphs.
+  const reorderRemaining = () => {
+    const now = Date.now();
+    if (remaining.size > 120 && now - lastViewportPoll < 400) return;
+    lastViewportPoll = now;
+    orderedIndexes = Array.from(remaining).sort(
+      (a, b) => getViewportDistance(paragraphs[a], doc) - getViewportDistance(paragraphs[b], doc),
+    );
+  };
+
+  const claimNextJob = (): TranslationJobItem[] => {
+    reorderRemaining();
+    const job: TranslationJobItem[] = [];
+    for (const index of orderedIndexes) {
+      if (!remaining.has(index)) continue;
+      const item: TranslationJobItem = {
+        id: String(index),
+        paragraphIndex: index,
+        text: paragraphs[index].sourceText,
+      };
+      if (job.length) {
+        const candidate = [...job, item];
+        if (candidate.length > maxItems || buildBatchPayload(candidate).length > maxChars) break;
+      }
+      job.push(item);
+      remaining.delete(index);
+      if (job.length >= maxItems || buildBatchPayload(job).length > maxChars) break;
+    }
+    return job;
+  };
+
   let completed = 0;
   let failureStreak = 0;
   let aborted = false;
@@ -1003,17 +1195,15 @@ async function translateParagraphs(
     paragraph.translation = cached;
     const liveBlock = ensureTranslationBlock(doc, paragraph);
     if (liveBlock?.parentNode) {
-      liveBlock.dataset.state = "done";
-      liveBlock.textContent = cached;
+      setBlockState(liveBlock, "done", cached);
     }
     return true;
   };
 
   const worker = async () => {
     while (!aborted && isCurrentRun(reader, generation, doc)) {
-      const slot = cursor++;
-      if (slot >= jobs.length) return;
-      const scheduled = jobs[slot];
+      const scheduled = claimNextJob();
+      if (!scheduled.length) return;
       const busy: Array<{ item: TranslationJobItem; promise: Promise<void> }> = [];
       const job: TranslationJobItem[] = [];
 
@@ -1051,10 +1241,13 @@ async function translateParagraphs(
       for (const item of job) {
         const block = ensureTranslationBlock(doc, paragraphs[item.paragraphIndex]);
         if (!block) continue;
-        block.dataset.state = "loading";
-        block.textContent = getString("paragraph-translating-progress", {
-          args: { done: completed, total: pendingIndexes.length },
-        });
+        setBlockState(
+          block,
+          "loading",
+          getString("paragraph-translating-progress", {
+            args: { done: completed, total: pendingIndexes.length },
+          }),
+        );
       }
 
       let releaseJob: () => void = () => undefined;
@@ -1083,8 +1276,7 @@ async function translateParagraphs(
 
           const liveBlock = paragraph.block;
           if (liveBlock?.parentNode) {
-            liveBlock.dataset.state = "done";
-            liveBlock.textContent = response.text;
+            setBlockState(liveBlock, "done", response.text);
           }
           completed += 1;
           setRunProgress(reader, generation, completed, pendingIndexes.length);
@@ -1103,10 +1295,13 @@ async function translateParagraphs(
         for (const item of job) {
           const liveBlock = paragraphs[item.paragraphIndex].block;
           if (liveBlock?.parentNode) {
-            liveBlock.dataset.state = "error";
-            liveBlock.textContent = getString("paragraph-translate-failed", {
-              args: { detail: String(error?.message || error) },
-            });
+            setBlockState(
+              liveBlock,
+              "error",
+              getString("paragraph-translate-failed", {
+                args: { detail: String(error?.message || error) },
+              }),
+            );
           }
         }
 
@@ -1128,7 +1323,9 @@ async function translateParagraphs(
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, () => worker()));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, pendingIndexes.length) }, () => worker()),
+  );
 
   finishRun(reader, generation);
 }
@@ -1396,6 +1593,22 @@ export function renderBilingualToolbarButtons(event: any): void {
     append(button);
   }
 
+  registerToolbarHandlers(doc, DISPLAY_BUTTON_CLASS, {
+    onClick: () => {
+      const index = DISPLAY_MODES.indexOf(getDisplayMode());
+      setDisplayMode(DISPLAY_MODES[(index + 1) % DISPLAY_MODES.length]);
+      refreshDisplayModes();
+      updateDisplayButtonState(reader, doc);
+    },
+    onContextMenu: (contextEvent) =>
+      openBilingualToolbarMenu(reader, doc, contextEvent.clientX, contextEvent.clientY),
+  });
+
+  if (!doc.querySelector(`.${DISPLAY_BUTTON_CLASS}`)) {
+    append(createToolbarButton(doc, DISPLAY_BUTTON_CLASS, "◫", ""));
+  }
+  updateDisplayButtonState(reader, doc);
+
   if (!doc.querySelector(`.${PROGRESS_CLASS}`)) {
     const progress = doc.createElement("span") as HTMLSpanElement;
     progress.className = PROGRESS_CLASS;
@@ -1484,7 +1697,7 @@ export function cleanupBilingualReader(reader: any): void {
   const buttons = toolbarDoc
     ? (Array.from(
         toolbarDoc.querySelectorAll(
-          `.${TOOLBAR_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}, .${PROGRESS_CLASS}`,
+          `.${TOOLBAR_BUTTON_CLASS}, .${DISPLAY_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}, .${PROGRESS_CLASS}`,
         ),
       ) as HTMLElement[])
     : [];

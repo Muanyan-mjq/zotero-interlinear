@@ -579,8 +579,14 @@ export function setGlossaryText(text: string): void {
   setStringPref(GLOSSARY_PREF, text.replace(/\r\n?/gu, "\n"));
 }
 
+let glossaryEntriesCache: { text: string; entries: GlossaryEntry[] } | null = null;
+
 export function getGlossaryEntries(): GlossaryEntry[] {
-  return parseGlossary(getGlossaryText());
+  const text = getGlossaryText();
+  if (glossaryEntriesCache?.text !== text) {
+    glossaryEntriesCache = { text, entries: parseGlossary(text) };
+  }
+  return glossaryEntriesCache.entries;
 }
 
 export function getGlossaryDirective(): string {
@@ -644,7 +650,7 @@ export function getCacheEngineTag(): string {
     )}${language}${glossary}`;
   }
   // Google is also the fallback cache namespace for removed backend values.
-  return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}`;
+  return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}${glossary}`;
 }
 
 /**

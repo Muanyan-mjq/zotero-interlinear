@@ -6,6 +6,7 @@ import { DEFAULT_SHORTCUT, matchesShortcut, parseShortcut, type ShortcutSpec } f
 
 const SOURCE_SELECTOR = "[data-ref-path]";
 const TRANSLATION_CLASS = "interlinear-translation";
+const RETRY_SELECTOR = `.${TRANSLATION_CLASS}[data-state="error"], .${TRANSLATION_CLASS}[data-state="paused"]`;
 const POPUP_CLASS = "interlinear-selection-popup";
 const HOVER_CLASS = "interlinear-source-hover";
 const AUTO_HOVER_CLASS = "interlinear-source-hover-auto";
@@ -343,7 +344,30 @@ export function attachReaderInteractions(
     }, 0);
   };
 
+  const retryBlockOf = (target: EventTarget | null): { block: HTMLElement; source: HTMLElement } | null => {
+    const block = elementOf(target as Node | null)?.closest?.(RETRY_SELECTOR) as HTMLElement | null;
+    if (!block) return null;
+    const source = block.previousElementSibling as HTMLElement | null;
+    if (!source?.matches?.(SOURCE_SELECTOR)) return null;
+    return { block, source };
+  };
+
+  const retryIfRequested = (event: Event): boolean => {
+    const retry = retryBlockOf(event.target);
+    if (!retry) return false;
+    // Let the reader select and copy error text without retrying.
+    const selection = getSelection();
+    if (selection?.rangeCount && !selection.isCollapsed) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    clearHover();
+    hidePopup();
+    invokeParagraph(host, retry.source);
+    return true;
+  };
+
   const onClick = (event: MouseEvent) => {
+    if (retryIfRequested(event)) return;
     if (!event.altKey) return;
     const source = findSource(event.target);
     if (!source) return;
@@ -357,6 +381,10 @@ export function attachReaderInteractions(
     if (event.key === "Escape") {
       hidePopup();
       clearHover();
+      return;
+    }
+
+    if ((event.key === "Enter" || event.key === " ") && retryIfRequested(event)) {
       return;
     }
 
