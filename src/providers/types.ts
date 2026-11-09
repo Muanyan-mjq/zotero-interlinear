@@ -8,8 +8,7 @@ export type ProviderId =
   | "openai"
   | "claude"
   | "gemini"
-  | "ollama"
-  | "pdftranslate";
+  | "ollama";
 
 export interface ProviderContext {
   itemID: number;
@@ -20,8 +19,6 @@ export interface ProviderContext {
 
 export interface ProviderTranslation {
   text: string;
-  /** Translate for Zotero resolves its service dynamically; others omit it. */
-  actualService?: string;
 }
 
 export interface TranslationProvider {

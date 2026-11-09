@@ -113,13 +113,11 @@ function setStatus(doc: Document, message: string): void {
 
 function updateBackendVisibility(doc: Document): void {
   const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
-  const pdfSection = getElement<HTMLElement>(doc, "interlinear-pdftranslate-section");
   const ollamaSection = getElement<HTMLElement>(doc, "interlinear-ollama-section");
   const googleSection = getElement<HTMLElement>(doc, "interlinear-google-section");
   const openaiSection = getElement<HTMLElement>(doc, "interlinear-openai-section");
   const claudeSection = getElement<HTMLElement>(doc, "interlinear-claude-section");
   const geminiSection = getElement<HTMLElement>(doc, "interlinear-gemini-section");
-  if (pdfSection) pdfSection.hidden = engine !== "pdftranslate";
   if (ollamaSection) ollamaSection.hidden = engine !== "ollama";
   if (googleSection) googleSection.hidden = engine !== "google";
   if (openaiSection) openaiSection.hidden = engine !== "openai";
@@ -139,7 +137,6 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-engine-claude", "provider-engine-claude"],
     ["interlinear-engine-gemini", "provider-engine-gemini"],
     ["interlinear-engine-ollama", "provider-engine-ollama"],
-    ["interlinear-engine-pdftranslate", "provider-engine-pdftranslate"],
     ["interlinear-language-title", "language-title"],
     ["interlinear-source-language-label", "language-source-label"],
     ["interlinear-target-language-label", "language-target-label"],
@@ -259,6 +256,43 @@ function fillAppearanceLabels(doc: Document): void {
   }
 }
 
+function fillStaticLabels(doc: Document): void {
+  const entries: Array<[string, Parameters<typeof getString>[0]]> = [
+    ["interlinear-page-title", "settings-page-title"],
+    ["interlinear-skip-last-label", "settings-skip-last-label"],
+    ["interlinear-skip-last-help", "settings-skip-last-help"],
+    ["interlinear-page-note", "settings-page-note"],
+    ["interlinear-speed-title", "settings-speed-title"],
+    ["interlinear-max-concurrent-label", "settings-max-concurrent-label"],
+    ["interlinear-max-concurrent-help", "settings-max-concurrent-help"],
+    ["interlinear-request-gap-label", "settings-request-gap-label"],
+    ["interlinear-request-gap-help", "settings-request-gap-help"],
+    ["interlinear-max-chars-label", "settings-max-chars-label"],
+    ["interlinear-max-chars-help", "settings-max-chars-help"],
+    ["interlinear-max-batch-paragraphs-label", "settings-max-batch-label"],
+    ["interlinear-max-batch-paragraphs-help", "settings-max-batch-help"],
+    ["interlinear-request-timeout-label", "settings-timeout-label"],
+    ["interlinear-request-timeout-help", "settings-timeout-help"],
+    ["interlinear-max-errors-label", "settings-max-errors-label"],
+    ["interlinear-max-errors-help", "settings-max-errors-help"],
+    ["interlinear-save", "settings-save"],
+    ["interlinear-cache-title", "settings-cache-title"],
+    ["interlinear-clear-cache", "settings-clear-cache"],
+    ["interlinear-cache-help", "settings-cache-help"],
+    ["interlinear-ollama-title", "settings-ollama-title"],
+    ["interlinear-ollama-url-label", "settings-ollama-url-label"],
+    ["interlinear-ollama-model-label", "settings-ollama-model-label"],
+    ["interlinear-test-ollama", "settings-test-ollama"],
+    ["interlinear-refresh-title", "settings-refresh-title"],
+    ["interlinear-refresh-help", "settings-refresh-help"],
+    ["interlinear-project-title", "settings-project-title"],
+  ];
+  for (const [id, key] of entries) {
+    const element = getElement<HTMLElement>(doc, id);
+    if (element) element.textContent = getString(key);
+  }
+}
+
 function readNumberInput(doc: Document, id: string, fallback: number): number {
   const input = getElement<HTMLInputElement>(doc, id);
   const value = Number(input?.value);
@@ -282,7 +316,6 @@ function saveSettings(doc: Document): void {
     "claude",
     "gemini",
     "ollama",
-    "pdftranslate",
   ];
   const engine = validEngines.includes(engineValue as TranslationEngine)
     ? (engineValue as TranslationEngine)
@@ -387,7 +420,7 @@ function saveSettings(doc: Document): void {
   refreshTranslationStyles();
   refreshDisplayModes();
 
-  setStatus(doc, "设置已保存。返回正在阅读的 PDF 后点击 🔄 即可应用。 ");
+  setStatus(doc, getString("settings-saved"));
 }
 
 async function testOllama(doc: Document): Promise<void> {
@@ -401,7 +434,7 @@ async function testOllama(doc: Document): Promise<void> {
   const button = getElement<HTMLButtonElement>(doc, "interlinear-test-ollama");
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  setStatus(doc, `正在连接 ${url} …`);
+  setStatus(doc, getString("ollama-testing", { args: { url } }));
   try {
     const xhr = await Zotero.HTTP.request("GET", `${url}/api/tags`, {
       responseType: "json",
@@ -422,14 +455,21 @@ async function testOllama(doc: Document): Promise<void> {
       setStatus(
         doc,
         hasModel
-          ? `Ollama 连接成功，并检测到模型 ${model}。`
-          : `Ollama 连接成功，但模型列表中未发现 ${model}。已检测：${models.slice(0, 8).join(", ")}`,
+          ? getString("ollama-test-success", { args: { model } })
+          : getString("ollama-test-missing-model", {
+              args: { model, models: models.slice(0, 8).join(", ") },
+            }),
       );
     } else {
-      setStatus(doc, "Ollama 连接成功。未读取到本地模型列表；云模型仍可能可以直接调用。");
+      setStatus(doc, getString("ollama-test-no-model-list"));
     }
   } catch (error: any) {
-    setStatus(doc, `Ollama 连接失败：${error?.message || String(error)}`);
+    setStatus(
+      doc,
+      getString("ollama-test-failed", {
+        args: { detail: String(error?.message || error) },
+      }),
+    );
   } finally {
     if (button) button.disabled = false;
   }
@@ -630,36 +670,21 @@ function updateCacheStatus(doc: Document): void {
   if (!status) return;
   const stats = getTranslationCacheStats();
   const sizeMiB = ((stats.chars * 2) / (1024 * 1024)).toFixed(1);
-  status.textContent = `缓存 ${stats.entries} 段，约 ${sizeMiB} MiB（按 UTF-16 估算）。`;
+  status.textContent = getString("cache-status", {
+    args: { entries: String(stats.entries), size: sizeMiB },
+  });
 }
 
 function clearCache(doc: Document): void {
   const removed = clearTranslationCache();
   const sizeMiB = ((removed.chars * 2) / (1024 * 1024)).toFixed(1);
-  setStatus(doc, `已清除 ${removed.entries} 个缓存项，约 ${sizeMiB} MiB。`);
+  setStatus(
+    doc,
+    getString("cache-cleared", {
+      args: { entries: String(removed.entries), size: sizeMiB },
+    }),
+  );
   updateCacheStatus(doc);
-}
-
-function updatePDFTranslateStatus(doc: Document): void {
-  const api = (Zotero as any).PDFTranslate?.api;
-  const target = getElement<HTMLElement>(doc, "interlinear-pdftranslate-status");
-  if (!target) return;
-
-  if (!api?.translate) {
-    target.textContent = "未检测到 Translate for Zotero。请先安装并启用该插件。";
-    return;
-  }
-
-  let version = "";
-  try {
-    version = api.getVersion?.() || "";
-  } catch (_) {
-    version = "";
-  }
-
-  target.textContent = version
-    ? `已检测到 Translate for Zotero ${version}。Interlinear 将固定跟随它当前的默认服务。`
-    : "已检测到 Translate for Zotero。Interlinear 将固定跟随它当前的默认服务。";
 }
 
 function registerProjectLink(doc: Document): void {
@@ -801,16 +826,16 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
 
   fillAppearanceLabels(doc);
   fillProviderLabels(doc);
+  fillStaticLabels(doc);
   fillLanguageOptions(doc, "interlinear-source-language", SOURCE_LANGUAGES, getSourceLanguage());
   fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
   updateBackendVisibility(doc);
-  updatePDFTranslateStatus(doc);
   updateCacheStatus(doc);
   registerProjectLink(doc);
 
   engine?.addEventListener("change", () => {
     updateBackendVisibility(doc);
-    setStatus(doc, "翻译后端已修改，点击“保存设置”后生效。");
+    setStatus(doc, getString("settings-engine-pending"));
   });
 
   getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {

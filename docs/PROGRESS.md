@@ -436,3 +436,42 @@
 9. 在设置里填 `gene,基因` 后提问“解释 gene 这个概念”，预期回答遵守术语表译法。
 10. 对含 PDF 附件的父条目通过条目信息面板打开聊天，预期能定位到附件阅读器的上下文，而不是提示未找到阅读器。
 
+## Step 9：移除 Translate for Zotero 依附、工具栏小图标与右键菜单、i18n 补全
+
+### 做了什么
+- 彻底移除 Translate for Zotero 运行时依赖：删除 `src/providers/pdftranslate.ts`；`ProviderId` 收缩为 `google | openai | claude | gemini | ollama`，Google 成为隐式默认与所有旧值的回退（包括旧配置里的 `pdftranslate`）；`getCacheEngineTag()` 不再接收服务参数，Google 命名空间兜底；偏好设置里删除 pdftranslate 选项与整段“PDF Translate”UI；`translationFailure.ts` 删除 PDFTranslate 专用错误匹配；`getChatProvider()` 只对 Google 返回 null。
+- 阅读器工具栏图标从 24px 收到 16px（图片与 emoji 按钮同步），按钮 `minWidth` 24px、内边距 2px；保留左键切换全文翻译、进度文本、刷新与导出按钮。
+- 新增 `src/readerMenu.ts`：文档级浮层菜单，支持勾选项、分隔线、外部点击/Escape/失焦/滚动/缩放自动关闭，所有监听器在关闭时移除。
+- 右键工具栏小图标弹出全部功能：开启/停止翻译、刷新、取消任务（未运行时禁用）、四种显示模式（当前项打勾）、导出中英对照 PDF、打开阅读助手面板、打开插件设置。显示模式选择会写回偏好并即时重绘；聊天面板在侧栏未展开时先展开再点击对应按钮。
+- i18n 补全：`bilingualReader.ts` / `readerUI.ts` / `preferenceScript.ts` 中剩余硬编码中文全部改为 Fluent 键；`preferences.xhtml` 删除全部静态中文，改为带 id 的空元素并由 `fillStaticLabels()` 注入；新增约 75 个 FTL 键（en-US / zh-CN 各一份）。故意保留的中文仅限模型提示词、正则、术语表解析与聊天提问前缀，不属于界面文案。
+- 修 FTL 解析：Fluent 字符串字面量不支持 `\n` 转义，改用 `{"\u000A\u000A"}`；否则这两条消息会被解析器丢弃且不进入生成的 `typings/i10n.d.ts`。
+- 未新增 npm 依赖；无上游代码复制。
+
+### 改动文件
+- 新增：`src/readerMenu.ts`。
+- 删除：`src/providers/pdftranslate.ts`。
+- 修改：`src/bilingualReader.ts`、`src/readerUI.ts`、`src/settings.ts`、`src/translationFailure.ts`、`src/providers/index.ts`、`src/providers/types.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`README.md`、`package.json`（lint 列表加入 `readerMenu.ts`）、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**68 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**33 pass / 0 fail，退出码 0**。集成用例覆盖：引擎选项仅五个原生后端、旧值 `pdftranslate` 回退 Google 且 PDFTranslate 调用次数为 0、16px 图标、右键菜单包含全部 10 个动作、点击显示模式会写偏好并关闭菜单。
+- 覆盖率缺口：菜单定位/关闭逻辑与 `revealChatPane()` 只在模拟 DOM 与 fake reader 中验证。
+
+### 不确定项
+- `revealChatPane()` 依赖主窗口 `.btn[data-pane]` 且值以 `-interlinear-chat` 结尾；若 Zotero 调整侧栏按钮结构，菜单里的“阅读助手”可能提示不可用。
+- 右键菜单为原生 DOM 浮层，不是 XUL 菜单；在 Zotero 深色主题下沿用 CSS 变量，但未做真实主题切换验证。
+- 旧配置 `pdftranslate` 静默映射 Google，不提示用户“引擎已变更”；如需显式提示可后续补充。
+- 聊天/术语表仍对 Google 不可用（Google 翻译无对话/提示词接口），属预期限制。
+- 菜单与图标的真实 Zotero UI 右键行为尚未手工验证，集成测试使用合成 `contextmenu` 事件。
+
+### 需要手动验证的清单
+1. 在真实 Zotero 阅读器中确认工具栏图标为 16px，且左键仍可开启/停止全文翻译。
+2. 右键小图标：菜单应在鼠标位置弹出，含 10 个条目；点击空白处、按 Escape、切换窗口后应自动关闭。
+3. 依次点击四种显示模式：段落布局即时变化，重新打开菜单时当前模式带勾。
+4. 未运行翻译时“取消任务”应为禁用态；运行中点击应停止并恢复按钮状态。
+5. 点击“导出中英对照 PDF”“阅读助手”“插件设置”，确认分别打开导出流程、右侧聊天面板与偏好设置页。
+6. 将界面切换为英文，重新打开偏好设置与阅读器，确认设置页、工具栏提示、导出对话框与错误提示全部为英文，无残留中文。
+7. 用旧配置（引擎曾为 Translate for Zotero）启动，确认自动使用 Google 且不再出现 PDFTranslate 相关选项或错误。
+

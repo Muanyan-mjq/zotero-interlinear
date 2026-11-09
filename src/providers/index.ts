@@ -39,7 +39,6 @@ import { requestGeminiTranslation, testGeminiConnection } from "./gemini";
 import { requestGoogleTranslation, testGoogleConnection } from "./google";
 import { requestOllamaTranslation } from "./ollama";
 import { requestOpenAITranslation, testOpenAIConnection } from "./openai";
-import { requestPDFTranslate } from "./pdftranslate";
 import { buildOllamaSystemPrompt, languageNameZh } from "./prompts";
 import type { ChatProvider, TranslationProvider } from "./types";
 
@@ -51,23 +50,6 @@ export {
 };
 
 export function getTranslationProvider(engine: TranslationEngine): TranslationProvider {
-  if (engine === "google") {
-    return {
-      id: "google",
-      translate: async (text, context) => ({
-        text: await requestGoogleTranslation(
-          {
-            baseURL: getGoogleBaseURL(),
-            sourceLanguage: context.sourceLanguage,
-            targetLanguage: context.targetLanguage,
-            timeoutMs: context.timeoutMs,
-          },
-          text,
-        ),
-      }),
-    };
-  }
-
   if (engine === "openai") {
     return {
       id: "openai",
@@ -150,19 +132,30 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
     };
   }
 
+  // Google is the default engine and the fallback for removed backend values.
   return {
-    id: "pdftranslate",
-    translate: (text, context) => requestPDFTranslate(text, context),
+    id: "google",
+    translate: async (text, context) => ({
+      text: await requestGoogleTranslation(
+        {
+          baseURL: getGoogleBaseURL(),
+          sourceLanguage: context.sourceLanguage,
+          targetLanguage: context.targetLanguage,
+          timeoutMs: context.timeoutMs,
+        },
+        text,
+      ),
+    }),
   };
 }
 
 /**
  * Chat reuses the same backend configuration as translation. Google Translate
- * and Translate for Zotero have no conversational API, so the sidebar reports
- * them as unsupported instead of guessing an endpoint.
+ * has no conversational API, so the sidebar reports it as unsupported instead
+ * of guessing an endpoint.
  */
 export function getChatProvider(engine: TranslationEngine): ChatProvider | null {
-  if (engine === "google" || engine === "pdftranslate") return null;
+  if (engine === "google") return null;
 
   const systemPrompt = () =>
     buildChatSystemPrompt(languageNameZh(getTargetLanguage()), getGlossaryDirective());

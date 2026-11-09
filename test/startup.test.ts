@@ -9,7 +9,7 @@ import {
 import { attachReaderInteractions } from "../src/readerInteractions";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
-import { getCacheEngineTag } from "../src/settings";
+import { getCacheEngineTag, getDisplayMode } from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
 
@@ -49,7 +49,7 @@ describe("startup", function () {
 
       assert.deepEqual(
         Array.from(engine?.options || []).map((option) => option.value),
-        ["google", "openai", "claude", "gemini", "ollama", "pdftranslate"],
+        ["google", "openai", "claude", "gemini", "ollama"],
       );
       assert.equal(engine?.value, "google");
       assert.equal(skipLastPages?.value, "1");
@@ -140,13 +140,10 @@ describe("startup", function () {
       );
       assert.exists(win?.document.getElementById("interlinear-glossary-import"));
       assert.exists(win?.document.getElementById("interlinear-glossary-export"));
-      assert.isTrue(
-        win?.document.getElementById("interlinear-pdftranslate-section")?.hidden ?? false,
-      );
-      assert.notExists(win?.document.getElementById("interlinear-pdftranslate-service"));
-      assert.include(
-        win?.document.getElementById("interlinear-pdftranslate-policy")?.textContent || "",
-        "固定跟随 Translate for Zotero 当前默认服务",
+      assert.notExists(win?.document.getElementById("interlinear-pdftranslate-section"));
+      assert.notExists(win?.document.getElementById("interlinear-engine-pdftranslate"));
+      assert.isFalse(
+        Array.from(engine?.options || []).some((option) => option.value === "pdftranslate"),
       );
       assert.exists(win?.document.getElementById("interlinear-save"));
       assert.equal(
@@ -536,6 +533,7 @@ describe("startup", function () {
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousMode = Zotero.Prefs.get(modePref, true);
     const previousPDFTranslate = (Zotero as any).PDFTranslate;
+    const previousRequest = Zotero.HTTP.request;
     const originalReaders = (Zotero.Reader as any)._readers;
 
     const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("display-test");
@@ -567,19 +565,26 @@ describe("startup", function () {
     (Zotero.Reader as any)._readers = [reader];
 
     try {
+      // A removed backend stored by an old install must fall back to Google
+      // instead of reaching for Translate for Zotero.
       Zotero.Prefs.set(enginePref, "pdftranslate", true);
       Zotero.Prefs.set(modePref, "top-bottom", true);
+      let pdfTranslateCalls = 0;
       (Zotero as any).PDFTranslate = {
         api: {
-          translate: async () => ({
-            status: "success",
-            result: "显示模式集成测试译文。",
-            service: "integration-test",
-          }),
+          translate: async () => {
+            pdfTranslateCalls += 1;
+            return { status: "success", result: "不应被调用的译文。" };
+          },
         },
       };
+      (Zotero.HTTP as any).request = async () => ({
+        status: 200,
+        response: [[["显示模式集成测试译文。", "source", null, null]]],
+      });
 
       await toggleBilingualReading(reader);
+      assert.equal(pdfTranslateCalls, 0);
 
       const sources = Array.from(content.querySelectorAll("p[data-ref-path]")) as HTMLElement[];
       const blocks = Array.from(
@@ -617,87 +622,11 @@ describe("startup", function () {
       clearTranslationCache();
       (Zotero.Reader as any)._readers = originalReaders;
       (Zotero as any).PDFTranslate = previousPDFTranslate;
+      (Zotero.HTTP as any).request = previousRequest;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
       else Zotero.Prefs.set(modePref, previousMode, true);
-    }
-  });
-
-  it("should translate through Translate for Zotero without AbortController", async function () {
-    this.timeout(10000);
-    const prefKey = "extensions.zotero.interlinear.engine";
-    const obsoleteServicePref = "extensions.zotero.interlinear.pdftranslate.service";
-    const previousEngine = Zotero.Prefs.get(prefKey, true);
-    const previousObsoleteService = Zotero.Prefs.get(obsoleteServicePref, true);
-    const previousPDFTranslate = (Zotero as any).PDFTranslate;
-    let shownError = "";
-    let requestedOptions: Record<string, any> | undefined;
-
-    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("reader-test");
-    const content = doc.createElement("div");
-    content.id = "sdt-content";
-    const paragraph = doc.createElement("p");
-    paragraph.dataset.refPath = "0";
-    paragraph.textContent = `A synthetic paragraph for translation ${Date.now()}.`;
-    content.append(paragraph);
-    doc.body.append(content);
-
-    const reader = {
-      itemID: 2147483647,
-      _iframeWindow: {
-        alert(message: string) {
-          shownError = message;
-        },
-      },
-      _internalReader: {
-        _lastViewPrimary: true,
-        _primarySDTView: {
-          _iframeDocument: doc,
-          getData: () => ({ structure: null }),
-        },
-      },
-    };
-
-    try {
-      Zotero.Prefs.set(prefKey, "pdftranslate", true);
-      // A service saved by an older Bilingual Reader must no longer override
-      // Translate for Zotero's current default.
-      Zotero.Prefs.set(obsoleteServicePref, "legacy-service", true);
-      (Zotero as any).PDFTranslate = {
-        api: {
-          translate: async (_text: string, options: Record<string, any>) => {
-            requestedOptions = options;
-            return {
-              status: "success",
-              result: "集成测试译文。",
-              service: "integration-test",
-            };
-          },
-        },
-      };
-
-      await toggleBilingualReading(reader);
-
-      const translated = doc.querySelector(".interlinear-translation");
-      assert.equal(shownError, "");
-      assert.equal(translated?.textContent, "集成测试译文。");
-      assert.equal(translated?.getAttribute("data-state"), "done");
-      assert.notProperty(requestedOptions, "service");
-    } finally {
-      await toggleBilingualReading(reader);
-      clearTranslationCache();
-      (Zotero as any).PDFTranslate = previousPDFTranslate;
-      if (previousEngine === undefined) {
-        Zotero.Prefs.clear(prefKey, true);
-      } else {
-        Zotero.Prefs.set(prefKey, previousEngine, true);
-      }
-      if (previousObsoleteService === undefined) {
-        Zotero.Prefs.clear(obsoleteServicePref, true);
-      } else {
-        Zotero.Prefs.set(obsoleteServicePref, previousObsoleteService, true);
-      }
     }
   });
 
@@ -1091,7 +1020,7 @@ describe("startup", function () {
     const skipPref = "extensions.zotero.interlinear.skipLastPages";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSkip = Zotero.Prefs.get(skipPref, true);
-    const previousPDFTranslate = (Zotero as any).PDFTranslate;
+    const previousRequest = Zotero.HTTP.request;
     let requestCount = 0;
 
     const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("range-test");
@@ -1126,19 +1055,14 @@ describe("startup", function () {
     };
 
     try {
-      Zotero.Prefs.set(enginePref, "pdftranslate", true);
+      Zotero.Prefs.set(enginePref, "google", true);
       Zotero.Prefs.set(skipPref, 1, true);
-      (Zotero as any).PDFTranslate = {
-        api: {
-          translate: async () => {
-            requestCount += 1;
-            return {
-              status: "success",
-              result: "第一页译文。",
-              service: "integration-test",
-            };
-          },
-        },
+      (Zotero.HTTP as any).request = async () => {
+        requestCount += 1;
+        return {
+          status: 200,
+          response: [[["第一页译文。", "source", null, null]]],
+        };
       };
 
       await toggleBilingualReading(reader);
@@ -1151,7 +1075,7 @@ describe("startup", function () {
     } finally {
       await toggleBilingualReading(reader);
       clearTranslationCache();
-      (Zotero as any).PDFTranslate = previousPDFTranslate;
+      (Zotero.HTTP as any).request = previousRequest;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousSkip === undefined) Zotero.Prefs.clear(skipPref, true);
@@ -1162,10 +1086,8 @@ describe("startup", function () {
   it("should translate one paragraph and one selection on demand", async function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
-    const servicePref = "extensions.zotero.ZoteroPDFTranslate.translateSource";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
-    const previousService = Zotero.Prefs.get(servicePref, true);
-    const previousPDFTranslate = (Zotero as any).PDFTranslate;
+    const previousRequest = Zotero.HTTP.request;
     const requested: string[] = [];
     const stamp = Date.now();
 
@@ -1193,19 +1115,18 @@ describe("startup", function () {
     };
 
     try {
-      Zotero.Prefs.set(enginePref, "pdftranslate", true);
-      Zotero.Prefs.set(servicePref, "integration-test", true);
-      (Zotero as any).PDFTranslate = {
-        api: {
-          translate: async (text: string) => {
-            requested.push(text);
-            return {
-              status: "success",
-              result: `译文：${text}`,
-              service: "integration-test",
-            };
-          },
-        },
+      Zotero.Prefs.set(enginePref, "google", true);
+      (Zotero.HTTP as any).request = async (
+        _method: string,
+        _url: string,
+        options: Record<string, any>,
+      ) => {
+        const text = new URLSearchParams(String(options?.body || "")).get("q") || "";
+        requested.push(text);
+        return {
+          status: 200,
+          response: [[[`译文：${text}`, text, null, null]]],
+        };
       };
 
       await translateReaderParagraph(reader, paragraph);
@@ -1228,11 +1149,9 @@ describe("startup", function () {
       assert.equal(cached, `译文：Selected text ${stamp}.`);
     } finally {
       clearTranslationCache();
-      (Zotero as any).PDFTranslate = previousPDFTranslate;
+      (Zotero.HTTP as any).request = previousRequest;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
-      if (previousService === undefined) Zotero.Prefs.clear(servicePref, true);
-      else Zotero.Prefs.set(servicePref, previousService, true);
     }
   });
 
@@ -1338,7 +1257,7 @@ describe("startup", function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
-    const previousPDFTranslate = (Zotero as any).PDFTranslate;
+    const previousRequest = Zotero.HTTP.request;
 
     const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
       "progress-test",
@@ -1382,19 +1301,15 @@ describe("startup", function () {
 
     let resolveTranslation: (value: any) => void = () => undefined;
     let requested = false;
-    (Zotero as any).PDFTranslate = {
-      api: {
-        translate: () => {
-          requested = true;
-          return new Promise((resolve) => {
-            resolveTranslation = resolve;
-          });
-        },
-      },
+    (Zotero.HTTP as any).request = () => {
+      requested = true;
+      return new Promise((resolve) => {
+        resolveTranslation = resolve;
+      });
     };
 
     try {
-      Zotero.Prefs.set(enginePref, "pdftranslate", true);
+      Zotero.Prefs.set(enginePref, "ollama", true);
       const run = toggleBilingualReading(reader);
 
       for (let attempt = 0; attempt < 200; attempt++) {
@@ -1411,18 +1326,16 @@ describe("startup", function () {
       assert.equal(toggle.title, idleTitle);
       assert.equal(doc.querySelectorAll(".interlinear-translation").length, 0);
 
-      resolveTranslation({ status: "success", result: "late", service: "integration-test" });
+      resolveTranslation({
+        status: 200,
+        response: { message: { content: "late" } },
+      });
       await run;
 
-      (Zotero as any).PDFTranslate = {
-        api: {
-          translate: async () => ({
-            status: "success",
-            result: "完成后的译文。",
-            service: "integration-test",
-          }),
-        },
-      };
+      (Zotero.HTTP as any).request = async () => ({
+        status: 200,
+        response: { message: { content: "完成后的译文。" } },
+      });
       await toggleBilingualReading(reader);
       assert.equal(
         doc.querySelector(".interlinear-translation")?.textContent,
@@ -1432,9 +1345,97 @@ describe("startup", function () {
       assert.equal(toggle.title, idleTitle);
     } finally {
       clearTranslationCache();
-      (Zotero as any).PDFTranslate = previousPDFTranslate;
+      (Zotero.HTTP as any).request = previousRequest;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
+    }
+  });
+
+  it("shrinks the reader toolbar icon and exposes every action from its context menu", function () {
+    this.timeout(10000);
+    const modePref = "extensions.zotero.interlinear.displayMode";
+    const previousMode = Zotero.Prefs.get(modePref, true);
+    const originalReaders = (Zotero.Reader as any)._readers;
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "menu-sdt-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    doc.body.append(content);
+
+    const toolbarDoc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "menu-toolbar-test",
+    );
+    const reader = {
+      type: "pdf",
+      itemID: 2147483637,
+      _iframeWindow: { document: toolbarDoc, alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+    (Zotero.Reader as any)._readers = [reader];
+
+    try {
+      renderReaderToolbar({
+        reader,
+        doc: toolbarDoc,
+        append: (...elements: HTMLElement[]) => toolbarDoc.body.append(...elements),
+      });
+
+      const toggle = toolbarDoc.querySelector(
+        ".interlinear-toolbar-button",
+      ) as HTMLButtonElement;
+      const icon = toggle?.querySelector("img") as HTMLImageElement | null;
+      assert.exists(icon);
+      assert.equal(icon?.style.width, "16px");
+      assert.equal(icon?.style.height, "16px");
+
+      const win = Zotero.getMainWindow() as any;
+      toggle.dispatchEvent(
+        new win.MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 24,
+          clientY: 32,
+        }),
+      );
+
+      const menu = toolbarDoc.querySelector(".interlinear-reader-menu") as HTMLElement;
+      assert.exists(menu);
+      const actions = Array.from(menu.querySelectorAll("button[data-action]")).map(
+        (button) => button.getAttribute("data-action"),
+      );
+      for (const action of [
+        "toggle",
+        "refresh",
+        "cancel",
+        "display:top-bottom",
+        "display:side-by-side",
+        "display:target-only",
+        "display:source-only",
+        "export",
+        "chat",
+        "settings",
+      ]) {
+        assert.include(actions, action);
+      }
+
+      const targetOnly = menu.querySelector(
+        '[data-action="display:target-only"]',
+      ) as HTMLButtonElement;
+      targetOnly.click();
+      assert.equal(getDisplayMode(), "target-only");
+      assert.notExists(toolbarDoc.querySelector(".interlinear-reader-menu"));
+    } finally {
+      (Zotero.Reader as any)._readers = originalReaders;
+      if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
+      else Zotero.Prefs.set(modePref, previousMode, true);
     }
   });
 });
@@ -1529,7 +1530,6 @@ describe("chat", function () {
 
   it("exposes chat only for LLM-backed engines", function () {
     assert.isNull(getChatProvider("google"));
-    assert.isNull(getChatProvider("pdftranslate"));
     for (const engine of ["openai", "claude", "gemini", "ollama"] as const) {
       assert.exists(getChatProvider(engine));
     }

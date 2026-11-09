@@ -16,21 +16,20 @@
 
 ## 主要功能
 
-- 一键开启 / 关闭段落中英对照（阅读器工具栏上的插件图标按钮）。
-- 默认调用 **Translate for Zotero** 的翻译服务（推荐使用google，其次必应）。
-- 可选 **Ollama** 本地或云端模型。
-- 自动缓存已完成译文。
+- 阅读器工具栏上的小型 Interlinear 图标：左键开启 / 关闭段落中英对照，右键打开全部功能菜单。
+- 右键菜单：开启 / 关闭、重新翻译全文、取消任务、四种显示模式、导出双语 PDF、打开阅读助手、翻译设置。
+- 内置翻译后端：**Google 翻译**（默认，无需密钥）、**OpenAI 兼容接口**、**Anthropic Claude**、**Google Gemini**、**Ollama**，不再依赖其他插件。
+- 自动缓存已完成译文，并按后端、语言与术语表区分缓存。
 - 支持短段落合并、受控并发、请求节流、超时与连续失败暂停。
 - 可设置“不翻译末尾页数”，用于跳过参考文献。
-- 🔄 可取消当前任务并按最新设置重新翻译。
-- 🖨️ 可尝试将当前双语阅读结果导出为 PDF，并添加为当前文献的 Zotero 附件。
+- 支持术语表、单段翻译与选区翻译、阅读助手侧栏聊天。
+- 将当前双语阅读结果导出为 PDF，并添加为当前文献的 Zotero 附件。
 
 ## 环境
 
 - Zotero 10.x
 - macOS 为主要测试平台
-- 使用 Translate for Zotero 时，需要先安装并配置：
-  https://github.com/windingwind/zotero-pdf-translate
+- 翻译后端自行选择：Google 翻译开箱即用；OpenAI 兼容 / Claude / Gemini 需要填写对应的接口、模型与密钥；Ollama 需要本地或可访问的 Ollama 服务。
 
 ## 安装
 
@@ -45,16 +44,18 @@
 ## 使用
 
 1. 在 Zotero 10 中打开英文 PDF。
-2. 点击阅读器顶部的 **Interlinear 图标按钮**（红色 Z 与 A/文 翻译卡片）。
+2. 左键点击阅读器顶部的 **Interlinear 图标**（红色 Z 与 A/文 翻译卡片）。
 3. 等待 Zotero 生成阅读模式结构化文本。
 4. 中文译文会显示在对应英文段落下方。
-5. 点击 **🔄** 可重新调度翻译。
-6. 点击 **🖨️** 可导出双语 PDF。
+5. 右键点击该图标可打开功能菜单：重新翻译、取消、切换显示模式、导出 PDF、打开阅读助手、进入翻译设置。
 
 可以配置：
 
-- Translate for Zotero / Ollama；
-- Translate for Zotero 固定跟随其当前默认服务；
+- 翻译后端（Google / OpenAI 兼容 / Claude / Gemini / Ollama）及各自的接口、模型与密钥；
+- 原文与译文语言；
+- 译文外观（字号、颜色、字体、行高、段落间距、主题、下划线、色带）；
+- 显示模式；
+- 术语表导入 / 导出；
 - 不翻译末尾页数；
 - 最大并发请求；
 - 请求启动间隔；
@@ -86,14 +87,14 @@
 | 文件 | 尺寸 | 用途 |
 | --- | --- | --- |
 | `addon/content/icons/icon16.png` | 16×16 | 小尺寸备用 |
-| `addon/content/icons/icon20.png` | 20×20 | 阅读器工具栏对照按钮 |
+| `addon/content/icons/icon20.png` | 20×20 | 阅读器工具栏对照按钮（界面中显示为 16px） |
 | `addon/content/icons/icon32.png` | 32×32 | 中尺寸备用 |
 | `addon/content/icons/icon48.png` | 48×48 | 插件管理器图标 |
 | `addon/content/icons/icon96.png` | 96×96 | 插件管理器高清图标、设置页顶部 |
 | `addon/content/icons/favicon.png` | 32×32 | 模板工具栏 / 菜单图标 |
 | `addon/content/icons/favicon@0.5x.png` | 16×16 | 模板菜单小图标 |
 
-重译（🔄）与导出（🖨️）按钮仍使用 emoji，暂未替换。
+重译（🔄）与导出（🖨️）按钮仍使用 emoji，与主图标一起缩小显示。
 
 ## 开发
 

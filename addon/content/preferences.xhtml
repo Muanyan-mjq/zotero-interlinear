@@ -25,7 +25,6 @@
       <html:option id="interlinear-engine-claude" value="claude"></html:option>
       <html:option id="interlinear-engine-gemini" value="gemini"></html:option>
       <html:option id="interlinear-engine-ollama" value="ollama"></html:option>
-      <html:option id="interlinear-engine-pdftranslate" value="pdftranslate"></html:option>
     </html:select>
   </hbox>
 </groupbox>
@@ -561,28 +560,14 @@
   </hbox>
 </groupbox>
 
-<groupbox id="interlinear-pdftranslate-section">
-  <label><html:h3>Translate for Zotero</html:h3></label>
-  <html:p
-    id="interlinear-pdftranslate-status"
-    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
-  ></html:p>
-
-  <html:p
-    id="interlinear-pdftranslate-policy"
-    style="line-height: 1.6; margin: 0; max-width: 760px"
-  >
-    固定跟随 Translate for Zotero 当前默认服务。请在 Translate for Zotero 中切换服务或配置密钥。
-    Interlinear 只负责分段、调度、缓存和双语排版。
-  </html:p>
-</groupbox>
-
 <groupbox id="interlinear-page-section">
-  <label><html:h3>翻译范围</html:h3></label>
+  <label><html:h3 id="interlinear-page-title"></html:h3></label>
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-skip-last-pages" style="min-width: 180px"
-      >不翻译末尾页数</html:label
-    >
+    <html:label
+      id="interlinear-skip-last-label"
+      for="interlinear-skip-last-pages"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-skip-last-pages"
       type="number"
@@ -591,22 +576,23 @@
       step="1"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 1 页。常用于跳过论文最后的参考文献页；设为 0 表示不按页数跳过。</html:span
-    >
+    <html:span id="interlinear-skip-last-help" style="margin-left: 10px; max-width: 520px"></html:span>
   </hbox>
-  <html:p style="line-height: 1.6; margin: 0; max-width: 760px">
-    插件同时继续跳过 Zotero 已明确标记为参考文献的结构化段落。页数限制按 PDF 物理页计算。
-  </html:p>
+  <html:p
+    id="interlinear-page-note"
+    style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
 </groupbox>
 
 <groupbox id="interlinear-speed-section">
-  <label><html:h3>速度与稳定性</html:h3></label>
+  <label><html:h3 id="interlinear-speed-title"></html:h3></label>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-max-concurrent" style="min-width: 180px"
-      >最大并发请求</html:label
-    >
+    <html:label
+      id="interlinear-max-concurrent-label"
+      for="interlinear-max-concurrent"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-max-concurrent"
       type="number"
@@ -615,15 +601,18 @@
       step="1"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 2。通常比完全串行明显更快，同时避免一次发出过多请求。</html:span
-    >
+    <html:span
+      id="interlinear-max-concurrent-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-request-gap" style="min-width: 180px"
-      >请求启动间隔（毫秒）</html:label
-    >
+    <html:label
+      id="interlinear-request-gap-label"
+      for="interlinear-request-gap"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-request-gap"
       type="number"
@@ -632,15 +621,18 @@
       step="50"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 250。公共免费服务若频繁限流，可提高到 500–1000。</html:span
-    >
+    <html:span
+      id="interlinear-request-gap-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-max-chars" style="min-width: 180px"
-      >单次请求最大字符数</html:label
-    >
+    <html:label
+      id="interlinear-max-chars-label"
+      for="interlinear-max-chars"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-max-chars"
       type="number"
@@ -649,15 +641,18 @@
       step="100"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 2800。超长段落会自动拆成较小片段，降低大文本请求失败概率。</html:span
-    >
+    <html:span
+      id="interlinear-max-chars-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-max-batch-paragraphs" style="min-width: 180px"
-      >单次合并段落数</html:label
-    >
+    <html:label
+      id="interlinear-max-batch-paragraphs-label"
+      for="interlinear-max-batch-paragraphs"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-max-batch-paragraphs"
       type="number"
@@ -666,16 +661,18 @@
       step="1"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 6。短段落会在字符上限内合并请求；标记未被翻译服务保留时会自动逐段重试。设为 1
-      可关闭合并。</html:span
-    >
+    <html:span
+      id="interlinear-max-batch-paragraphs-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
   </hbox>
 
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-request-timeout" style="min-width: 180px"
-      >单次请求超时（毫秒）</html:label
-    >
+    <html:label
+      id="interlinear-request-timeout-label"
+      for="interlinear-request-timeout"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-request-timeout"
       type="number"
@@ -684,15 +681,18 @@
       step="5000"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 60000。防止失效服务永久占用任务；使用较慢的本地模型时可提高。</html:span
-    >
+    <html:span
+      id="interlinear-request-timeout-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
   </hbox>
 
   <hbox align="center" style="margin-bottom: 10px">
-    <html:label for="interlinear-max-errors" style="min-width: 180px"
-      >连续失败后暂停</html:label
-    >
+    <html:label
+      id="interlinear-max-errors-label"
+      for="interlinear-max-errors"
+      style="min-width: 180px"
+    ></html:label>
     <html:input
       id="interlinear-max-errors"
       type="number"
@@ -701,15 +701,14 @@
       step="1"
       style="width: 110px; padding: 4px 6px"
     />
-    <html:span style="margin-left: 10px; max-width: 520px"
-      >默认 3 次。避免失效服务持续请求整篇论文。</html:span
-    >
+    <html:span
+      id="interlinear-max-errors-help"
+      style="margin-left: 10px; max-width: 520px"
+    ></html:span>
   </hbox>
 
   <hbox align="center">
-    <html:button id="interlinear-save" type="button" style="padding: 6px 16px"
-      >保存设置</html:button
-    >
+    <html:button id="interlinear-save" type="button" style="padding: 6px 16px"></html:button>
     <html:span
       id="interlinear-settings-status"
       style="margin-left: 12px; line-height: 1.5"
@@ -718,22 +717,26 @@
 </groupbox>
 
 <groupbox id="interlinear-cache-section">
-  <label><html:h3>翻译缓存</html:h3></label>
+  <label><html:h3 id="interlinear-cache-title"></html:h3></label>
   <html:p id="interlinear-cache-status" style="line-height: 1.6; margin: 0 0 8px 0"></html:p>
   <hbox align="center">
-    <html:button id="interlinear-clear-cache" type="button" style="padding: 5px 12px"
-      >清除翻译缓存</html:button
-    >
-    <html:span style="margin-left: 10px; max-width: 560px"
-      >缓存采用自动上限和最近使用淘汰，避免长期阅读后偏好存储无限增长。</html:span
-    >
+    <html:button
+      id="interlinear-clear-cache"
+      type="button"
+      style="padding: 5px 12px"
+    ></html:button>
+    <html:span id="interlinear-cache-help" style="margin-left: 10px; max-width: 560px"></html:span>
   </hbox>
 </groupbox>
 
 <groupbox id="interlinear-ollama-section">
-  <label><html:h3>Ollama（可选）</html:h3></label>
+  <label><html:h3 id="interlinear-ollama-title"></html:h3></label>
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-ollama-url" style="min-width: 130px">服务地址</html:label>
+    <html:label
+      id="interlinear-ollama-url-label"
+      for="interlinear-ollama-url"
+      style="min-width: 130px"
+    ></html:label>
     <html:input
       id="interlinear-ollama-url"
       type="text"
@@ -742,7 +745,11 @@
     />
   </hbox>
   <hbox align="center" style="margin-bottom: 8px">
-    <html:label for="interlinear-ollama-model" style="min-width: 130px">模型</html:label>
+    <html:label
+      id="interlinear-ollama-model-label"
+      for="interlinear-ollama-model"
+      style="min-width: 130px"
+    ></html:label>
     <html:input
       id="interlinear-ollama-model"
       type="text"
@@ -752,22 +759,24 @@
   </hbox>
   <hbox align="center">
     <spacer width="130" />
-    <html:button id="interlinear-test-ollama" type="button" style="padding: 5px 12px"
-      >测试 Ollama 连接</html:button
-    >
+    <html:button
+      id="interlinear-test-ollama"
+      type="button"
+      style="padding: 5px 12px"
+    ></html:button>
   </hbox>
 </groupbox>
 
 <groupbox>
-  <label><html:h3>刷新说明</html:h3></label>
-  <html:p style="line-height: 1.6; margin: 0; max-width: 760px">
-    修改翻译后端或速度参数后，回到 PDF 阅读器点击
-    🔄。插件会取消旧任务、清除旧错误结果，并按照当前设置重新调度未成功的段落。
-  </html:p>
+  <label><html:h3 id="interlinear-refresh-title"></html:h3></label>
+  <html:p
+    id="interlinear-refresh-help"
+    style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
 </groupbox>
 
 <groupbox>
-  <label><html:h3>项目主页</html:h3></label>
+  <label><html:h3 id="interlinear-project-title"></html:h3></label>
   <html:p style="line-height: 1.6; margin: 0">
     <html:a
       id="interlinear-github-link"

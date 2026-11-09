@@ -167,8 +167,7 @@ export function getEngine(): TranslationEngine {
   return value === "ollama" ||
     value === "openai" ||
     value === "claude" ||
-    value === "gemini" ||
-    value === "pdftranslate"
+    value === "gemini"
     ? value
     : "google";
 }
@@ -546,18 +545,6 @@ function glossaryTag(): string {
   return hash ? `:g:${hash}` : "";
 }
 
-export function getResolvedPDFTranslateService(): string {
-  try {
-    const current = (Zotero.Prefs as any).get(
-      "extensions.zotero.ZoteroPDFTranslate.translateSource",
-      true,
-    );
-    return typeof current === "string" ? current.trim() : "";
-  } catch (_) {
-    return "";
-  }
-}
-
 function hashTag(text: string): string {
   let result = 2166136261;
   for (let i = 0; i < text.length; i++) {
@@ -575,7 +562,7 @@ function languageTag(): string {
     : `:${source}>${target}`;
 }
 
-export function getCacheEngineTag(actualPDFTranslateService?: string): string {
+export function getCacheEngineTag(): string {
   const engine = getEngine();
   const language = languageTag();
   const glossary = glossaryTag();
@@ -599,12 +586,8 @@ export function getCacheEngineTag(actualPDFTranslateService?: string): string {
       `${getGeminiPrompt()}\u0000${getGeminiTemperature()}`,
     )}${language}${glossary}`;
   }
-  if (engine === "google") {
-    return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}`;
-  }
-  return `pdftranslate:${
-    actualPDFTranslateService || getResolvedPDFTranslateService() || "default"
-  }${language}`;
+  // Google is also the fallback cache namespace for removed backend values.
+  return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}`;
 }
 
 /**

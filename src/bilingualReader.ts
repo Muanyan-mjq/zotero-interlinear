@@ -1,6 +1,4 @@
 import {
-  DEFAULT_OLLAMA_MODEL,
-  DEFAULT_OLLAMA_URL,
   getAppearance,
   getCacheEngineTag,
   getDisplayMode,
@@ -9,16 +7,12 @@ import {
   getMaxCharsPerRequest,
   getMaxConcurrent,
   getMaxConsecutiveErrors,
-  getOllamaModel,
-  getOllamaURL,
   getRequestGapMs,
   getRequestTimeoutMs,
   getSkipLastPages,
   getSourceLanguage,
   getTargetLanguage,
-  setEngine,
-  setOllamaModel,
-  setOllamaURL,
+  setDisplayMode,
   type TranslationEngine,
 } from "./settings";
 import {
@@ -47,6 +41,12 @@ import {
   attachReaderInteractions,
   type InteractionController,
 } from "./readerInteractions";
+import {
+  closeReaderMenu,
+  openReaderMenu,
+  type ReaderMenuEntry,
+} from "./readerMenu";
+import { exportBilingualPDF } from "./readerUI";
 import { getString } from "./utils/locale";
 import { config } from "../package.json";
 
@@ -99,13 +99,16 @@ interface TranslationJobItem extends BatchInput {
 
 class RunCancelledError extends Error {
   constructor() {
-    super("翻译任务已取消。");
+    super("Translation cancelled.");
     this.name = "RunCancelledError";
   }
 }
 
 function isCancellationError(error: unknown): boolean {
-  return error instanceof RunCancelledError || /翻译任务已取消/u.test(String(error));
+  return (
+    error instanceof RunCancelledError ||
+    (error as any)?.name === "RunCancelledError"
+  );
 }
 
 async function raceWithTimeoutAndCancellation<T>(
@@ -131,7 +134,14 @@ async function raceWithTimeoutAndCancellation<T>(
     const onCancel = () => finish(reject, new RunCancelledError());
 
     const timeoutID = setTimeout(() => {
-      finish(reject, new Error(`翻译请求超过 ${Math.round(timeoutMs / 1000)} 秒，已跳过。`));
+      finish(
+        reject,
+        new Error(
+          getString("error-request-timeout", {
+            args: { seconds: String(Math.round(timeoutMs / 1000)) },
+          }),
+        ),
+      );
     }, timeoutMs);
     removeCancelListener = cancellation.onCancel(onCancel);
 
@@ -180,9 +190,7 @@ async function translateText(
   });
   return {
     text: result.text,
-    // Translate for Zotero resolves its service per request; the tag must
-    // follow it so caches never mix different services.
-    engineTag: getCacheEngineTag(result.actualService),
+    engineTag: getCacheEngineTag(),
   };
 }
 
@@ -276,6 +284,14 @@ function cancelRun(reader: any): void {
   updateToolbarProgress(reader);
 }
 
+export function cancelBilingualReading(reader: any): void {
+  cancelRun(reader);
+}
+
+export function isBilingualRunning(reader: any): boolean {
+  return Boolean(runStates.get(reader)?.running);
+}
+
 function isCurrentRun(reader: any, generation: number, doc: Document): boolean {
   const state = runStates.get(reader);
   if (
@@ -331,14 +347,14 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 
   const internal = getInternalReader(reader);
   if (!internal) {
-    throw new Error("无法访问 Zotero PDF 阅读器。");
+    throw new Error(getString("error-reader-unavailable"));
   }
 
   const primary = internal._lastViewPrimary !== false || !internal._secondaryView;
   if (typeof internal._setReadingMode === "function") {
     await internal._setReadingMode(primary, true);
   } else {
-    throw new Error("当前 Zotero 版本未提供可用的阅读模式接口。请先手动开启“阅读模式”后重试。");
+    throw new Error(getString("error-reading-mode-unsupported"));
   }
 
   for (let i = 0; i < 150; i++) {
@@ -347,7 +363,7 @@ async function ensureReadingMode(reader: any): Promise<Document> {
     await Zotero.Promise.delay(100);
   }
 
-  throw new Error("Zotero 阅读模式加载超时。请关闭并重新打开 PDF 后重试。");
+  throw new Error(getString("error-reading-mode-timeout"));
 }
 
 function installStyles(doc: Document): void {
@@ -1003,7 +1019,7 @@ async function translateParagraphs(
 async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   const doc = await ensureReadingMode(reader);
   const root = getDocumentRoot(doc);
-  if (!root) throw new Error("无法访问 Zotero 阅读模式页面。");
+  if (!root) throw new Error(getString("error-reading-mode-page"));
 
   installStyles(doc);
   cancelRun(reader);
@@ -1018,7 +1034,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   const itemID = Number(reader?.itemID || 0);
   const item = itemID ? Zotero.Items.get(itemID) : null;
   const itemKey = String(item?.key || reader?.itemKey || itemID || "reader");
-  if (!itemID) throw new Error("无法取得当前 PDF 的 Zotero 条目编号。");
+  if (!itemID) throw new Error(getString("error-item-id-missing"));
 
   try {
     await (Zotero as any).SDT?.ensure?.(itemID, { isPriority: true });
@@ -1031,7 +1047,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   const structure = getSDTStructure(reader);
   const paragraphs = collectParagraphs(doc, itemKey, engineTag, structure);
   if (!paragraphs.length) {
-    throw new Error("当前阅读模式中没有检测到可翻译的正文段落，或已被末尾页数设置全部排除。");
+    throw new Error(getString("error-no-paragraphs"));
   }
 
   observeReadingLayout(getActiveSDTView(reader), doc);
@@ -1091,14 +1107,6 @@ export async function refreshBilingualReading(reader: any): Promise<void> {
   }
 }
 
-function getPromptWindow(reader: any): any {
-  try {
-    return reader?._iframeWindow || Zotero.getMainWindow();
-  } catch (_) {
-    return Zotero.getMainWindow();
-  }
-}
-
 export function configureTranslation(reader: any): void {
   try {
     const preferencesWindow = Zotero.Utilities.Internal.openPreferences(PREFERENCES_PANE_ID);
@@ -1107,40 +1115,7 @@ export function configureTranslation(reader: any): void {
     Zotero.logError(error as Error);
   }
 
-  // Retain a minimal fallback for unusual installations where Zotero cannot
-  // open a registered plugin preference pane.
-  const win = getPromptWindow(reader);
-  if (!win?.prompt) {
-    showError(reader, "无法打开翻译设置窗口。请在 Zotero 设置 → 中英对照 中配置。");
-    return;
-  }
-
-  const currentEngine = getEngine();
-  const answer = win.prompt(
-    "快速切换翻译后端：\n1 = Translate for Zotero（推荐）\n2 = Ollama\n\n完整设置请前往 Zotero 设置 → 中英对照。",
-    currentEngine === "ollama" ? "2" : "1",
-  );
-  if (answer === null) return;
-
-  if (String(answer).trim() === "2") {
-    const url = win.prompt("Ollama 地址：", getOllamaURL() || DEFAULT_OLLAMA_URL);
-    if (url === null) return;
-
-    const model = win.prompt(
-      "Ollama 模型名称：\n本地推荐：gpt-oss:20b\n云端可用：gpt-oss:120b-cloud",
-      getOllamaModel() || DEFAULT_OLLAMA_MODEL,
-    );
-    if (model === null) return;
-
-    setEngine("ollama");
-    setOllamaURL(String(url));
-    setOllamaModel(String(model));
-    win.alert?.("已切换为 Ollama。点击 🔄 会清除旧结果并重新翻译。");
-    return;
-  }
-
-  setEngine("pdftranslate");
-  win.alert?.("已切换为 Translate for Zotero，并跟随其当前默认服务。点击 🔄 即可重试。");
+  showError(reader, getString("settings-open-failed"));
 }
 
 function createToolbarButton(
@@ -1150,6 +1125,7 @@ function createToolbarButton(
   title: string,
   onClick: (event: Event) => void,
   iconURL?: string,
+  onContextMenu?: (event: MouseEvent) => void,
 ): HTMLButtonElement {
   const button = doc.createElement("button");
   button.className = `toolbar-button ${className}`;
@@ -1157,21 +1133,21 @@ function createToolbarButton(
   button.tabIndex = -1;
   button.title = title;
   button.setAttribute("aria-label", title);
-  button.style.minWidth = "34px";
-  button.style.paddingInline = "5px";
+  button.style.minWidth = "24px";
+  button.style.paddingInline = "2px";
   if (iconURL) {
     const img = doc.createElement("img");
     img.src = iconURL;
     img.alt = "";
     img.draggable = false;
-    img.style.width = "20px";
-    img.style.height = "20px";
+    img.style.width = "16px";
+    img.style.height = "16px";
     img.style.display = "block";
     img.style.pointerEvents = "none";
     button.appendChild(img);
   } else {
     button.textContent = text;
-    button.style.fontSize = "19px";
+    button.style.fontSize = "16px";
     button.style.lineHeight = "1";
     button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
   }
@@ -1180,7 +1156,106 @@ function createToolbarButton(
     event.stopPropagation();
     onClick(event);
   });
+  if (onContextMenu) {
+    button.addEventListener("contextmenu", (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onContextMenu(event);
+    });
+  }
   return button;
+}
+
+function revealChatPane(): boolean {
+  const win = Zotero.getMainWindow() as any;
+  const pane = win?.ZoteroContextPane;
+  if (!pane || !win?.document) return false;
+
+  try {
+    pane.collapsed = false;
+  } catch (_) {
+    // Opening the pane is best-effort; the sidenav click below still works.
+  }
+
+  const buttons = Array.from(
+    win.document.querySelectorAll(".btn[data-pane]"),
+  ) as HTMLElement[];
+  const button = buttons.find((candidate) =>
+    String((candidate as any).dataset?.pane || "").endsWith("-interlinear-chat"),
+  );
+  if (!button) return false;
+  button.click();
+  return true;
+}
+
+function openBilingualToolbarMenu(
+  reader: any,
+  doc: Document,
+  x: number,
+  y: number,
+): void {
+  const running = isBilingualRunning(reader);
+  const mode = getDisplayMode();
+  const entries: ReaderMenuEntry[] = [
+    { action: "toggle", label: getString("toolbar-menu-toggle") },
+    { action: "refresh", label: getString("toolbar-menu-refresh") },
+    {
+      action: "cancel",
+      label: getString("toolbar-menu-cancel"),
+      disabled: !running,
+    },
+    "separator",
+    {
+      action: "display:top-bottom",
+      label: getString("display-mode-top-bottom"),
+      checked: mode === "top-bottom",
+    },
+    {
+      action: "display:side-by-side",
+      label: getString("display-mode-side-by-side"),
+      checked: mode === "side-by-side",
+    },
+    {
+      action: "display:target-only",
+      label: getString("display-mode-target-only"),
+      checked: mode === "target-only",
+    },
+    {
+      action: "display:source-only",
+      label: getString("display-mode-source-only"),
+      checked: mode === "source-only",
+    },
+    "separator",
+    { action: "export", label: getString("toolbar-menu-export") },
+    { action: "chat", label: getString("toolbar-menu-chat") },
+    { action: "settings", label: getString("toolbar-menu-settings") },
+  ];
+
+  openReaderMenu(doc, {
+    x,
+    y,
+    entries,
+    onSelect: (action) => {
+      if (action === "toggle") {
+        void toggleBilingualReading(reader);
+      } else if (action === "refresh") {
+        void refreshBilingualReading(reader);
+      } else if (action === "cancel") {
+        cancelBilingualReading(reader);
+      } else if (action.startsWith("display:")) {
+        setDisplayMode(action.slice("display:".length));
+        refreshDisplayModes();
+      } else if (action === "export") {
+        void exportBilingualPDF(reader);
+      } else if (action === "chat") {
+        if (!revealChatPane()) {
+          showError(reader, getString("toolbar-menu-chat-unavailable"));
+        }
+      } else if (action === "settings") {
+        configureTranslation(reader);
+      }
+    },
+  });
 }
 
 export function renderBilingualToolbarButtons(event: any): void {
@@ -1196,6 +1271,7 @@ export function renderBilingualToolbarButtons(event: any): void {
         getString("toolbar-toggle-title"),
         () => void toggleBilingualReading(reader),
         TOGGLE_ICON_URL,
+        (event) => openBilingualToolbarMenu(reader, doc, event.clientX, event.clientY),
       ),
     );
   }
@@ -1283,6 +1359,8 @@ export function cleanupBilingualReader(reader: any): void {
   } catch (_) {
     toolbarDoc = undefined;
   }
+
+  closeReaderMenu(toolbarDoc);
 
   const buttons = toolbarDoc
     ? (Array.from(
