@@ -579,3 +579,36 @@
 5. 关闭“启用快捷键翻译”后保存，确认组合键不再触发；按 Backspace 恢复默认并验证 `Alt+Enter` 生效。
 6. 开启全文翻译的同时把鼠标停在正在排队的段落上，确认该段只出现一次请求（译文最终一致，无重复错误块）。
 
+
+## Step 13：还原阅读器图标，并在侧边栏聊天页内加入“功能与设置”面板
+
+### 做了什么
+- 工具栏图标改为直接使用插件自带的 `addon/content/icons/icon32.png`：生成 `src/interlinearIcon.ts`（base64 data URI 常量），运行期用 16×16 的 `<img>` 渲染，外观与提供的 Logo 像素一致。阅读器文档基准 URL 是 `resource://zotero/reader/...`，`chrome://` 图片地址在其中无法加载；data: 图片可正常显示。
+- 针对右键菜单在用户机器上仍无响应的问题，在右侧边栏已有的 Interlinear 聊天页顶部新增可折叠的“功能与设置”面板（不占用阅读器工具栏）。面板提供：开启/停止对照、刷新译文、取消翻译、导出 PDF、打开设置，以及四种显示模式下拉框。
+- 面板按钮先通过 `findReaderForItem` 定位当前条目对应的阅读器再执行动作；没有打开的阅读器时点击不产生副作用。文案经 Fluent 渲染，其余按钮复用既有 `toolbar-menu-*` 词条。
+- 集成测试同步更新：图标断言改为 `img` + `data:image/png;base64,` 前缀 + 16px 尺寸；侧边栏 section 的 `bodyXHTML` 断言新增 7 个控件 ID。
+
+### 改动文件
+- 新增：`src/interlinearIcon.ts`（由图标生成的 base64 常量）。
+- 修改：`src/bilingualReader.ts`、`src/chatPane.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`typings/i10n.d.ts`、`package.json`（lint 文件列表）、`test/startup.test.ts`、`test/readerToolbar.test.ts`。
+
+### 测试结果
+- `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**73 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**35 pass / 0 fail**。
+- 另用临时探针在真实 Zotero 阅读器中以原生鼠标事件复核：document 捕获阶段能收到指向插件按钮的 `contextmenu`，菜单节点可见且可命中；该探针为排查用途，验证后已删除。
+
+### 不确定项
+- 右键菜单在自动化环境（真实阅读器 + 原生事件）中可见可用，但在用户机器上仍无反应，根因尚未定位；侧边栏面板是兜底入口，不代表右键问题已修复。
+- 侧边栏面板依赖 ItemPaneManager 的自定义 section 渲染；Zotero 升级若调整该 API 需要回归。
+- 图标以 16px 渲染 32px 源图，没有单独的 HiDPI 2x 素材；高分屏下可能略软。
+- 面板沿用既有的按条目查找阅读器逻辑；条目同时被多个窗口打开时只会操作最先找到的阅读器。
+
+### 需要手动验证的清单
+1. 重新安装新的 `interlinear.xpi` 并重启 Zotero，打开 PDF：工具栏图标应与插件 Logo 完全一致。
+2. 打开右侧边栏 Interlinear 页面，点击顶部“功能与设置”，确认面板展开且五个按钮与显示模式下拉框可见。
+3. 在有打开阅读器的条目上依次点击开启/停止、刷新、取消、导出、设置，并切换四种显示模式，确认行为与工具栏一致。
+4. 在未打开阅读器的条目上打开侧边栏页面并点击面板按钮，确认不报错。
+5. 再次右键工具栏图标，确认在你的环境中是否仍然无反应，以便决定是否需要继续排查。
+

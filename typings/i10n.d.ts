@@ -29,6 +29,7 @@ export type FluentMessageId =
   | 'appearance-underline-label'
   | 'cache-cleared'
   | 'cache-status'
+  | 'chat-actions-toggle'
   | 'chat-assistant'
   | 'chat-clear'
   | 'chat-empty'

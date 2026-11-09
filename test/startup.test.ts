@@ -186,10 +186,11 @@ describe("startup", function () {
     assert.equal(doc.querySelectorAll(".interlinear-export-button").length, 1);
     const toggle = doc.querySelector(".interlinear-toolbar-button");
     assert.equal(toggle?.textContent, "");
-    const toggleIcon = toggle?.querySelector("svg") as SVGElement | null;
+    const toggleIcon = toggle?.querySelector("img") as HTMLImageElement | null;
     assert.exists(toggleIcon);
-    assert.equal(toggleIcon?.getAttribute("width"), "16");
-    assert.equal(toggleIcon?.getAttribute("height"), "16");
+    assert.match(String(toggleIcon?.src), /^data:image\/png;base64,/);
+    assert.equal(toggleIcon?.style.width, "16px");
+    assert.equal(toggleIcon?.style.height, "16px");
     assert.equal(doc.querySelector(".interlinear-export-button")?.textContent, "🖨️");
     assert.notExists(doc.querySelector(".interlinear-settings-button"));
     assert.notExists(doc.querySelector(".interlinear-wordwise-button"));
@@ -1561,10 +1562,11 @@ describe("startup", function () {
       const toggle = toolbarDoc.querySelector(
         ".interlinear-toolbar-button",
       ) as HTMLButtonElement;
-      const icon = toggle?.querySelector("svg") as SVGElement | null;
+      const icon = toggle?.querySelector("img") as HTMLImageElement | null;
       assert.exists(icon);
-      assert.equal(icon?.getAttribute("width"), "16");
-      assert.equal(icon?.getAttribute("height"), "16");
+      assert.match(String(icon?.src), /^data:image\/png;base64,/);
+      assert.equal(icon?.style.width, "16px");
+      assert.equal(icon?.style.height, "16px");
 
       const win = Zotero.getMainWindow() as any;
       toggle.dispatchEvent(
@@ -1642,6 +1644,13 @@ describe("chat", function () {
     );
     assert.include(section.bodyXHTML, "interlinear-chat-root");
     assert.include(section.bodyXHTML, "interlinear-chat-privacy");
+    assert.include(section.bodyXHTML, "interlinear-actions-toggle");
+    assert.include(section.bodyXHTML, "interlinear-action-toggle");
+    assert.include(section.bodyXHTML, "interlinear-action-refresh");
+    assert.include(section.bodyXHTML, "interlinear-action-cancel");
+    assert.include(section.bodyXHTML, "interlinear-action-export");
+    assert.include(section.bodyXHTML, "interlinear-action-settings");
+    assert.include(section.bodyXHTML, "interlinear-display-mode");
 
     const states: boolean[] = [];
     const setEnabled = (value: boolean) => states.push(value);

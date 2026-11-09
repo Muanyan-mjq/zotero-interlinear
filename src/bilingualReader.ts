@@ -53,6 +53,7 @@ import {
 import { exportBilingualPDF } from "./readerUI";
 import { getString } from "./utils/locale";
 import { registerToolbarHandlers } from "./toolbarEvents";
+import { INTERLINEAR_ICON_DATA_URL } from "./interlinearIcon";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
@@ -1260,42 +1261,18 @@ function createToolbarButton(
   return button;
 }
 
-function createInterlinearIcon(doc: Document): SVGElement {
-  const namespace = "http://www.w3.org/2000/svg";
-  const svg = doc.createElementNS(namespace, "svg") as unknown as SVGElement;
-  svg.setAttribute("width", "16");
-  svg.setAttribute("height", "16");
-  svg.setAttribute("viewBox", "0 0 16 16");
-  svg.setAttribute("aria-hidden", "true");
-  svg.style.display = "block";
-  svg.style.pointerEvents = "none";
-
-  const background = doc.createElementNS(namespace, "rect");
-  background.setAttribute("x", "0.5");
-  background.setAttribute("y", "0.5");
-  background.setAttribute("width", "15");
-  background.setAttribute("height", "15");
-  background.setAttribute("rx", "3.5");
-  background.setAttribute("fill", "#c7354a");
-  svg.append(background);
-
-  for (const line of [
-    ["3.5", "5.5", "12.5", "5.5"],
-    ["3.5", "8", "12.5", "8"],
-    ["3.5", "10.5", "9", "10.5"],
-  ]) {
-    const stroke = doc.createElementNS(namespace, "line");
-    stroke.setAttribute("x1", line[0]);
-    stroke.setAttribute("y1", line[1]);
-    stroke.setAttribute("x2", line[2]);
-    stroke.setAttribute("y2", line[3]);
-    stroke.setAttribute("stroke", "#ffffff");
-    stroke.setAttribute("stroke-width", "1.5");
-    stroke.setAttribute("stroke-linecap", "round");
-    svg.append(stroke);
-  }
-
-  return svg;
+function createInterlinearIcon(doc: Document): HTMLImageElement {
+  // The reader document has a resource:// base URL, so chrome:// image URLs
+  // never load. Embed the shipped icon as a data URI instead.
+  const image = doc.createElement("img");
+  image.src = INTERLINEAR_ICON_DATA_URL;
+  image.alt = "";
+  image.setAttribute("aria-hidden", "true");
+  image.style.width = "16px";
+  image.style.height = "16px";
+  image.style.display = "block";
+  image.style.pointerEvents = "none";
+  return image;
 }
 
 function revealChatPane(): boolean {

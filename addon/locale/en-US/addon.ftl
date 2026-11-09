@@ -233,6 +233,7 @@ paragraph-translate-failed = Translation failed: { $detail }
 paragraph-paused = Paused after repeated failures. Check the translation service, then click the refresh button to retry.
 interaction-help = In reading mode, select text to translate just that selection; Escape closes the selection popup. Resting the pointer on a paragraph translates it automatically (toggle and delay above), and you can also use your custom shortcut or hold Alt and click. During a full-document run, single-paragraph translations reuse in-flight requests instead of calling the service twice.
 
+chat-actions-toggle = Actions & settings
 chat-privacy = Chat messages are sent to the model service you selected. Do not paste sensitive information.
 chat-scope-label = Context scope
 chat-scope-selection = Selected paragraph

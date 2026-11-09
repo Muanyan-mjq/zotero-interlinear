@@ -2,13 +2,21 @@
 // Interlinear — reading assistant sidebar registered as an item pane section.
 
 import { config } from "../package.json";
-import { getReaderDocument } from "./bilingualReader";
+import {
+  cancelBilingualReading,
+  configureTranslation,
+  getReaderDocument,
+  refreshBilingualReading,
+  refreshDisplayModes,
+  toggleBilingualReading,
+} from "./bilingualReader";
 import { collectChatContext, type ChatScope } from "./chatContext";
 import { appendChatTurn, clearChatSession, getChatSession } from "./chatSession";
 import { getChatProvider } from "./providers";
 import { buildChatContextBlock } from "./providers/chatPrompts";
 import type { ChatTurn } from "./providers/chatProtocol";
-import { getEngine } from "./settings";
+import { exportBilingualPDF } from "./readerUI";
+import { getDisplayMode, getEngine, setDisplayMode } from "./settings";
 import { getLocaleID, getString } from "./utils/locale";
 
 const CHAT_PANE_ID = "interlinear-chat";
@@ -17,9 +25,30 @@ const CLEAR_SELECTOR = "#interlinear-chat-clear";
 const INPUT_SELECTOR = "#interlinear-chat-input";
 const LOG_SELECTOR = "#interlinear-chat-log";
 const STATUS_SELECTOR = "#interlinear-chat-status";
+const ACTIONS_TOGGLE_SELECTOR = "#interlinear-actions-toggle";
+const ACTIONS_PANEL_SELECTOR = "#interlinear-actions-panel";
 const SCOPES: readonly ChatScope[] = ["selection", "page", "document"];
 
 const CHAT_BODY_XHTML = `<html:div id="interlinear-chat-root" style="display:flex;flex-direction:column;gap:8px;padding:4px 0;font-size:13px;">
+<html:button id="interlinear-actions-toggle" type="button" aria-expanded="false" style="align-self:flex-start;"></html:button>
+<html:div id="interlinear-actions-panel" style="display:none;flex-direction:column;gap:6px;border:1px solid rgba(127,127,127,0.35);border-radius:6px;padding:8px;">
+<html:div style="display:flex;flex-wrap:wrap;gap:6px;">
+<html:button id="interlinear-action-toggle" type="button"></html:button>
+<html:button id="interlinear-action-refresh" type="button"></html:button>
+<html:button id="interlinear-action-cancel" type="button"></html:button>
+<html:button id="interlinear-action-export" type="button"></html:button>
+<html:button id="interlinear-action-settings" type="button"></html:button>
+</html:div>
+<html:label style="display:flex;align-items:center;gap:6px;">
+<html:span id="interlinear-display-label"></html:span>
+<html:select id="interlinear-display-mode">
+<html:option value="top-bottom"></html:option>
+<html:option value="side-by-side"></html:option>
+<html:option value="target-only"></html:option>
+<html:option value="source-only"></html:option>
+</html:select>
+</html:label>
+</html:div>
 <html:p id="interlinear-chat-privacy" style="margin:0;opacity:0.75;line-height:1.4;"></html:p>
 <html:label style="display:flex;align-items:center;gap:6px;">
 <html:span id="interlinear-chat-scope-label"></html:span>
@@ -91,6 +120,24 @@ function findReaderForItem(item: Zotero.Item | null): any | null {
   return null;
 }
 
+function currentReader(body: HTMLElement): any | null {
+  const itemID = Number(body.dataset.interlinearChatItemId || 0);
+  if (!itemID) return null;
+  return findReaderForItem(Zotero.Items.get(itemID));
+}
+
+function bindActionButton(
+  body: HTMLElement,
+  selector: string,
+  run: (reader: any) => void,
+): void {
+  getElement<HTMLButtonElement>(body, selector)?.addEventListener("click", () => {
+    const reader = currentReader(body);
+    if (!reader) return;
+    run(reader);
+  });
+}
+
 function setStatus(body: HTMLElement, text: string): void {
   const status = getElement<HTMLElement>(body, STATUS_SELECTOR);
   if (!status) return;
@@ -99,6 +146,32 @@ function setStatus(body: HTMLElement, text: string): void {
 }
 
 function applyStaticLabels(body: HTMLElement): void {
+  const actionsToggle = getElement<HTMLButtonElement>(body, ACTIONS_TOGGLE_SELECTOR);
+  if (actionsToggle) actionsToggle.textContent = getString("chat-actions-toggle");
+
+  const actionLabels: Array<[string, any]> = [
+    ["#interlinear-action-toggle", "toolbar-menu-toggle"],
+    ["#interlinear-action-refresh", "toolbar-menu-refresh"],
+    ["#interlinear-action-cancel", "toolbar-menu-cancel"],
+    ["#interlinear-action-export", "toolbar-menu-export"],
+    ["#interlinear-action-settings", "toolbar-menu-settings"],
+  ];
+  for (const [selector, key] of actionLabels) {
+    const button = getElement<HTMLButtonElement>(body, selector);
+    if (button) button.textContent = getString(key);
+  }
+
+  const displayLabel = getElement<HTMLElement>(body, "#interlinear-display-label");
+  if (displayLabel) displayLabel.textContent = getString("display-mode-title");
+
+  const modeSelect = getElement<HTMLSelectElement>(body, "#interlinear-display-mode");
+  if (modeSelect) {
+    modeSelect.value = getDisplayMode();
+    for (const option of Array.from(modeSelect.options) as HTMLOptionElement[]) {
+      option.textContent = getString(`display-mode-${option.value}` as any);
+    }
+  }
+
   const privacy = getElement<HTMLElement>(body, "#interlinear-chat-privacy");
   if (privacy) privacy.textContent = getString("chat-privacy");
 
@@ -261,6 +334,38 @@ async function sendQuestion(body: HTMLElement): Promise<void> {
 function bindBody(body: HTMLElement): void {
   if (body.dataset.interlinearChatBound) return;
   body.dataset.interlinearChatBound = "1";
+
+  const actionsToggle = getElement<HTMLButtonElement>(body, ACTIONS_TOGGLE_SELECTOR);
+  const actionsPanel = getElement<HTMLElement>(body, ACTIONS_PANEL_SELECTOR);
+  actionsToggle?.addEventListener("click", () => {
+    if (!actionsPanel) return;
+    const open = actionsPanel.style.display === "none";
+    actionsPanel.style.display = open ? "flex" : "none";
+    actionsToggle.setAttribute("aria-expanded", String(open));
+  });
+
+  bindActionButton(body, "#interlinear-action-toggle", (reader) => {
+    void toggleBilingualReading(reader);
+  });
+  bindActionButton(body, "#interlinear-action-refresh", (reader) => {
+    void refreshBilingualReading(reader);
+  });
+  bindActionButton(body, "#interlinear-action-cancel", (reader) => {
+    cancelBilingualReading(reader);
+  });
+  bindActionButton(body, "#interlinear-action-export", (reader) => {
+    void exportBilingualPDF(reader);
+  });
+  bindActionButton(body, "#interlinear-action-settings", (reader) => {
+    configureTranslation(reader);
+  });
+
+  const modeSelect = getElement<HTMLSelectElement>(body, "#interlinear-display-mode");
+  modeSelect?.addEventListener("change", () => {
+    if (!modeSelect.value) return;
+    setDisplayMode(modeSelect.value);
+    refreshDisplayModes();
+  });
 
   getElement<HTMLButtonElement>(body, SEND_SELECTOR)?.addEventListener("click", () => {
     void sendQuestion(body);

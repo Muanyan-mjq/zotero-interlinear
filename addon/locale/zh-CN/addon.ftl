@@ -233,6 +233,7 @@ paragraph-translate-failed = 翻译失败：{ $detail }
 paragraph-paused = 已暂停：连续翻译失败。请检查翻译服务后点击刷新按钮重试。
 interaction-help = 在阅读模式中选中文字，可只翻译该选区；按 Esc 关闭选区弹窗。将鼠标停在段落上会自动翻译（可在上方开关并调整延迟），也可按自定义快捷键或按住 Alt 点击翻译单个段落。整篇翻译进行中时，单段翻译会复用已有请求，不会重复调用服务。
 
+chat-actions-toggle = 功能与设置
 chat-privacy = 聊天内容会发送到你选择的模型服务。请勿粘贴敏感信息。
 chat-scope-label = 上下文范围
 chat-scope-selection = 选中段落
