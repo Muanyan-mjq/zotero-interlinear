@@ -22,6 +22,12 @@ import {
   normalizeDisplayMode,
   type DisplayMode,
 } from "./displayMode";
+import {
+  buildGlossaryDirective,
+  glossaryHash,
+  parseGlossary,
+  type GlossaryEntry,
+} from "./glossary";
 
 export type { AppearanceSettings } from "./appearance";
 export type { DisplayMode } from "./displayMode";
@@ -119,6 +125,7 @@ const APPEARANCE_UNDERLINE_COLOR_PREF = `${BASE}.appearance.underlineColor`;
 const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
 const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
 const DISPLAY_MODE_PREF = `${BASE}.displayMode`;
+const GLOSSARY_PREF = `${BASE}.glossary`;
 
 function getStringPref(key: string, fallback: string): string {
   const value = (Zotero.Prefs as any).get(key, true);
@@ -274,10 +281,10 @@ export function setOpenAITemperature(value: number): void {
 
 /** The user-editable prompt plus the languages selected for this run. */
 export function getOpenAISystemPrompt(): string {
-  return `${getOpenAIPrompt()}\n\n${buildLanguageDirective(
+  return appendGlossaryDirective(`${getOpenAIPrompt()}\n\n${buildLanguageDirective(
     getSourceLanguage(),
     getTargetLanguage(),
-  )}`;
+  )}`);
 }
 
 export function getClaudeEndpoint(): string {
@@ -331,10 +338,10 @@ export function setClaudeTemperature(value: number): void {
 }
 
 export function getClaudeSystemPrompt(): string {
-  return `${getClaudePrompt()}\n\n${buildLanguageDirective(
+  return appendGlossaryDirective(`${getClaudePrompt()}\n\n${buildLanguageDirective(
     getSourceLanguage(),
     getTargetLanguage(),
-  )}`;
+  )}`);
 }
 
 export function getGeminiBaseURL(): string {
@@ -397,10 +404,10 @@ export function setGeminiTemperature(value: number): void {
 }
 
 export function getGeminiSystemPrompt(): string {
-  return `${getGeminiPrompt()}\n\n${buildLanguageDirective(
+  return appendGlossaryDirective(`${getGeminiPrompt()}\n\n${buildLanguageDirective(
     getSourceLanguage(),
     getTargetLanguage(),
-  )}`;
+  )}`);
 }
 
 export function getRequestGapMs(): number {
@@ -508,6 +515,37 @@ export function setDisplayMode(mode: string): void {
   setStringPref(DISPLAY_MODE_PREF, normalizeDisplayMode(mode));
 }
 
+export function getGlossaryText(): string {
+  return getRawStringPref(GLOSSARY_PREF);
+}
+
+export function setGlossaryText(text: string): void {
+  setStringPref(GLOSSARY_PREF, text.replace(/\r\n?/gu, "\n"));
+}
+
+export function getGlossaryEntries(): GlossaryEntry[] {
+  return parseGlossary(getGlossaryText());
+}
+
+export function getGlossaryDirective(): string {
+  return buildGlossaryDirective(getGlossaryEntries());
+}
+
+export function getGlossaryHash(): string {
+  return glossaryHash(getGlossaryEntries());
+}
+
+/** The glossary consumes prompt space only for LLM-backed providers. */
+function appendGlossaryDirective(prompt: string): string {
+  const directive = getGlossaryDirective();
+  return directive ? `${prompt}\n\n${directive}` : prompt;
+}
+
+function glossaryTag(): string {
+  const hash = getGlossaryHash();
+  return hash ? `:g:${hash}` : "";
+}
+
 export function getResolvedPDFTranslateService(): string {
   try {
     const current = (Zotero.Prefs as any).get(
@@ -540,25 +578,26 @@ function languageTag(): string {
 export function getCacheEngineTag(actualPDFTranslateService?: string): string {
   const engine = getEngine();
   const language = languageTag();
+  const glossary = glossaryTag();
   if (engine === "ollama") {
-    return `ollama:${getOllamaURL()}:${getOllamaModel()}${language}`;
+    return `ollama:${getOllamaURL()}:${getOllamaModel()}${language}${glossary}`;
   }
   if (engine === "openai") {
     // The API key is intentionally absent: rotating a key must not invalidate
     // translations, and cache keys must never carry secrets.
     return `openai:${normalizeChatCompletionsEndpoint(getOpenAIEndpoint())}:${getOpenAIModel()}:${hashTag(
       `${getOpenAIPrompt()}\u0000${getOpenAITemperature()}`,
-    )}${language}`;
+    )}${language}${glossary}`;
   }
   if (engine === "claude") {
     return `claude:${normalizeClaudeEndpoint(getClaudeEndpoint())}:${getClaudeModel()}:${hashTag(
       `${getClaudePrompt()}\u0000${getClaudeTemperature()}`,
-    )}${language}`;
+    )}${language}${glossary}`;
   }
   if (engine === "gemini") {
     return `gemini:${getGeminiBaseURL()}:${getGeminiModel()}:${hashTag(
       `${getGeminiPrompt()}\u0000${getGeminiTemperature()}`,
-    )}${language}`;
+    )}${language}${glossary}`;
   }
   if (engine === "google") {
     return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}`;

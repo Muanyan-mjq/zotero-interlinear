@@ -32,6 +32,7 @@ import {
   getGeminiModel,
   getGeminiPrompt,
   getGeminiTemperature,
+  getGlossaryText,
   getGoogleBaseURL,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
@@ -62,6 +63,7 @@ import {
   setGeminiModel,
   setGeminiPrompt,
   setGeminiTemperature,
+  setGlossaryText,
   setGoogleBaseURL,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
@@ -82,6 +84,12 @@ import {
   type TranslationEngine,
 } from "../settings";
 import { DEFAULT_APPEARANCE, type AppearanceSettings } from "../appearance";
+import { parseGlossary, serializeGlossary } from "../glossary";
+import {
+  pickGlossaryFile,
+  readGlossaryFile,
+  writeGlossaryFile,
+} from "../glossaryFiles";
 import { getString } from "../utils/locale";
 import { refreshDisplayModes, refreshTranslationStyles } from "../bilingualReader";
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
@@ -170,6 +178,10 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-gemini-temperature-help", "provider-gemini-temperature-help"],
     ["interlinear-gemini-prompt-label", "provider-gemini-prompt-label"],
     ["interlinear-gemini-prompt-help", "provider-gemini-prompt-help"],
+    ["interlinear-glossary-title", "glossary-title"],
+    ["interlinear-glossary-help", "glossary-help"],
+    ["interlinear-glossary-import", "glossary-import"],
+    ["interlinear-glossary-export", "glossary-export"],
     ["interlinear-test-google", "provider-test-connection"],
     ["interlinear-test-openai", "provider-test-connection"],
     ["interlinear-test-claude", "provider-test-connection"],
@@ -318,6 +330,7 @@ function saveSettings(doc: Document): void {
   setGeminiTemperature(
     readNumberInput(doc, "interlinear-gemini-temperature", DEFAULT_GEMINI_TEMPERATURE),
   );
+  setGlossaryText(readInputText(doc, "interlinear-glossary"));
   setOllamaURL(url);
   setOllamaModel(model);
   setSkipLastPages(
@@ -538,6 +551,80 @@ async function testGemini(doc: Document): Promise<void> {
   }
 }
 
+async function importGlossary(doc: Document): Promise<void> {
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-glossary-import");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    const path = await pickGlossaryFile(
+      "open",
+      getString("glossary-file-import-title"),
+    );
+    if (!path) return;
+
+    const entries = parseGlossary(await readGlossaryFile(path));
+    const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
+    if (entries.length === 0) {
+      if (status) status.textContent = getString("glossary-status-empty");
+      return;
+    }
+
+    const textarea = getElement<HTMLTextAreaElement>(doc, "interlinear-glossary");
+    if (textarea) textarea.value = serializeGlossary(entries);
+    if (status) {
+      status.textContent = getString("glossary-status-imported", {
+        args: { count: String(entries.length) },
+      });
+    }
+  } catch (error: any) {
+    const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
+    if (status) {
+      status.textContent = getString("glossary-status-error", {
+        args: { detail: String(error?.message || error) },
+      });
+    }
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function exportGlossary(doc: Document): Promise<void> {
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-glossary-export");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    const textarea = getElement<HTMLTextAreaElement>(doc, "interlinear-glossary");
+    const entries = parseGlossary(textarea?.value || "");
+    const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
+    if (entries.length === 0) {
+      if (status) status.textContent = getString("glossary-status-empty");
+      return;
+    }
+
+    const path = await pickGlossaryFile(
+      "save",
+      getString("glossary-file-export-title"),
+    );
+    if (!path) return;
+
+    await writeGlossaryFile(path, serializeGlossary(entries));
+    if (status) {
+      status.textContent = getString("glossary-status-exported", {
+        args: { count: String(entries.length) },
+      });
+    }
+  } catch (error: any) {
+    const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
+    if (status) {
+      status.textContent = getString("glossary-status-error", {
+        args: { detail: String(error?.message || error) },
+      });
+    }
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function updateCacheStatus(doc: Document): void {
   const status = getElement<HTMLElement>(doc, "interlinear-cache-status");
   if (!status) return;
@@ -666,6 +753,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     "interlinear-gemini-temperature",
   );
   const geminiPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-gemini-prompt");
+  const glossary = getElement<HTMLTextAreaElement>(doc, "interlinear-glossary");
   const displayMode = getElement<HTMLSelectElement>(doc, "interlinear-display-mode");
 
   if (engine) engine.value = getEngine();
@@ -687,6 +775,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (geminiApiKey) geminiApiKey.value = getGeminiApiKey();
   if (geminiTemperature) geminiTemperature.value = String(getGeminiTemperature());
   if (geminiPrompt) geminiPrompt.value = getGeminiPrompt();
+  if (glossary) glossary.value = getGlossaryText();
   if (displayMode) displayMode.value = getDisplayMode();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   if (maxConcurrent) maxConcurrent.value = String(getMaxConcurrent());
@@ -760,6 +849,20 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     "click",
     () => {
       void testGemini(doc);
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-glossary-import")?.addEventListener(
+    "click",
+    () => {
+      void importGlossary(doc);
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-glossary-export")?.addEventListener(
+    "click",
+    () => {
+      void exportGlossary(doc);
     },
   );
 

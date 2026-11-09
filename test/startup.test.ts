@@ -125,6 +125,19 @@ describe("startup", function () {
       );
       assert.exists(win?.document.getElementById("interlinear-test-claude"));
       assert.exists(win?.document.getElementById("interlinear-test-gemini"));
+      const glossary = win?.document.getElementById(
+        "interlinear-glossary",
+      ) as HTMLTextAreaElement | null;
+      assert.exists(glossary);
+      assert.equal(glossary?.value, "");
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-glossary-help")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+      );
+      assert.exists(win?.document.getElementById("interlinear-glossary-import"));
+      assert.exists(win?.document.getElementById("interlinear-glossary-export"));
       assert.isTrue(
         win?.document.getElementById("interlinear-pdftranslate-section")?.hidden ?? false,
       );
@@ -309,6 +322,67 @@ describe("startup", function () {
     } finally {
       win?.close();
       for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
+    }
+  });
+
+  it("should save glossary terms and include their hash in cache tags", async function () {
+    this.timeout(10000);
+    const glossaryPref = "extensions.zotero.interlinear.glossary";
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const previousGlossary = Zotero.Prefs.get(glossaryPref, true);
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as
+        | (HTMLInputElement & HTMLSelectElement & HTMLTextAreaElement)
+        | null;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const root = win?.document.getElementById("interlinear-settings-root");
+        if (root?.dataset.initialized === "true") break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const textarea = byId("interlinear-glossary");
+      const engine = byId("interlinear-engine");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
+      assert.exists(textarea);
+      assert.exists(engine);
+      assert.exists(save);
+
+      if (engine) {
+        engine.value = "openai";
+        engine.dispatchEvent(new win!.Event("change"));
+      }
+      if (textarea) {
+        textarea.value = "source,target\ngene,基因\nprotein,蛋白质\n";
+      }
+      save.click();
+      assert.include(String(Zotero.Prefs.get(glossaryPref, true)), "gene,基因");
+      assert.equal(Zotero.Prefs.get(enginePref, true), "openai");
+
+      const firstTag = getCacheEngineTag();
+      assert.match(firstTag, /:g:[0-9a-f]{8}$/u);
+      assert.notInclude(firstTag, "基因");
+
+      if (textarea) {
+        textarea.value = "gene,遗传因子\n";
+      }
+      save.click();
+      const secondTag = getCacheEngineTag();
+      assert.notEqual(firstTag, secondTag);
+      assert.notInclude(secondTag, "遗传因子");
+    } finally {
+      win?.close();
+      for (const [key, value] of [
+        [glossaryPref, previousGlossary],
+        [enginePref, previousEngine],
+      ] as Array<[string, unknown]>) {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value as any, true);
       }
@@ -760,8 +834,10 @@ describe("startup", function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
     const apiKeyPref = "extensions.zotero.interlinear.openai.apiKey";
+    const glossaryPref = "extensions.zotero.interlinear.glossary";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousApiKey = Zotero.Prefs.get(apiKeyPref, true);
+    const previousGlossary = Zotero.Prefs.get(glossaryPref, true);
     const previousRequest = Zotero.HTTP.request;
     const secret = `sk-integration-${Date.now()}`;
     let requestedURL = "";
@@ -792,6 +868,7 @@ describe("startup", function () {
     try {
       Zotero.Prefs.set(enginePref, "openai", true);
       Zotero.Prefs.set(apiKeyPref, secret, true);
+      Zotero.Prefs.set(glossaryPref, "gene\t基因", true);
       (Zotero.HTTP as any).request = async (
         _method: string,
         url: string,
@@ -814,7 +891,9 @@ describe("startup", function () {
       assert.match(requestedURL, /\/v1\/chat\/completions$/u);
       assert.equal(requestedHeaders.Authorization, `Bearer ${secret}`);
       assert.equal(requestedBody?.messages?.[1]?.content, paragraph.textContent);
+      assert.include(requestedBody?.messages?.[0]?.content, "gene => 基因");
       assert.equal(translated?.textContent, "OpenAI 集成测试译文。");
+      assert.match(getCacheEngineTag(), /:g:[0-9a-f]{8}$/u);
       assert.notInclude(getCacheEngineTag(), secret);
     } finally {
       await toggleBilingualReading(reader);
@@ -823,6 +902,7 @@ describe("startup", function () {
       for (const [key, value] of [
         [enginePref, previousEngine],
         [apiKeyPref, previousApiKey],
+        [glossaryPref, previousGlossary],
       ] as Array<[string, unknown]>) {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value, true);

@@ -13,6 +13,7 @@ import {
   getGeminiModel,
   getGeminiSystemPrompt,
   getGeminiTemperature,
+  getGlossaryDirective,
   getGoogleBaseURL,
   getOllamaModel,
   getOllamaURL,
@@ -118,20 +119,24 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
   if (engine === "ollama") {
     return {
       id: "ollama",
-      translate: async (text, context) => ({
-        text: await requestOllamaTranslation(
-          {
-            baseURL: getOllamaURL(),
-            model: getOllamaModel(),
-            systemPrompt: buildOllamaSystemPrompt(
-              context.sourceLanguage,
-              context.targetLanguage,
-            ),
-            timeoutMs: context.timeoutMs,
-          },
-          text,
-        ),
-      }),
+      translate: async (text, context) => {
+        const prompt = buildOllamaSystemPrompt(
+          context.sourceLanguage,
+          context.targetLanguage,
+        );
+        const glossary = getGlossaryDirective();
+        return {
+          text: await requestOllamaTranslation(
+            {
+              baseURL: getOllamaURL(),
+              model: getOllamaModel(),
+              systemPrompt: glossary ? `${prompt}\n\n${glossary}` : prompt,
+              timeoutMs: context.timeoutMs,
+            },
+            text,
+          ),
+        };
+      },
     };
   }
 

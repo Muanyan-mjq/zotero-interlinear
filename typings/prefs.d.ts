@@ -36,6 +36,7 @@ declare namespace _ZoteroTypes {
       "requestTimeoutMs": number;
       "skipLastPages": number;
       "displayMode": string;
+      "glossary": string;
       "appearance.fontSize": number;
       "appearance.color": string;
       "appearance.fontFamily": string;

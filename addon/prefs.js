@@ -27,6 +27,7 @@ pref("maxConsecutiveErrors", 3);
 pref("requestTimeoutMs", 60000);
 pref("skipLastPages", 1);
 pref("displayMode", "top-bottom");
+pref("glossary", "");
 pref("appearance.fontSize", 16);
 pref("appearance.color", "");
 pref("appearance.fontFamily", "");

@@ -338,3 +338,54 @@
 6. 把模型改成不存在的名称 / 删除密钥后测试。预期：分别提示模型错误、密钥未填写；不会静默回退到其他后端。
 7. 若使用中转：填写自定义端点/服务地址，确认最终请求路径符合中转要求（Claude 以 `/v1/messages` 结尾，Gemini 以 `:generateContent` 结尾）。
 8. 打开 Zotero 调试输出，确认日志中没有出现两个密钥字符串。
+
+## Step 7：术语表导入导出与缓存键
+
+### 做了什么
+- 新增纯函数模块 `src/glossary.ts`：
+  - `parseGlossary()` 支持 CSV 与 TSV：自动按首个有效行选择分隔符；支持 `"..."` 引号、字段内逗号/换行、`""` 转义引号；跳过空行、`#` 注释行与可选的 `source,target` / `原文,译文` 表头；同一原文重复出现时后者覆盖前者并移到末尾。
+  - `normalizeGlossary()`：去除首尾空白、丢弃空字段、单条原文/译文上限 200 字符、最多 2000 条。
+  - `serializeGlossary()`：固定输出 `source,target` 表头，仅在含逗号/引号/换行时加引号并转义，保证 `parseGlossary(serializeGlossary(x))` 往返一致。
+  - `glossaryHash()`：对规范化后的 `source\u0000target` 列表做 FNV-1a，输出 8 位十六进制；空术语表返回空串（不改变已有缓存键）。
+  - `buildGlossaryDirective()`：生成中文提示词片段 `- 原文 => 译文`，默认预算 3000 字符；超预算时保留已能容纳的条目并追加“（另有 N 条术语未列入）”，完整提示词仍包含使用术语的要求。
+- `src/settings.ts`：新增 `extensions.zotero.interlinear.glossary` 读写；`getGlossaryEntries/Directive/Hash` 均从原始文本解析。OpenAI、Claude、Gemini 的系统提示词自动追加术语表指令；Ollama 在 `src/providers/index.ts` 中追加同样的指令。Google 翻译与 Translate for Zotero 不读取术语表。
+- **缓存键**：`ollama/openai/claude/gemini` 四类引擎在语言对之后追加 `:g:<术语表哈希>`；术语表为空时不追加，旧缓存继续命中。缓存键只含哈希，不含术语原文，更不含 API 密钥。
+- 设置页新增“术语表”分组：多行文本框、导入…、导出…、状态行。导入时解析文件并回填规范化 CSV（需点“保存设置”后生效）；导出时解析当前文本框并写入 CSV；空表或文件选择取消时给出本地化状态。
+- 新增 `src/glossaryFiles.ts`，把版本敏感的 `ztoolkit.FilePicker` 与 `Zotero.File.getContentsAsync/putContentsAsync` 集中在一处，并注明 Zotero 7–10 的兼容范围。
+- en-US / zh-CN `addon.ftl` 新增术语表标题、格式帮助、导入/导出按钮、文件对话框标题、导入/导出/空表/错误状态；帮助文案明确说明仅对 LLM 后端生效。
+- `addon/prefs.js` 新增 `glossary = ""` 默认值；`package.json` 的 `test:unit` 加入 `test/glossary.node.test.mjs`，lint 列表加入两个新源文件。
+- 未新增 npm 依赖；未复制上游代码。
+
+### 改动文件
+- 新增：`src/glossary.ts`、`src/glossaryFiles.ts`、`test/glossary.node.test.mjs`。
+- 修改：`src/settings.ts`、`src/providers/index.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`addon/prefs.js`、`package.json`、`test/startup.test.ts`、`typings/i10n.d.ts`、`typings/prefs.d.ts`（构建生成）。
+
+### 测试结果
+- TDD：先写 `test/glossary.node.test.mjs` 的 7 个用例并运行，因 `../src/glossary.ts` 不存在而失败（RED）；实现后转为 GREEN。期间修正了测试自身误用 chai `assert.include` 的问题，改为 Node 原生断言。
+- `npm run build`：通过（新增 FTL 键后需先执行 `npx zotero-plugin build` 生成 `typings/i10n.d.ts`，否则 `tsc` 会报未知 Fluent ID）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**56 pass / 0 fail**（新增 7 个术语表用例：CSV 引号/逗号、TSV/注释/重复覆盖、非法行、长度上限、序列化往返、哈希稳定性、指令截断）。
+- `npm run test:review`（Zotero headless 独立 profile）：**27 pass / 0 fail，退出码 0**。新增/扩展：
+  - 偏好页：术语表文本框默认空、帮助文案非空、导入/导出按钮存在。
+  - 偏好保存：填入两行术语并保存，断言 pref 文本；切换引擎为 OpenAI 后缓存标签以 `:g:<8位十六进制>` 结尾且不含术语原文；修改术语后标签变化。
+  - OpenAI 翻译链路：注入 `gene\t基因`，断言请求 `messages[0]` 含 `gene => 基因`、缓存标签含 `:g:` 且不含 API 密钥。
+- 首次 `test:review` 在输出 `27 passed` 后打印过一次 Go `deadlock` 信息但退出码为 0；随后完整复跑输出干净，未见用例失败。
+
+### 不确定项
+- **文件选择器与文件读写未在真实设置窗口点击验证**：集成测试只断言按钮存在，没有打开原生文件对话框。`ztoolkit.FilePicker` 的过滤器语法（`*.csv; *.tsv; *.txt`）与 `Zotero.File.getContentsAsync(path, "utf-8")` 的返回类型在 Zotero 10 下未手动确认，可能导致导入/导出失败或返回非字符串。
+- 导入时用规范化 CSV 覆盖文本框，会丢失原文件的注释、列顺序与其他列；只保留前两列。若用户希望保留原格式，需要改为“原样回填”。
+- 术语表指令预算按 JS 字符数计算，中文与英文按同一字符计；超长术语（接近 200 字符）时可能只容纳很少条目。截断只提示“另有 N 条未列入”，未提供分批机制。
+- 术语表只对 OpenAI/Claude/Gemini/Ollama 生效；Google 与 Translate for Zotero 忽略术语表，已在帮助文案中说明，但用户可能仍期望全部后端一致。
+- 缓存键追加 `:g:<hash>` 会使开启术语表后的旧缓存不再命中，这是有意行为；关闭术语表可回到旧键。未做迁移或双键回退。
+- CSV 解析对“字段前有空格再跟引号”的写法按普通文本处理，不视为引号字段；对非标准 CSV（分号分隔、Excel 导出的 BOM）未特殊处理。UTF-8 BOM 会进入首个字段，可能导致表头识别失败或首条术语原文带 BOM。
+
+### 需要手动验证的清单
+1. 打开设置→Interlinear，确认“术语表”分组可见，文本框为空，导入/导出按钮有本地化文字。
+2. 准备一个 UTF-8 CSV（含 `source,target` 表头、一条带逗号的引号字段、一条重复原文），点“导入…”。预期：文本框显示规范化后的 CSV，状态显示导入条数，重复项只保留最后一条。
+3. 点“导出…”，保存为 `glossary.csv`。预期：文件内容以 `source,target` 开头，重新导入后条目一致；取消对话框不报错。
+4. 填一条术语（如 `gene,基因`），保存设置，选择 OpenAI 兼容 / Claude / Gemini / Ollama 任一后端翻译一段包含该词的英文。预期：请求的系统提示词包含 `gene => 基因`；译文使用“基因”。
+5. 在设置中修改该术语的译文并保存，再次刷新翻译。预期：缓存键变化，重新请求；改回原译文后若旧缓存仍在则命中。
+6. 清空术语表并保存。预期：缓存键恢复为不含 `:g:` 的形式；翻译请求不再包含术语表指令。
+7. 选择 Google 翻译或 Translate for Zotero，填入术语表后翻译。预期：行为不受影响（这两个后端不读取术语表）。
+8. 导入一个超过 3000 字符的术语表，用 LLM 后端翻译。预期：提示词只包含部分条目并注明未列入数量，翻译仍能完成。
+
