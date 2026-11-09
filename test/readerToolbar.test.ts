@@ -6,6 +6,7 @@ import {
   renderReaderToolbar,
   unregisterReaderToolbar,
 } from "../src/readerToolbar";
+import { closeReaderMenu } from "../src/readerMenu";
 
 describe("reader toolbar recovery", function () {
   let originalReaders: any[];
@@ -137,5 +138,45 @@ describe("reader toolbar recovery", function () {
     assert.notExists(
       reader._iframeWindow.document.querySelector(".interlinear-toolbar-section"),
     );
+  });
+
+  it("stays interactive when Zotero's append would clone the controls", function () {
+    const reader = makeReader();
+    const doc = reader._iframeWindow.document as Document;
+    const container = doc.querySelector(".toolbar .custom-sections") as HTMLElement;
+
+    renderReaderToolbar({
+      reader,
+      doc,
+      append: (...elements: HTMLElement[]) => {
+        // Zotero's renderToolbar append runs clones through
+        // Components.utils.cloneInto(); clones drop event listeners.
+        container.append(
+          ...elements.map((element) => element.cloneNode(true) as HTMLElement),
+        );
+      },
+    });
+
+    const toggle = doc.querySelector(
+      ".interlinear-toolbar-button",
+    ) as HTMLButtonElement | null;
+    assert.exists(toggle);
+    assert.isTrue(
+      doc.querySelector(".interlinear-toolbar-section")?.contains(toggle as Node),
+      "controls must be injected directly, not through the cloning append",
+    );
+    assert.exists(toggle?.querySelector("img"));
+
+    const win = Zotero.getMainWindow() as any;
+    toggle!.dispatchEvent(
+      new win.MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 20,
+      }),
+    );
+    assert.exists(doc.querySelector(".interlinear-reader-menu"));
+    closeReaderMenu(doc);
   });
 });

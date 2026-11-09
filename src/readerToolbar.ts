@@ -15,10 +15,10 @@ const toolbarRenderers: ToolbarRenderer[] = [
 let registered = false;
 let reconcileTimeouts: ReturnType<typeof setTimeout>[] = [];
 
-function applyFallbackSectionLayout(section: HTMLElement): void {
+function applyToolbarSectionLayout(section: HTMLElement): void {
   // Never inherit Zotero's generic ".section" layout rules here. Some Zotero
   // 10 builds/themes apply a vertical layout to that class, which can stack our
-  // toolbar buttons. Keep the fallback container fully namespaced and explicit.
+  // toolbar buttons. Keep our container fully namespaced and explicit.
   section.classList.remove("section");
   section.classList.add("interlinear-toolbar-section");
   section.style.display = "inline-flex";
@@ -31,7 +31,7 @@ function applyFallbackSectionLayout(section: HTMLElement): void {
   section.style.overflow = "visible";
 }
 
-function getOrCreateFallbackSection(doc: Document, container: Element): HTMLElement {
+function getOrCreateToolbarSection(doc: Document, container: Element): HTMLElement {
   let section = container.querySelector(
     ".interlinear-toolbar-section",
   ) as HTMLElement | null;
@@ -41,8 +41,28 @@ function getOrCreateFallbackSection(doc: Document, container: Element): HTMLElem
     container.append(section);
   }
 
-  applyFallbackSectionLayout(section);
+  applyToolbarSectionLayout(section);
   return section;
+}
+
+/**
+ * Zotero's renderToolbar append clones nodes into the reader iframe with
+ * Components.utils.cloneInto(). Clones lose event listeners and can lose child
+ * nodes, which made the toolbar buttons inert and icon-less in real Zotero.
+ * Append our controls directly to the toolbar container instead.
+ */
+export function resolveToolbarAppend(
+  event: any,
+): ((...elements: HTMLElement[]) => void) | null {
+  const doc = event?.doc as Document | undefined;
+  const container = doc?.querySelector?.(".toolbar .custom-sections") || null;
+  if (doc && container) {
+    return (...elements: HTMLElement[]) => {
+      if (!elements.length) return;
+      getOrCreateToolbarSection(doc, container).append(...elements);
+    };
+  }
+  return typeof event?.append === "function" ? event.append : null;
 }
 
 /** Catch readers whose toolbar mounted before plugin installation/startup. */
@@ -52,16 +72,9 @@ export function reconcileReaderToolbars(): void {
     try {
       if (reader.type !== "pdf" || reader._isUninitialized) continue;
       const doc = reader._iframeWindow?.document as Document | undefined;
-      const container = doc?.querySelector(".toolbar .custom-sections");
-      if (!doc || !container) continue;
+      if (!doc?.querySelector(".toolbar .custom-sections")) continue;
 
-      renderReaderToolbar({
-        reader,
-        doc,
-        append: (...elements: HTMLElement[]) => {
-          getOrCreateFallbackSection(doc, container).append(...elements);
-        },
-      });
+      renderReaderToolbar({ reader, doc });
     } catch (error) {
       // A reader can close or replace its iframe while being inspected.
       Zotero.logError(error as Error);
@@ -95,9 +108,11 @@ function scheduleStartupReconcile(): void {
  * per-control guard prevents one optional control from hiding the other icons.
  */
 export function renderReaderToolbar(event: any): void {
+  const append = resolveToolbarAppend(event);
+  const target = append ? { ...event, append } : event;
   for (const render of toolbarRenderers) {
     try {
-      render(event);
+      render(target);
     } catch (error) {
       Zotero.logError(error as Error);
     }
