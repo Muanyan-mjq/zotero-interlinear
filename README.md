@@ -26,7 +26,7 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 - **Glossary.** Import/export CSV or TSV term lists. Terms are injected into LLM prompts and enforced as a post-translation replacement on every service, including Google.
 - **Reading assistant.** A chat sidebar answers questions about the selected paragraph, the current page, or the whole document (LLM services only).
 - **Bilingual PDF export.** The current source-plus-translation view is re-typeset into a searchable PDF and attached to the Zotero item.
-- **Appearance control with live preview.** A preview card above the controls re-renders with the same CSS the reader uses, so layout and colors update as you change them. Font size, a font selector with cross-platform stacks plus a custom family, text/background/underline/ribbon colors via picker and swatches, line height, paragraph spacing, light/dark/auto theme, underline, and a left ribbon (blue by default).
+- **Appearance control with live preview.** Six built-in presets (Default, Eye-friendly paper, Academic serif, High contrast, Optimized dark, Minimal) apply in one click and can be undone. Includes a searchable installed-font list with favorites, a font-stack builder with up to six fallbacks, automatic per-language font stacks, a custom HSV color picker (hue/saturation/opacity/RGB/HSL/HEX), separate light/dark colors, recent and saved colors, text decoration (underline/overline/strikethrough with style/thickness/offset), paragraph dividers, ribbon position/width/style, block layout (padding/radius/border/indent/alignment/max width/opacity/source dimming), named presets, and JSON import/export.
 - **Caching.** Translations are cached per service, language pair, and glossary, with a one-click cleanup in settings.
 - English and Simplified Chinese UI; errors appear as non-blocking notices inside the reader.
 
@@ -43,10 +43,10 @@ Requires **Zotero 10 (desktop)**. See [Acknowledgements](#acknowledgements) if y
 Open **Edit → Settings → Interlinear**. The page uses five tabs; the save bar and tab strip stay visible while you scroll, and modified fields show an unsaved-changes hint:
 
 - **Translation service** — pick a backend and fill in its endpoint, model, and API key; choose source and target languages. Each backend has a **Test connection** button that reports running, success, or the actual failure reason in place.
-- **Display & interaction** — default layout, hover translation (on/off and dwell delay), and the single-paragraph shortcut.
-- **Appearance** — live preview plus everything listed under Features above; colors use a picker plus preset swatches, with a "follow theme" option.
+- **Display & interaction** — default layout, hover translation (on/off, dwell delay, and no modifier / hold Alt / hold Ctrl), the single-paragraph shortcut, and optional show/hide and layout-cycle shortcuts with conflict warnings.
+- **Appearance** — live preview, six built-in presets and named presets, installed-font detection and stack builder, color picker with per-theme values, text decoration, paragraph dividers, ribbon, block layout, interface-follow and export appearance. Advanced groups start collapsed.
 - **Glossary** — import/export term files.
-- **Advanced** — skip trailing pages (e.g. references), speed and reliability knobs (concurrency, request gap, request size limits, timeout, consecutive-failure pause threshold), translation cache usage and cleanup, plus version and project links.
+- **Advanced** — translation scope (body/headings/captions/list items/notes), skip trailing pages, speed and reliability knobs, auto-translate on open (off / cache only / always), translation cache usage and cleanup, plus version and project links.
 
 > **Privacy note.** Translating sends paragraph text to the service you choose. API keys are stored as plaintext in Zotero preferences; they are never written to logs or cache keys. Do not translate sensitive documents with a service you do not trust.
 

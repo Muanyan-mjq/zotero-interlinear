@@ -8,16 +8,31 @@ import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   FONT_STACK_PRESETS,
+  buildColorPalette,
   buildTranslationCSS,
   contrastRatio,
+  contrastRatioOver,
   hexToRgb,
+  hslToRgba,
   isValidColor,
   isValidFontFamily,
   meetsContrastAA,
   normalizeAppearance,
+  normalizeColorList,
+  normalizeAppearancePresets,
+  parseAppearanceImport,
+  serializeAppearanceExport,
+  APPEARANCE_IMPORT_MAX_BYTES,
+  normalizeColorToken,
   normalizeHexInput,
+  normalizeThemeColor,
+  parseColorToRgba,
+  pushColorUnique,
   resolveEffectiveColor,
   resolveFontSelection,
+  resolveThemeColor,
+  rgbaToHex,
+  rgbaToHsl,
 } from "../src/appearance.ts";
 
 test("normalizeAppearance falls back to defaults for missing input", () => {
@@ -336,4 +351,465 @@ test("isValidFontFamily accepts empty and safe stacks but rejects CSS-breaking t
   assert.equal(isValidFontFamily("Arial; color: red"), false);
   assert.equal(isValidFontFamily('Font "Name"'), false);
   assert.equal(isValidFontFamily("Arial}"), false);
+});
+
+test("normalizeThemeColor converts legacy strings and keeps safe split colors", () => {
+  assert.deepEqual(normalizeThemeColor("#ff0000"), {
+    mode: "single",
+    light: "#ff0000",
+    dark: "#ff0000",
+  });
+  assert.deepEqual(normalizeThemeColor(""), { mode: "theme", light: "", dark: "" });
+  assert.deepEqual(
+    normalizeThemeColor({ mode: "split", light: "#111", dark: "#222" }),
+    { mode: "split", light: "#111", dark: "#222" },
+  );
+  const fallback = { mode: "split", light: "#333333", dark: "#444444" };
+  assert.deepEqual(
+    normalizeThemeColor({ mode: "split", light: "red;}", dark: "#eeeeee" }, fallback),
+    { mode: "split", light: "#333333", dark: "#eeeeee" },
+  );
+  assert.deepEqual(normalizeThemeColor("url(x)", fallback), fallback);
+  assert.deepEqual(normalizeThemeColor({ mode: "split" }, fallback), fallback);
+});
+
+test("normalizeAppearance derives colors from legacy fields and lets colors win", () => {
+  const legacy = normalizeAppearance({
+    color: "#ff0000",
+    background: "",
+    underlineColor: "red",
+    ribbonColor: "#123456",
+  });
+  assert.deepEqual(legacy.colors.text, {
+    mode: "single",
+    light: "#ff0000",
+    dark: "#ff0000",
+  });
+  assert.deepEqual(legacy.colors.background, { mode: "theme", light: "", dark: "" });
+  assert.deepEqual(legacy.colors.underline, {
+    mode: "single",
+    light: "red",
+    dark: "red",
+  });
+  assert.deepEqual(legacy.colors.ribbon, {
+    mode: "single",
+    light: "#123456",
+    dark: "#123456",
+  });
+  assert.equal(legacy.color, "#ff0000");
+
+  const split = normalizeAppearance({
+    color: "#999999",
+    colors: { text: { mode: "split", light: "#111111", dark: "#eeeeee" } },
+  });
+  assert.equal(split.color, "#111111");
+  assert.deepEqual(split.colors.text, {
+    mode: "split",
+    light: "#111111",
+    dark: "#eeeeee",
+  });
+  assert.deepEqual(
+    normalizeAppearance(undefined).colors,
+    DEFAULT_APPEARANCE.colors,
+  );
+});
+
+test("theme colors resolve to palette defaults or stored values per role and scheme", () => {
+  const theme = { mode: "theme", light: "", dark: "" };
+  assert.equal(resolveThemeColor(theme, "light", "text"), "");
+  assert.equal(resolveThemeColor(theme, "dark", "text"), "");
+  assert.equal(resolveThemeColor(theme, "light", "ribbon"), "#2f6fdf");
+  assert.equal(resolveThemeColor(theme, "dark", "ribbon"), "#4f8ff0");
+  assert.equal(resolveThemeColor(theme, "light", "error"), "#c7354a");
+  assert.equal(resolveThemeColor(theme, "dark", "error"), "#ff8a9a");
+  assert.equal(
+    resolveThemeColor({ mode: "single", light: "#123456", dark: "#654321" }, "dark", "text"),
+    "#123456",
+  );
+  assert.equal(
+    resolveThemeColor({ mode: "split", light: "#111111", dark: "#eeeeee" }, "dark", "text"),
+    "#eeeeee",
+  );
+  assert.equal(
+    resolveThemeColor({ mode: "split", light: "#111111", dark: "" }, "dark", "text"),
+    "",
+  );
+});
+
+test("color tokens and HSL/RGB conversion round-trip with alpha", () => {
+  assert.equal(normalizeColorToken("#abc"), "#AABBCC");
+  assert.equal(normalizeColorToken("#aabbccdd"), "#AABBCCDD");
+  assert.equal(normalizeColorToken("#12345"), null);
+  assert.equal(normalizeColorToken("red"), null);
+  assert.equal(normalizeColorToken("url(x)"), null);
+
+  assert.equal(rgbaToHex({ r: 255, g: 0, b: 0, a: 1 }), "#FF0000");
+  assert.equal(rgbaToHex({ r: 255, g: 0, b: 0, a: 128 / 255 }), "#FF000080");
+
+  const rgba = parseColorToRgba("rgba(255, 0, 0, 0.5)");
+  assert.equal(rgba.r, 255);
+  assert.equal(rgba.g, 0);
+  assert.equal(rgba.b, 0);
+  assert.ok(Math.abs(rgba.a - 0.5) < 0.01);
+  assert.deepEqual(parseColorToRgba("hsl(120, 100%, 50%)"), {
+    r: 0,
+    g: 255,
+    b: 0,
+    a: 1,
+  });
+  assert.equal(parseColorToRgba("url(x)"), null);
+  assert.equal(parseColorToRgba("#12345"), null);
+
+  assert.deepEqual(hslToRgba({ h: 240, s: 100, l: 50, a: 1 }), {
+    r: 0,
+    g: 0,
+    b: 255,
+    a: 1,
+  });
+  const hsl = rgbaToHsl({ r: 0, g: 0, b: 255, a: 1 });
+  assert.equal(Math.round(hsl.h), 240);
+  assert.equal(Math.round(hsl.s), 100);
+  assert.equal(Math.round(hsl.l), 50);
+});
+
+test("contrast checks composite translucent colors over the theme base", () => {
+  assert.equal(contrastRatio("#000000", "#ffffff"), 21);
+  const opaque = contrastRatio("#808080", "#ffffff");
+  const translucent = contrastRatioOver("#80808080", "#ffffff00", "#ffffff");
+  assert.ok(translucent !== null && translucent < opaque);
+  const gray = contrastRatioOver("#777777", "#ffffff00", "#ffffff");
+  assert.ok(gray !== null && Math.abs(gray - 4.48) < 0.02);
+  assert.equal(contrastRatioOver("nope", "#ffffff", "#ffffff"), null);
+});
+
+test("color lists normalize, deduplicate and cap entries", () => {
+  assert.deepEqual(
+    normalizeColorList(["#abc", "#AABBCC", "#12345678", "nope", "#ff000080", 42], 12),
+    ["#AABBCC", "#12345678", "#FF000080"],
+  );
+  const many = Array.from(
+    { length: 20 },
+    (_, index) => `#${(index * 1000).toString(16).padStart(6, "0")}`,
+  );
+  assert.equal(normalizeColorList(many, 12).length, 12);
+  assert.deepEqual(normalizeColorList("nope", 12), []);
+});
+
+test("color palette is five lightness rows by eight hue columns", () => {
+  const rows = buildColorPalette();
+  assert.equal(rows.length, 5);
+  for (const row of rows) {
+    assert.equal(row.length, 8);
+    for (const color of row) assert.equal(normalizeColorToken(color), color);
+  }
+  const unique = new Set(rows.flat());
+  assert.equal(unique.size, 40);
+  // Every row must be a lightness step of the same eight hues.
+  assert.match(rows[0][0], /^#[0-9A-F]{6}$/u);
+  assert.notEqual(rows[0][3], rows[4][3]);
+});
+
+test("pushColorUnique moves a color to the front and caps the list", () => {
+  assert.deepEqual(pushColorUnique(["#AABBCC", "#112233"], "#aabbcc", 12), [
+    "#AABBCC",
+    "#112233",
+  ]);
+  assert.deepEqual(pushColorUnique(["#112233"], "#AABBCC", 12), [
+    "#AABBCC",
+    "#112233",
+  ]);
+  assert.deepEqual(pushColorUnique(["#112233"], "nope", 12), ["#112233"]);
+  assert.deepEqual(pushColorUnique(["#112233", "#445566"], "#778899", 2), [
+    "#778899",
+    "#112233",
+  ]);
+});
+
+test("reader CSS emits light colors and a data-color-scheme dark override", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "#eeeeee" },
+        background: { mode: "split", light: "#ffffff", dark: "#000000" },
+      },
+    },
+    "reader",
+  );
+  assert.match(css, /color: #111111;/u);
+  assert.match(css, /background: #ffffff;/u);
+  assert.match(css, /:root\[data-color-scheme="dark"\] \.interlinear-translation \{/u);
+  assert.match(css, /color: #eeeeee;/u);
+  assert.match(css, /background: #000000;/u);
+});
+
+test("reader CSS can be forced to one scheme for the preview", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "#eeeeee" },
+      },
+    },
+    "reader",
+    { colorScheme: "dark" },
+  );
+  assert.match(css, /color: #eeeeee;/u);
+  assert.doesNotMatch(css, /data-color-scheme/u);
+});
+
+test("print CSS always uses the light color of a split setting", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "#eeeeee" },
+      },
+    },
+    "print",
+  );
+  assert.match(css, /color: #111111 !important;/u);
+  assert.doesNotMatch(css, /#eeeeee/u);
+});
+
+test("reader CSS skips a dark override when the dark side inherits", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "" },
+      },
+    },
+    "reader",
+  );
+  assert.match(css, /color: #111111;/u);
+  assert.doesNotMatch(css, /data-color-scheme/u);
+});
+
+test("reader CSS rejects malicious split colors and keeps state colors explicit", () => {
+  const malicious = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: {
+          mode: "single",
+          light: "red; } body { display: none",
+          dark: "#ffffff",
+        },
+      },
+    },
+    "reader",
+  );
+  assert.doesNotMatch(malicious, /body/u);
+  assert.doesNotMatch(malicious, /color:/u);
+
+  const defaultCss = buildTranslationCSS("interlinear-translation", undefined, "reader");
+  assert.doesNotMatch(defaultCss, /data-state=/u);
+
+  const states = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        loading: { mode: "single", light: "#666666", dark: "#666666" },
+        error: { mode: "split", light: "#cc0000", dark: "#ff8888" },
+      },
+    },
+    "reader",
+  );
+  assert.match(states, /\.interlinear-translation\[data-state="loading"\] \{/u);
+  assert.match(states, /color: #666666;/u);
+  assert.match(states, /\.interlinear-translation\[data-state="error"\] \{/u);
+  assert.match(states, /color: #cc0000;/u);
+  assert.match(
+    states,
+    /:root\[data-color-scheme="dark"\] \.interlinear-translation\[data-state="error"\]/u,
+  );
+  assert.match(states, /color: #ff8888;/u);
+});
+
+test("default reader and print CSS are frozen snapshots", () => {
+  assert.equal(
+    buildTranslationCSS("interlinear-translation", undefined, "reader"),
+    `.interlinear-translation {
+  box-sizing: border-box;
+  border-left: 4px solid #2f6fdf;
+  margin: 0.65em 0 1.25em;
+  padding: 0.45em 0.95em;
+  line-height: 1.75;
+  font-size: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}`,
+  );
+  assert.equal(
+    buildTranslationCSS("interlinear-translation", undefined, "print"),
+    `.interlinear-translation {
+  margin: 0.18em 0 1.25em !important;
+  padding: 0.12em 0 0.12em 0.78em !important;
+  border-left: 2.2pt solid #2f6fdf !important;
+  color: #222 !important;
+  background: transparent !important;
+  font-size: 12pt !important;
+  line-height: 1.75 !important;
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}`,
+  );
+});
+
+test("text decoration supports multiple lines, style, thickness, offset and skip-ink", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      textDecoration: ["underline", "overline", "line-through"],
+      textDecorationStyle: "wavy",
+      textDecorationThickness: 2,
+      textUnderlineOffset: 4,
+      textDecorationSkipInk: "none",
+      underlineColor: "#00ff00",
+    },
+    "reader",
+  );
+  assert.match(css, /text-decoration: underline overline line-through;/u);
+  assert.match(css, /text-decoration-style: wavy;/u);
+  assert.match(css, /text-decoration-thickness: 2px;/u);
+  assert.match(css, /text-underline-offset: 4px;/u);
+  assert.match(css, /text-decoration-skip-ink: none;/u);
+  assert.match(css, /text-decoration-color: #00ff00;/u);
+});
+
+test("divider, right ribbon and block layout are emitted and clamped", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      divider: true,
+      dividerStyle: "dashed",
+      dividerWidth: 2,
+      dividerOffset: 0.5,
+      ribbonPosition: "right",
+      ribbonWidth: 6,
+      ribbonStyle: "dotted",
+      ribbonRadius: 4,
+      ribbonPadding: 0.5,
+      blockPaddingY: 0.6,
+      blockPaddingX: 1.2,
+      blockRadius: 10,
+      blockBorderWidth: 2,
+      blockBorderStyle: "double",
+      blockIndent: 1,
+      firstLineIndent: 0.5,
+      textAlign: "justify",
+      maxWidthCh: 72,
+      opacity: 80,
+      sourceGap: 0.3,
+      sourceDim: 60,
+    },
+    "reader",
+  );
+  assert.match(css, /border-bottom: 2px dashed #d9d9d9;/u);
+  assert.match(css, /border-right: 6px dotted #2f6fdf;/u);
+  assert.match(css, /border-top-right-radius: 4px;/u);
+  assert.match(css, /padding: 0.6em 1.7em 1.1em 1.2em;/u);
+  assert.match(css, /border-radius: 10px;/u);
+  assert.match(css, /border: 2px double #d9d9d9;/u);
+  assert.match(css, /margin-inline-start: 1em;/u);
+  assert.match(css, /text-indent: 0.5em;/u);
+  assert.match(css, /text-align: justify;/u);
+  assert.match(css, /max-width: 72ch;/u);
+  assert.match(css, /opacity: 0.8;/u);
+  assert.match(css, /margin: 0.3em 0 1.25em;/u);
+  assert.match(css, /\.interlinear-source \{\n  opacity: 0.6;\n\}/u);
+
+  const clamped = normalizeAppearance({
+    dividerWidth: 99,
+    ribbonWidth: -2,
+    ribbonRadius: 99,
+    blockPaddingY: -1,
+    maxWidthCh: 10,
+    opacity: 1,
+    sourceDim: 999,
+    textDecoration: ["underline", "bogus"],
+    textDecorationStyle: "bogus",
+  });
+  assert.equal(clamped.dividerWidth, 6);
+  assert.equal(clamped.ribbonWidth, 1);
+  assert.equal(clamped.ribbonRadius, 8);
+  assert.equal(clamped.blockPaddingY, 0);
+  assert.equal(clamped.maxWidthCh, 40);
+  assert.equal(clamped.opacity, 40);
+  assert.equal(clamped.sourceDim, 100);
+  assert.deepEqual(clamped.textDecoration, ["underline"]);
+  assert.equal(clamped.textDecorationStyle, "solid");
+});
+
+test("appearance presets dedupe, cap and reject invalid entries", () => {
+  const presets = normalizeAppearancePresets(
+    [
+      { name: "Paper", appearance: { fontSize: 20 } },
+      { name: "paper", appearance: { fontSize: 18 } },
+      { name: "   ", appearance: {} },
+      { name: "Academic", appearance: { fontSize: 99, color: "url(x)" } },
+      "nope",
+    ],
+    20,
+  );
+  assert.equal(presets.length, 2);
+  assert.equal(presets[0].name, "Paper");
+  assert.equal(presets[0].appearance.fontSize, 20);
+  assert.equal(presets[1].appearance.fontSize, 32);
+  assert.equal(presets[1].appearance.color, "");
+});
+
+test("appearance import rejects oversized, malformed and unsupported files", () => {
+  assert.equal(parseAppearanceImport("x".repeat(APPEARANCE_IMPORT_MAX_BYTES + 1)).error, "too-large");
+  assert.equal(parseAppearanceImport("{nope").error, "invalid-json");
+  assert.equal(parseAppearanceImport("[]").error, "invalid-format");
+  assert.equal(
+    parseAppearanceImport(JSON.stringify({ format: "other", version: 2 })).error,
+    "invalid-format",
+  );
+  assert.equal(
+    parseAppearanceImport(
+      JSON.stringify({ format: "interlinear-appearance", version: 99 }),
+    ).error,
+    "unsupported-version",
+  );
+});
+
+test("appearance import clamps values, reports unknown keys and never executes content", () => {
+  const result = parseAppearanceImport(
+    JSON.stringify({
+      format: "interlinear-appearance",
+      version: 2,
+      appearance: {
+        fontSize: 999,
+        fontFamily: "Arial; } body { display:none",
+        color: "red; } body { display:none",
+        unknownKey: "value",
+        nested: { evil: true },
+      },
+      presets: [{ name: "Imported", appearance: { fontSize: 12 } }],
+    }),
+  );
+  assert.equal(result.error, null);
+  assert.equal(result.appearance.fontSize, 32);
+  assert.equal(result.appearance.fontFamily, "");
+  assert.equal(result.appearance.color, "");
+  assert.deepEqual(result.ignoredKeys.sort(), ["nested", "unknownKey"]);
+  assert.equal(result.presets.length, 1);
+  assert.equal(result.presets[0].appearance.fontSize, 12);
+});
+
+test("appearance export round-trips and contains no provider keys", () => {
+  const exported = serializeAppearanceExport(
+    normalizeAppearance({ fontSize: 18, color: "#123456", ribbon: false }),
+    [{ name: "Mine", appearance: normalizeAppearance({ fontSize: 14 }) }],
+  );
+  assert.doesNotMatch(exported, /apiKey|endpoint|prompt/iu);
+  const parsed = parseAppearanceImport(exported);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.appearance.fontSize, 18);
+  assert.equal(parsed.appearance.color, "#123456");
+  assert.equal(parsed.presets[0].name, "Mine");
+  assert.equal(parsed.presets[0].appearance.fontSize, 14);
 });

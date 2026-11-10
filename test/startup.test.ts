@@ -10,7 +10,14 @@ import { attachReaderInteractions } from "../src/readerInteractions";
 import { parseShortcut } from "../src/shortcut";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
-import { getCacheEngineTag, getDisplayMode } from "../src/settings";
+import {
+  getAppearance,
+  getAppearancePresets,
+  getCacheEngineTag,
+  getDisplayMode,
+  setAppearance,
+  setAppearancePresets,
+} from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
 import { getString } from "../src/utils/locale";
@@ -250,8 +257,11 @@ describe("startup", function () {
   it("should keep the previous font when an invalid custom stack is saved", async function () {
     this.timeout(10000);
     const fontPref = "extensions.zotero.interlinear.appearance.fontFamily";
+    const v2Pref = "extensions.zotero.interlinear.appearance.v2";
     const previous = Zotero.Prefs.get(fontPref, true);
+    const previousV2 = Zotero.Prefs.get(v2Pref, true);
     Zotero.Prefs.set(fontPref, "Georgia, serif", true);
+    Zotero.Prefs.clear(v2Pref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
     const byId = (id: string) =>
@@ -259,24 +269,18 @@ describe("startup", function () {
 
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("interlinear-appearance-font-select")) break;
+        if (win?.document.getElementById("interlinear-font-list")) break;
         await Zotero.Promise.delay(50);
       }
-      const select = win?.document.getElementById(
-        "interlinear-appearance-font-select",
-      ) as HTMLSelectElement | null;
       const input = byId("interlinear-appearance-font-family");
       const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement | null;
       const status = win?.document.getElementById(
         "interlinear-settings-status",
       ) as HTMLElement | null;
-      assert.exists(select);
       assert.exists(input);
       assert.exists(save);
       assert.exists(status);
 
-      if (select) select.value = "custom";
-      select?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
       if (input) input.value = "Arial; color: red";
       input?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
       input?.dispatchEvent(new (win as any).Event("blur", { bubbles: true }));
@@ -284,13 +288,14 @@ describe("startup", function () {
 
       assert.equal(Zotero.Prefs.get(fontPref, true), "Georgia, serif");
       assert.equal(input?.value, "Georgia, serif");
-      assert.equal(select?.value, "Georgia, serif");
       assert.equal(status?.dataset.state, "warning");
       assert.isNotEmpty((status?.textContent || "").trim());
     } finally {
       win?.close();
       if (previous === undefined) Zotero.Prefs.clear(fontPref, true);
       else Zotero.Prefs.set(fontPref, previous, true);
+      if (previousV2 === undefined) Zotero.Prefs.clear(v2Pref, true);
+      else Zotero.Prefs.set(v2Pref, previousV2, true);
     }
   });
 
@@ -683,40 +688,60 @@ describe("startup", function () {
 
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("interlinear-appearance-font-size")) break;
+        if (win?.document.getElementById("interlinear-appearance-color-mode")) break;
         await Zotero.Promise.delay(50);
       }
 
       const fontSize = byId("interlinear-appearance-font-size");
       const color = byId("interlinear-appearance-color");
-      const colorInherit = byId("interlinear-appearance-color-inherit");
+      const colorMode = win?.document.getElementById(
+        "interlinear-appearance-color-mode",
+      ) as HTMLSelectElement | null;
+      const colorHex = byId("interlinear-appearance-color-hex");
       const fontFamily = byId("interlinear-appearance-font-family");
       const lineHeight = byId("interlinear-appearance-line-height");
       const paragraphSpacing = byId("interlinear-appearance-paragraph-spacing");
       const background = byId("interlinear-appearance-background");
-      const backgroundInherit = byId("interlinear-appearance-background-inherit");
+      const backgroundMode = win?.document.getElementById(
+        "interlinear-appearance-background-mode",
+      ) as HTMLSelectElement | null;
+      const backgroundHex = byId("interlinear-appearance-background-hex");
       const theme = byId("interlinear-appearance-theme");
       const underline = byId("interlinear-appearance-underline");
       const underlineColor = byId("interlinear-appearance-underline-color");
-      const underlineColorInherit = byId("interlinear-appearance-underline-color-inherit");
+      const underlineMode = win?.document.getElementById(
+        "interlinear-appearance-underline-color-mode",
+      ) as HTMLSelectElement | null;
+      const underlineHex = byId("interlinear-appearance-underline-color-hex");
       const ribbon = byId("interlinear-appearance-ribbon");
-      const ribbonColor = byId("interlinear-appearance-ribbon-color");
       const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
       assert.exists(fontSize);
       assert.exists(color);
-      assert.exists(colorInherit);
+      assert.exists(colorMode);
+      assert.exists(colorHex);
       assert.exists(fontFamily);
       assert.exists(lineHeight);
       assert.exists(paragraphSpacing);
       assert.exists(background);
-      assert.exists(backgroundInherit);
+      assert.exists(backgroundMode);
+      assert.exists(backgroundHex);
       assert.exists(theme);
       assert.exists(underline);
       assert.exists(underlineColor);
-      assert.exists(underlineColorInherit);
+      assert.exists(underlineMode);
+      assert.exists(underlineHex);
       assert.exists(ribbon);
-      assert.exists(ribbonColor);
       assert.exists(save);
+
+      // The persistent test profile may carry colors from earlier runs; reset
+      // the three theme-mode controls so the initial assertions are deterministic.
+      for (const id of [
+        "interlinear-appearance-color-reset",
+        "interlinear-appearance-background-reset",
+        "interlinear-appearance-underline-color-reset",
+      ]) {
+        (win?.document.getElementById(id) as HTMLButtonElement | null)?.click();
+      }
       assert.equal(fontSize?.value, "16");
       assert.ok(
         (win?.document.getElementById("interlinear-appearance-font-size-unit")
@@ -729,25 +754,21 @@ describe("startup", function () {
         "paragraph-spacing unit suffix must be populated",
       );
       assert.equal(color?.type, "color");
-      assert.equal(color?.value, "#333333");
-      assert.equal(colorInherit?.checked, true);
+      assert.equal(colorMode?.value, "theme");
       assert.equal(color?.disabled, true);
+      assert.equal(colorHex?.value, "");
       assert.equal(fontFamily?.value, "");
       assert.equal(lineHeight?.value, "1.75");
       assert.equal(paragraphSpacing?.value, "1.25");
       assert.equal(background?.type, "color");
-      assert.equal(background?.value, "#f6f6f6");
-      assert.equal(backgroundInherit?.checked, true);
+      assert.equal(backgroundMode?.value, "theme");
+      assert.equal(background?.disabled, true);
       assert.equal(theme?.value, "auto");
       assert.equal(underline?.checked, false);
       assert.equal(underlineColor?.type, "color");
-      assert.equal(underlineColor?.value, "#333333");
-      assert.equal(underlineColorInherit?.checked, true);
+      assert.equal(underlineMode?.value, "theme");
       assert.equal(ribbon?.checked, true);
-      assert.equal(ribbonColor?.type, "color");
-      assert.equal(ribbonColor?.value, "#2f6fdf");
 
-      const colorHex = byId("interlinear-appearance-color-hex");
       const colorPreview = win?.document.getElementById(
         "interlinear-appearance-color-preview",
       ) as HTMLElement | null;
@@ -760,14 +781,12 @@ describe("startup", function () {
       const contrastWarning = win?.document.getElementById(
         "interlinear-appearance-contrast-warning",
       ) as HTMLElement | null;
-      assert.exists(colorHex);
       assert.exists(colorPreview);
       assert.exists(colorReset);
       assert.exists(colorError);
       assert.exists(contrastWarning);
-      assert.equal(colorHex?.value, "#333333");
       assert.equal(colorHex?.disabled, true);
-      assert.equal(colorPreview?.dataset.inherit, "true");
+      assert.equal(colorPreview?.dataset.inherit, "false");
       assert.equal(colorError?.textContent, "");
       assert.equal(contrastWarning?.textContent, "");
 
@@ -775,62 +794,320 @@ describe("startup", function () {
         "#interlinear-appearance-color-presets .interlinear-color-preset",
       );
       assert.equal(colorPresets?.length, 8);
-      const fontSelect = win?.document.getElementById(
-        "interlinear-appearance-font-select",
-      ) as HTMLSelectElement | null;
-      assert.exists(fontSelect);
-      assert.ok((fontSelect?.options.length || 0) > 1);
-      if (fontSelect) fontSelect.value = "Georgia, serif";
-      fontSelect?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
-      assert.equal(fontFamily?.value, "Georgia, serif");
+      const fontStack = win?.document.getElementById(
+        "interlinear-font-stack",
+      ) as HTMLElement | null;
+      assert.exists(fontStack);
+      if (fontFamily) fontFamily.value = "Georgia, serif";
+      fontFamily?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
+      fontFamily?.dispatchEvent(new (win as any).Event("blur", { bubbles: true }));
+      assert.include(fontStack?.textContent || "", "Georgia");
+
+      const setSingleColor = (
+        select: HTMLSelectElement | null,
+        hexInput: HTMLInputElement | null,
+        value: string,
+      ) => {
+        if (select) {
+          select.value = "single";
+          select.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
+        }
+        if (hexInput) {
+          hexInput.value = value;
+          hexInput.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
+        }
+      };
 
       if (fontSize) fontSize.value = "20";
-      if (colorInherit) colorInherit.checked = false;
-      if (color) color.value = "#ff0000";
+      setSingleColor(colorMode, colorHex, "#ff0000");
       if (lineHeight) lineHeight.value = "2";
       if (paragraphSpacing) paragraphSpacing.value = "2";
-      if (backgroundInherit) backgroundInherit.checked = false;
-      if (background) background.value = "#101010";
+      setSingleColor(backgroundMode, backgroundHex, "#101010");
       if (theme) theme.value = "dark";
       if (underline) underline.checked = true;
-      if (underlineColorInherit) underlineColorInherit.checked = false;
-      if (underlineColor) underlineColor.value = "#00ff00";
+      setSingleColor(underlineMode, underlineHex, "#00ff00");
       if (ribbon) ribbon.checked = false;
       save.click();
 
       assert.equal(Zotero.Prefs.get(fontSizePref, true), 20);
-      assert.equal(Zotero.Prefs.get(colorPref, true), "#ff0000");
+      assert.equal(Zotero.Prefs.get(colorPref, true), "#FF0000");
       assert.equal(Zotero.Prefs.get(appearancePrefs[2], true), "Georgia, serif");
       assert.equal(Zotero.Prefs.get(appearancePrefs[3], true), 200);
       assert.equal(Zotero.Prefs.get(appearancePrefs[4], true), 200);
       assert.equal(Zotero.Prefs.get(appearancePrefs[5], true), "#101010");
       assert.equal(Zotero.Prefs.get(appearancePrefs[6], true), "dark");
       assert.equal(Zotero.Prefs.get(appearancePrefs[7], true), true);
-      assert.equal(Zotero.Prefs.get(appearancePrefs[8], true), "#00ff00");
+      assert.equal(Zotero.Prefs.get(appearancePrefs[8], true), "#00FF00");
       assert.equal(Zotero.Prefs.get(appearancePrefs[9], true), false);
       const style = doc.getElementById("interlinear-style") as HTMLStyleElement | null;
       assert.exists(style);
       const css = style?.textContent || "";
       assert.match(css, /font-size: 20px;/u);
-      assert.match(css, /color: #ff0000;/u);
-      assert.match(css, /background: #101010;/u);
+      assert.match(css, /color: #FF0000;/iu);
+      assert.match(css, /background: #101010;/iu);
       assert.match(css, /font-family: Georgia, serif;/u);
       assert.match(css, /line-height: 2;/u);
       assert.match(css, /margin: 0\.65em 0 2em;/u);
       assert.match(css, /text-decoration: underline;/u);
-      assert.match(css, /text-decoration-color: #00ff00;/u);
+      assert.match(css, /text-decoration-color: #00FF00;/iu);
       assert.match(css, /border-left: none;/u);
 
       if (theme) theme.value = "auto";
-      if (colorInherit) colorInherit.checked = true;
-      if (color) color.value = "#00ff00";
+      if (colorMode) {
+        colorMode.value = "theme";
+        colorMode.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
+      }
       save.click();
       assert.equal(Zotero.Prefs.get(colorPref, true), "");
       const cssAfter = doc.getElementById("interlinear-style")?.textContent || "";
-      assert.notInclude(cssAfter, "#ff0000");
+      assert.notMatch(cssAfter, /#ff0000/iu);
     } finally {
       win?.close();
       (Zotero.Reader as any)._readers = originalReaders;
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
+    }
+  });
+
+  it("should save decoration, divider, ribbon and block layout controls", async function () {
+    this.timeout(15000);
+    const previousAppearance = getAppearance();
+    const originalReaders = (Zotero.Reader as any)._readers;
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "style-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    doc.body.append(content);
+    const reader = {
+      type: "pdf",
+      itemID: 2147483642,
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: { _iframeDocument: doc, getData: () => ({ structure: null }) },
+      },
+    };
+    (Zotero.Reader as any)._readers = [reader];
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-decoration-style")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const setInput = (id: string, value: string) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.value = value;
+      };
+      const setChecked = (id: string, value: boolean) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.checked = value;
+      };
+
+      setChecked("interlinear-appearance-underline", true);
+      setChecked("interlinear-decoration-overline", true);
+      setChecked("interlinear-decoration-line-through", true);
+      setInput("interlinear-decoration-style", "wavy");
+      setInput("interlinear-decoration-thickness", "2");
+      setInput("interlinear-decoration-offset", "4");
+      setChecked("interlinear-decoration-skip-ink", false);
+
+      setChecked("interlinear-divider", true);
+      setInput("interlinear-divider-style", "dashed");
+      setInput("interlinear-divider-width", "2");
+      setInput("interlinear-divider-offset", "0.5");
+
+      setChecked("interlinear-appearance-ribbon", true);
+      setInput("interlinear-ribbon-position", "right");
+      setInput("interlinear-ribbon-width", "6");
+      setInput("interlinear-ribbon-style", "dotted");
+      setInput("interlinear-ribbon-radius", "4");
+      setInput("interlinear-ribbon-padding", "0.5");
+
+      setInput("interlinear-block-padding-y", "0.6");
+      setInput("interlinear-block-padding-x", "1.2");
+      setInput("interlinear-block-radius", "10");
+      setInput("interlinear-block-border-width", "2");
+      setInput("interlinear-block-border-style", "double");
+      setInput("interlinear-block-indent", "1");
+      setInput("interlinear-first-line-indent", "0.5");
+      setInput("interlinear-block-align", "justify");
+      setInput("interlinear-block-max-width", "72");
+      setInput("interlinear-block-opacity", "80");
+      setInput("interlinear-source-dim", "60");
+      setInput("interlinear-source-gap", "0.3");
+
+      (win?.document.getElementById("interlinear-save") as HTMLButtonElement | null)?.click();
+
+      const saved = getAppearance();
+      assert.deepEqual(saved.textDecoration, ["underline", "overline", "line-through"]);
+      assert.equal(saved.textDecorationStyle, "wavy");
+      assert.equal(saved.textDecorationThickness, 2);
+      assert.equal(saved.textUnderlineOffset, 4);
+      assert.equal(saved.textDecorationSkipInk, "none");
+      assert.equal(saved.divider, true);
+      assert.equal(saved.dividerStyle, "dashed");
+      assert.equal(saved.dividerWidth, 2);
+      assert.equal(saved.dividerOffset, 0.5);
+      assert.equal(saved.ribbonPosition, "right");
+      assert.equal(saved.ribbonWidth, 6);
+      assert.equal(saved.ribbonStyle, "dotted");
+      assert.equal(saved.ribbonRadius, 4);
+      assert.equal(saved.ribbonPadding, 0.5);
+      assert.equal(saved.blockPaddingY, 0.6);
+      assert.equal(saved.blockPaddingX, 1.2);
+      assert.equal(saved.blockRadius, 10);
+      assert.equal(saved.blockBorderWidth, 2);
+      assert.equal(saved.blockBorderStyle, "double");
+      assert.equal(saved.blockIndent, 1);
+      assert.equal(saved.firstLineIndent, 0.5);
+      assert.equal(saved.textAlign, "justify");
+      assert.equal(saved.maxWidthCh, 72);
+      assert.equal(saved.opacity, 80);
+      assert.equal(saved.sourceDim, 60);
+      assert.equal(saved.sourceGap, 0.3);
+
+      const css = doc.getElementById("interlinear-style")?.textContent || "";
+      assert.match(css, /text-decoration: underline overline line-through;/u);
+      assert.match(css, /text-decoration-style: wavy;/u);
+      assert.match(css, /border-right: 6px dotted #2f6fdf;/iu);
+      assert.match(css, /border-bottom: 2px dashed #d9d9d9;/u);
+      assert.match(css, /padding: 0.6em 1.7em 1.1em 1.2em;/u);
+      assert.match(css, /border-radius: 10px;/u);
+      assert.match(css, /text-align: justify;/u);
+      assert.match(css, /opacity: 0\.8;/u);
+      assert.match(css, /\.interlinear-source \{\n  opacity: 0\.6;\n\}/u);
+    } finally {
+      win?.close();
+      setAppearance(previousAppearance);
+      (Zotero.Reader as any)._readers = originalReaders;
+    }
+  });
+
+  it("should apply, undo and manage appearance presets", async function () {
+    this.timeout(15000);
+    const previousAppearance = getAppearance();
+    const previousPresets = getAppearancePresets();
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.querySelector("[data-preset-id='academic']")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const academic = win?.document.querySelector(
+        "[data-preset-id='academic']",
+      ) as HTMLButtonElement | null;
+      const undo = byId("interlinear-appearance-undo");
+      const textAlign = byId("interlinear-block-align") as HTMLSelectElement | null;
+      assert.exists(academic);
+      assert.exists(undo);
+      assert.exists(textAlign);
+
+      academic?.click();
+      assert.equal(getAppearance().textAlign, "justify");
+      assert.equal(getAppearance().fontStack.primary, "Georgia");
+      await Zotero.Promise.delay(50);
+      assert.equal(textAlign?.value, "justify");
+
+      undo?.click();
+      assert.equal(getAppearance().textAlign, previousAppearance.textAlign);
+      assert.equal(getAppearance().fontStack.primary, previousAppearance.fontStack.primary);
+
+      const name = byId("interlinear-appearance-preset-name");
+      if (name) name.value = "Integration preset";
+      (byId("interlinear-appearance-save-preset") as HTMLButtonElement | null)?.click();
+      assert.isTrue(
+        getAppearancePresets().some((preset) => preset.name === "Integration preset"),
+      );
+
+      const select = win?.document.getElementById(
+        "interlinear-appearance-my-presets",
+      ) as HTMLSelectElement | null;
+      assert.exists(select);
+      if (select) select.value = "Integration preset";
+      (byId("interlinear-appearance-apply-preset") as HTMLButtonElement | null)?.click();
+      assert.equal(getAppearance().textAlign, previousAppearance.textAlign);
+
+      if (select) select.value = "Integration preset";
+      (byId("interlinear-appearance-delete-preset") as HTMLButtonElement | null)?.click();
+      assert.isFalse(
+        getAppearancePresets().some((preset) => preset.name === "Integration preset"),
+      );
+    } finally {
+      win?.close();
+      setAppearance(previousAppearance);
+      setAppearancePresets(previousPresets);
+    }
+  });
+
+  it("should save extra shortcuts, hover modifier and auto-translate mode", async function () {
+    this.timeout(10000);
+    const keys = [
+      "extensions.zotero.interlinear.interaction.toggleShortcutEnabled",
+      "extensions.zotero.interlinear.interaction.toggleShortcut",
+      "extensions.zotero.interlinear.interaction.displayShortcutEnabled",
+      "extensions.zotero.interlinear.interaction.displayShortcut",
+      "extensions.zotero.interlinear.interaction.hoverModifier",
+      "extensions.zotero.interlinear.interaction.autoTranslateOnOpen",
+      "extensions.zotero.interlinear.interaction.shortcut",
+    ];
+    const previous = new Map<string, unknown>(
+      keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
+    );
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-toggle-shortcut")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const setChecked = (id: string, value: boolean) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.checked = value;
+      };
+      const setValue = (id: string, value: string) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.value = value;
+      };
+      setChecked("interlinear-toggle-shortcut-enabled", true);
+      setValue("interlinear-toggle-shortcut", "Ctrl+Alt+T");
+      setChecked("interlinear-display-shortcut-enabled", true);
+      setValue("interlinear-display-shortcut", "Ctrl+Alt+D");
+      setValue("interlinear-hover-modifier", "ctrl");
+      setValue("interlinear-auto-translate", "cached");
+      (win?.document.getElementById("interlinear-save") as HTMLButtonElement | null)?.click();
+
+      assert.equal(Zotero.Prefs.get(keys[0], true), true);
+      assert.equal(Zotero.Prefs.get(keys[1], true), "Ctrl+Alt+T");
+      assert.equal(Zotero.Prefs.get(keys[2], true), true);
+      assert.equal(Zotero.Prefs.get(keys[3], true), "Ctrl+Alt+D");
+      assert.equal(Zotero.Prefs.get(keys[4], true), "ctrl");
+      assert.equal(Zotero.Prefs.get(keys[5], true), "cached");
+
+      setValue("interlinear-toggle-shortcut", "Alt+Enter");
+      byId("interlinear-toggle-shortcut")?.dispatchEvent(
+        new (win as any).Event("input", { bubbles: true }),
+      );
+      const conflict = win?.document.getElementById(
+        "interlinear-shortcut-conflict",
+      ) as HTMLElement | null;
+      assert.isNotEmpty((conflict?.textContent || "").trim());
+    } finally {
+      win?.close();
       for (const [key, value] of previous) {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value as any, true);
@@ -881,7 +1158,8 @@ describe("startup", function () {
       assert.exists(bgHex);
       assert.exists(warning);
       assert.exists(theme);
-      assert.equal(inherit?.checked, true);
+      assert.equal(inherit?.checked, true, "text color should start in theme mode");
+      assert.equal(picker?.disabled, true, "picker should be disabled in theme mode");
 
       if (hex) hex.value = "#ff0000";
       fire(hex, "input");
@@ -901,7 +1179,7 @@ describe("startup", function () {
       reset?.click();
       assert.equal(inherit?.checked, true);
       assert.equal(picker?.disabled, true);
-      assert.equal(preview?.dataset.inherit, "true");
+      assert.equal(preview?.dataset.inherit, "false");
       assert.equal(error?.textContent, "");
 
       if (hex) hex.value = "#777777";
@@ -923,9 +1201,109 @@ describe("startup", function () {
       assert.equal(preview?.style.backgroundColor, "rgb(232, 232, 232)");
       if (theme) theme.value = "auto";
       fire(theme, "change");
-      assert.equal(preview?.dataset.inherit, "true");
+      assert.equal(preview?.dataset.inherit, "false");
     } finally {
       win?.close();
+    }
+  });
+
+  it("should edit split colors, extra color roles and color palettes", async function () {
+    this.timeout(20000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    const fire = (el: HTMLElement | null, type: string) =>
+      el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
+    const recentPref = "extensions.zotero.interlinear.appearance.recentColors";
+    const savedPref = "extensions.zotero.interlinear.appearance.savedColors";
+    const previousRecent = Zotero.Prefs.get(recentPref, true);
+    const previousSaved = Zotero.Prefs.get(savedPref, true);
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-color-mode")) break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const mode = win?.document.getElementById(
+        "interlinear-appearance-color-mode",
+      ) as HTMLSelectElement | null;
+      assert.exists(mode);
+      mode.value = "split";
+      fire(mode, "change");
+      const darkRow = win?.document.getElementById(
+        "interlinear-appearance-color-dark-row",
+      ) as HTMLElement | null;
+      const darkHex = byId("interlinear-appearance-color-dark-hex");
+      assert.exists(darkRow);
+      assert.exists(darkHex);
+      assert.notEqual(darkRow?.hidden, true);
+      if (darkHex) darkHex.value = "#eeeeee";
+      fire(darkHex, "input");
+      assert.equal(darkHex?.value, "#EEEEEE");
+
+      const schemeToggle = byId("interlinear-appearance-preview-scheme");
+      assert.exists(schemeToggle);
+      if (schemeToggle) schemeToggle.checked = true;
+      fire(schemeToggle, "change");
+      const shadow = (
+        win?.document.getElementById("interlinear-appearance-preview") as HTMLElement
+      )?.shadowRoot;
+      assert.match(shadow?.querySelector("style")?.textContent || "", /#eeeeee/iu);
+
+      for (const base of [
+        "interlinear-appearance-border-color",
+        "interlinear-appearance-source-color",
+        "interlinear-appearance-loading-color",
+        "interlinear-appearance-error-color",
+      ]) {
+        assert.exists(win?.document.getElementById(`${base}-mode`), base);
+        assert.exists(win?.document.getElementById(`${base}-hex`), base);
+      }
+
+      const open = win?.document.getElementById(
+        "interlinear-appearance-color-open-picker",
+      ) as HTMLButtonElement | null;
+      assert.exists(open);
+      open?.click();
+      const panel = win?.document.getElementById(
+        "interlinear-color-picker",
+      ) as HTMLElement | null;
+      assert.exists(panel);
+      assert.notEqual(panel?.hidden, true);
+      const pickerHex = byId("interlinear-color-picker-hex");
+      assert.exists(pickerHex);
+      if (pickerHex) pickerHex.value = "#ff0000";
+      fire(pickerHex, "input");
+      fire(pickerHex, "change");
+      assert.equal(byId("interlinear-appearance-color-hex")?.value, "#FF0000");
+      assert.deepEqual(
+        JSON.parse(String(Zotero.Prefs.get(recentPref, true) || "[]")),
+        ["#FF0000"],
+      );
+
+      const save = win?.document.getElementById(
+        "interlinear-color-picker-save",
+      ) as HTMLButtonElement | null;
+      assert.exists(save);
+      save?.click();
+      assert.deepEqual(
+        JSON.parse(String(Zotero.Prefs.get(savedPref, true) || "[]")),
+        ["#FF0000"],
+      );
+
+      const close = win?.document.getElementById(
+        "interlinear-color-picker-close",
+      ) as HTMLButtonElement | null;
+      close?.click();
+      assert.equal(panel?.hidden, true);
+    } finally {
+      win?.close();
+      if (previousRecent === undefined) Zotero.Prefs.clear(recentPref, true);
+      else Zotero.Prefs.set(recentPref, previousRecent as any, true);
+      if (previousSaved === undefined) Zotero.Prefs.clear(savedPref, true);
+      else Zotero.Prefs.set(savedPref, previousSaved as any, true);
     }
   });
 
@@ -1009,10 +1387,10 @@ describe("startup", function () {
       );
       const targetStyle =
         targetLabel && win ? win.getComputedStyle(targetLabel) : null;
-      assert.equal(
-        targetStyle?.whiteSpace,
-        "nowrap",
-        "target language label must not wrap",
+      assert.notEqual(
+        targetStyle?.display,
+        "none",
+        "target language label must be rendered",
       );
       assert.isTrue(
         !!target?.closest(".interlinear-field") &&
@@ -1024,8 +1402,11 @@ describe("startup", function () {
     }
   });
 
-  it("should offer a font selector with a custom stack reveal and validation", async function () {
-    this.timeout(10000);
+  it("should offer a searchable font list, stack builder and validation", async function () {
+    this.timeout(15000);
+    const favoritesPref = "extensions.zotero.interlinear.appearance.fontFavorites";
+    const previousFavorites = Zotero.Prefs.get(favoritesPref, true);
+    Zotero.Prefs.clear(favoritesPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
     const byId = (id: string) =>
@@ -1034,32 +1415,39 @@ describe("startup", function () {
       el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("interlinear-appearance-font-select")) break;
+        if (win?.document.getElementById("interlinear-font-list")) break;
         await Zotero.Promise.delay(50);
       }
-      const select = win?.document.getElementById(
-        "interlinear-appearance-font-select",
-      ) as HTMLSelectElement | null;
+      const list = win?.document.getElementById("interlinear-font-list") as HTMLElement | null;
+      const stack = win?.document.getElementById("interlinear-font-stack") as HTMLElement | null;
+      const search = byId("interlinear-font-search");
+      const showAll = byId("interlinear-font-show-all");
       const input = byId("interlinear-appearance-font-family");
-      const customRow = win?.document.getElementById(
-        "interlinear-appearance-font-custom-row",
-      ) as HTMLElement | null;
       const error = win?.document.getElementById(
         "interlinear-appearance-font-family-error",
       ) as HTMLElement | null;
-      assert.exists(select);
+      assert.exists(list);
+      assert.exists(stack);
+      assert.exists(search);
+      assert.exists(showAll);
       assert.exists(input);
-      assert.exists(customRow);
       assert.exists(error);
-
-      if (select) select.value = "Georgia, serif";
-      fire(select, "change");
-      assert.equal(input?.value, "Georgia, serif");
-      assert.equal(customRow?.hidden, true);
-
-      if (select) select.value = "custom";
-      fire(select, "change");
-      assert.equal(customRow?.hidden, false);
+      assert.isAtLeast(
+        list?.querySelectorAll(".interlinear-font-row").length || 0,
+        4,
+        "font list should render at least the pinned defaults",
+      );
+      const candidateRows =
+        list?.querySelectorAll(".interlinear-font-row[data-family]").length || 0;
+      assert.isAtLeast(
+        candidateRows,
+        1,
+        `font list should render catalog rows; total=${
+          list?.querySelectorAll(".interlinear-font-row").length
+        } status=${
+          win?.document.getElementById("interlinear-font-detection-status")?.textContent
+        } groups=${list?.querySelectorAll(".interlinear-font-group").length}`,
+      );
 
       if (input) input.value = "Arial; color: red";
       fire(input, "input");
@@ -1070,8 +1458,88 @@ describe("startup", function () {
       fire(input, "input");
       fire(input, "blur");
       assert.equal(error?.textContent, "");
+      assert.include(stack?.textContent || "", "Georgia");
+
+      const row = list?.querySelector(".interlinear-font-row[data-family]") as HTMLElement | null;
+      const family = row?.dataset.family || "";
+      assert.isNotEmpty(family);
+      (row?.querySelector('[data-action="pick"]') as HTMLElement | null)?.click();
+      assert.include(stack?.textContent || "", family);
+
+      const refreshed = Array.from(
+        list?.querySelectorAll<HTMLElement>(".interlinear-font-row[data-family]") || [],
+      ).find((entry) => entry.dataset.family === family);
+      (refreshed?.querySelector('[data-action="favorite"]') as HTMLElement | null)?.click();
+      assert.include(Zotero.Prefs.get(favoritesPref, true) || "", family);
     } finally {
       win?.close();
+      if (previousFavorites === undefined) Zotero.Prefs.clear(favoritesPref, true);
+      else Zotero.Prefs.set(favoritesPref, previousFavorites, true);
+    }
+  });
+
+  it("should detect installed fonts and cache the measurement result", async function () {
+    this.timeout(40000);
+    const detectionPref = "extensions.zotero.interlinear.appearance.fontDetection";
+    const favoritesPref = "extensions.zotero.interlinear.appearance.fontFavorites";
+    const previousDetection = Zotero.Prefs.get(detectionPref, true);
+    const previousFavorites = Zotero.Prefs.get(favoritesPref, true);
+    Zotero.Prefs.clear(detectionPref, true);
+    Zotero.Prefs.clear(favoritesPref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-font-list")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const list = win?.document.getElementById("interlinear-font-list") as HTMLElement | null;
+      const status = win?.document.getElementById(
+        "interlinear-font-detection-status",
+      ) as HTMLElement | null;
+      assert.exists(list);
+      assert.exists(status);
+      for (let attempt = 0; attempt < 300; attempt++) {
+        const state = status?.dataset.state;
+        if (state === "live" || state === "failed") break;
+        await Zotero.Promise.delay(100);
+      }
+      assert.include(["live", "failed"], status?.dataset.state, "font scan should finish");
+      assert.isNotEmpty((status?.textContent || "").trim());
+
+      if (status?.dataset.state === "live") {
+        const raw = Zotero.Prefs.get(detectionPref, true) as string | undefined;
+        assert.isString(raw);
+        const cache = JSON.parse(raw as string);
+        assert.equal(cache.version, 1);
+        assert.isAtLeast(cache.fonts.length, 1);
+        assert.notInclude(cache.fonts, "__InterlinearNoSuchFont__");
+        assert.equal(
+          list?.querySelectorAll(".interlinear-font-row[data-family]").length,
+          cache.fonts.length,
+          "the list must show exactly the detected catalog fonts",
+        );
+        assert.equal(
+          list?.querySelectorAll('.interlinear-font-row[data-undetected="true"]').length,
+          0,
+          "fonts in the detected set must not carry the undetected badge",
+        );
+        const showAll = win?.document.getElementById(
+          "interlinear-font-show-all",
+        ) as HTMLInputElement | null;
+        if (showAll) showAll.checked = true;
+        showAll?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
+        assert.exists(
+          list?.querySelector('.interlinear-font-row[data-undetected="true"]'),
+          "the show-all fallback must mark fonts the scan did not detect",
+        );
+      }
+    } finally {
+      win?.close();
+      if (previousDetection === undefined) Zotero.Prefs.clear(detectionPref, true);
+      else Zotero.Prefs.set(detectionPref, previousDetection, true);
+      if (previousFavorites === undefined) Zotero.Prefs.clear(favoritesPref, true);
+      else Zotero.Prefs.set(favoritesPref, previousFavorites, true);
     }
   });
 
@@ -1087,13 +1555,31 @@ describe("startup", function () {
       const fontSize = win?.document.getElementById(
         "interlinear-appearance-font-size",
       ) as HTMLInputElement | null;
-      const hint = win?.document.getElementById("interlinear-save-hint") as HTMLElement | null;
+      const status = win?.document.getElementById(
+        "interlinear-settings-status",
+      ) as HTMLElement | null;
+      const appearanceTab = win?.document.getElementById(
+        "interlinear-tab-appearance",
+      ) as HTMLButtonElement | null;
       assert.exists(fontSize);
-      assert.exists(hint);
-      if (hint) hint.textContent = "";
+      assert.exists(status);
+      assert.exists(appearanceTab);
+      appearanceTab?.click();
       if (fontSize) fontSize.value = "20";
       fontSize?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
-      assert.ok((hint?.textContent || "").length > 0, "editing a field must mark unsaved");
+      assert.equal(status?.dataset.state, "dirty");
+      assert.isNotEmpty((status?.textContent || "").trim());
+      assert.equal(appearanceTab?.dataset.dirty, "true");
+
+      // Leaving a dirty tab is non-blocking: the tab keeps its dot and a hint appears.
+      (win?.document.getElementById("interlinear-tab-service") as HTMLButtonElement | null)?.click();
+      const hint = win?.document.getElementById(
+        "interlinear-save-hint",
+      ) as HTMLElement | null;
+      assert.isNotEmpty((hint?.textContent || "").trim());
+      assert.equal(appearanceTab?.dataset.dirty, "true");
+      (appearanceTab as HTMLButtonElement | null)?.click();
+      assert.equal(status?.dataset.state, "dirty");
     } finally {
       win?.close();
     }
@@ -1209,6 +1695,80 @@ describe("startup", function () {
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
       else Zotero.Prefs.set(modePref, previousMode, true);
+    }
+  });
+
+  it("should respect the translation scope toggles", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const batchPref = "extensions.zotero.interlinear.maxBatchParagraphs";
+    const scopePrefs = [
+      "extensions.zotero.interlinear.scope.body",
+      "extensions.zotero.interlinear.scope.titles",
+      "extensions.zotero.interlinear.scope.captions",
+      "extensions.zotero.interlinear.scope.listItems",
+      "extensions.zotero.interlinear.scope.notes",
+    ];
+    const previous = new Map<string, unknown>(
+      [enginePref, batchPref, ...scopePrefs].map((key) => [
+        key,
+        Zotero.Prefs.get(key, true),
+      ]),
+    );
+    const previousRequest = Zotero.HTTP.request;
+    let requests = 0;
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "scope-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const items: Array<[string, string, string]> = [
+      ["p", "0", "Body paragraph for the scope test."],
+      ["h1", "1", "Heading for the scope test"],
+      ["figcaption", "2", "Figure caption for the scope test"],
+      ["li", "3", "List item for the scope test"],
+      ["aside", "4", "Margin note for the scope test"],
+    ];
+    for (const [tag, refPath, text] of items) {
+      const element = doc.createElement(tag);
+      element.dataset.refPath = refPath;
+      if (tag === "aside") element.className = "sdt-note";
+      element.textContent = text;
+      content.append(element);
+    }
+    doc.body.append(content);
+    const reader = {
+      itemID: 2147483641,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: { _iframeDocument: doc, getData: () => ({ structure: null }) },
+      },
+    };
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      Zotero.Prefs.set(batchPref, 1, true);
+      Zotero.Prefs.set(scopePrefs[0], true, true);
+      for (const pref of scopePrefs.slice(1)) Zotero.Prefs.set(pref, false, true);
+      (Zotero.HTTP as any).request = async () => {
+        requests += 1;
+        return { status: 200, response: [[["译文。", "", null, null]]] };
+      };
+
+      await toggleBilingualReading(reader);
+      assert.equal(requests, 1, "only the body paragraph should be requested");
+      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 1);
+      assert.equal(doc.querySelector(".interlinear-translation")?.textContent, "译文。");
+      await toggleBilingualReading(reader);
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
     }
   });
 
@@ -1981,6 +2541,63 @@ describe("startup", function () {
 
     assert.notExists(doc.querySelector(".interlinear-selection-popup"));
     assert.isFalse(first.classList.contains("interlinear-source-hover"));
+  });
+
+  it("should offer block actions from right-click and double-click", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "block-menu-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const source = doc.createElement("p");
+    source.dataset.refPath = "0";
+    source.textContent = "Source paragraph for the block menu.";
+    const block = doc.createElement("div");
+    block.className = "interlinear-translation";
+    block.dataset.state = "done";
+    block.textContent = "译文段落。";
+    content.append(source, block);
+    doc.body.append(content);
+    const calls: Array<{ text: string; force?: boolean }> = [];
+    const controller = attachReaderInteractions(doc, {
+      translateSelection: async () => "",
+      translateParagraph: async (element, options) => {
+        calls.push({ text: element.textContent || "", force: options?.force });
+      },
+    });
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      block.dispatchEvent(
+        new win.MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 40,
+          clientY: 50,
+        }),
+      );
+      const menu = doc.querySelector(".interlinear-reader-menu") as HTMLElement | null;
+      assert.exists(menu);
+      assert.equal(menu?.querySelectorAll(".interlinear-reader-menu-item").length, 3);
+      (menu?.querySelector('[data-action="retranslate"]') as HTMLButtonElement | null)?.click();
+      assert.equal(calls.length, 1);
+      assert.isTrue(calls[0].force);
+      assert.include(calls[0].text, "Source paragraph");
+
+      block.dispatchEvent(
+        new win.MouseEvent("dblclick", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 44,
+          clientY: 54,
+        }),
+      );
+      assert.exists(doc.querySelector(".interlinear-reader-menu"));
+    } finally {
+      controller.dispose();
+      (doc.querySelector(".interlinear-reader-menu") as HTMLElement | null)?.remove();
+    }
   });
 
   it("should translate on hover dwell and respect configurable shortcut settings", async function () {

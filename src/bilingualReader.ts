@@ -5,13 +5,24 @@ import {
   getEngine,
   getGlossaryEntries,
   getHoverDelayMs,
+  getHoverModifier,
   getHoverTranslateEnabled,
+  getToggleShortcut,
+  getToggleShortcutEnabled,
+  getDisplayShortcut,
+  getDisplayShortcutEnabled,
+  getAutoTranslateOnOpen,
   getMaxBatchParagraphs,
   getMaxCharsPerRequest,
   getMaxConcurrent,
   getMaxConsecutiveErrors,
   getRequestGapMs,
   getRequestTimeoutMs,
+  getScopeBody,
+  getScopeCaptions,
+  getScopeListItems,
+  getScopeNotes,
+  getScopeTitles,
   getShortcutEnabled,
   getShortcutSpec,
   getSkipLastPages,
@@ -35,7 +46,12 @@ import { isFailureText } from "./translationFailure";
 import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
-import { buildTranslationCSS } from "./appearance";
+import { parseShortcut } from "./shortcut";
+import {
+  buildTranslationCSS,
+  resolveTextDirection,
+  resolveUiFontFamily,
+} from "./appearance";
 import { buildDisplayModeCSS, DISPLAY_MODES, type DisplayMode } from "./displayMode";
 import {
   cleanupReadingLayout,
@@ -311,6 +327,7 @@ function cancelRun(reader: any): void {
   current.cancellation = undefined;
   runStates.set(reader, current);
   updateToolbarProgress(reader);
+  maybeAutoTranslate(reader);
 }
 
 export function cancelBilingualReading(reader: any): void {
@@ -478,8 +495,40 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 
 function installStyles(doc: Document): void {
   const appearance = getAppearance();
+  const uiFont = appearance.uiFollowAppearance
+    ? resolveUiFontFamily(appearance, getTargetLanguage())
+    : "";
+  const uiFontPx =
+    appearance.fontSizeMode === "em"
+      ? Math.round(appearance.fontSize * appearance.fontSizeEm)
+      : appearance.fontSize;
+  const uiFontSize = appearance.uiFollowAppearance ? `${uiFontPx}px` : "13px";
+  const animation =
+    appearance.stateAnimation && !appearance.reduceMotion
+      ? `
+    @keyframes interlinear-pulse {
+      0%, 100% { opacity: 0.45; }
+      50% { opacity: 0.85; }
+    }
+    .${TRANSLATION_CLASS}[data-state="loading"] {
+      animation: interlinear-pulse 1.4s ease-in-out infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .${TRANSLATION_CLASS}[data-state="loading"] {
+        animation: none;
+      }
+    }
+    `
+      : "";
   const css = `
-${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader")}
+:root {
+  --interlinear-ui-font-family: ${uiFont || "inherit"};
+  --interlinear-ui-font-size: ${uiFontSize};
+  --interlinear-popup-max-width: ${appearance.popupMaxWidth}px;
+}
+${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader", {
+  targetLanguage: getTargetLanguage(),
+})}
 ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraphSpacing)}
     #sdt-content[data-interlinear-hidden="true"] .${TRANSLATION_CLASS} {
       display: none;
@@ -491,6 +540,10 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .${TRANSLATION_CLASS}[data-state="paused"] {
       opacity: 0.78;
     }
+    .${TRANSLATION_CLASS} {
+      user-select: text;
+    }
+${animation}
     .interlinear-source-hover {
       outline: 1px dashed currentColor;
       outline-offset: 2px;
@@ -502,15 +555,16 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .interlinear-selection-popup {
       position: fixed;
       z-index: 2147483000;
-      min-width: 320px;
-      max-width: 420px;
+      min-width: 280px;
+      max-width: var(--interlinear-popup-max-width, 420px);
       padding: 8px;
       border: 1px solid rgba(127, 127, 127, 0.45);
       border-radius: 6px;
       background: Canvas;
       color: CanvasText;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-      font-size: 13px;
+      font-family: var(--interlinear-ui-font-family, inherit);
+      font-size: var(--interlinear-ui-font-size, 13px);
       line-height: 1.5;
     }
     .interlinear-selection-actions {
@@ -626,8 +680,14 @@ function getDisplayModeLabel(mode: DisplayMode): string {
   }
 }
 
-function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {
-  if (!toolbarDoc) {
+function cycleDisplayMode(reader: any, toolbarDoc?: Document): void {
+  const index = DISPLAY_MODES.indexOf(getDisplayMode());
+  setDisplayMode(DISPLAY_MODES[(index + 1) % DISPLAY_MODES.length]);
+  refreshDisplayModes();
+  updateDisplayButtonState(reader, toolbarDoc);
+}
+
+function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {  if (!toolbarDoc) {
     try {
       toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
     } catch (_) {
@@ -669,7 +729,15 @@ export function refreshTranslationStyles(): void {
     try {
       if (reader.type !== "pdf") continue;
       const doc = getSDTDocument(reader);
-      if (doc?.querySelector("#sdt-content")) installStyles(doc);
+      if (doc?.querySelector("#sdt-content")) {
+        installStyles(doc);
+        const direction = translationDirection();
+        for (const block of Array.from(
+          doc.querySelectorAll(`.${TRANSLATION_CLASS}`),
+        ) as HTMLElement[]) {
+          block.dir = direction;
+        }
+      }
     } catch (error) {
       Zotero.logError(error as Error);
     }
@@ -744,18 +812,18 @@ function collectParagraphs(
   engineTag: string,
   structure: any,
 ): ReaderParagraph[] {
-  const selector = [
-    "#sdt-content p[data-ref-path]",
-    "#sdt-content h1[data-ref-path]",
-    "#sdt-content h2[data-ref-path]",
-    "#sdt-content h3[data-ref-path]",
-    "#sdt-content h4[data-ref-path]",
-    "#sdt-content h5[data-ref-path]",
-    "#sdt-content h6[data-ref-path]",
-    "#sdt-content figcaption[data-ref-path]",
-    "#sdt-content aside.sdt-note[data-ref-path]",
-    "#sdt-content li[data-ref-path]",
-  ].join(",");
+  const selectors: string[] = [];
+  if (getScopeBody()) selectors.push("#sdt-content p[data-ref-path]");
+  if (getScopeTitles()) {
+    for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
+      selectors.push(`#sdt-content ${tag}[data-ref-path]`);
+    }
+  }
+  if (getScopeCaptions()) selectors.push("#sdt-content figcaption[data-ref-path]");
+  if (getScopeNotes()) selectors.push("#sdt-content aside.sdt-note[data-ref-path]");
+  if (getScopeListItems()) selectors.push("#sdt-content li[data-ref-path]");
+  const selector = selectors.join(",");
+  if (!selector) return [];
 
   const totalPages = Array.isArray(structure?.catalog?.pages) ? structure.catalog.pages.length : 0;
   const elements = Array.from(doc.querySelectorAll(selector)) as HTMLElement[];
@@ -789,20 +857,27 @@ function collectParagraphs(
   return paragraphs;
 }
 
+function translationDirection(): "ltr" | "rtl" {
+  return resolveTextDirection(getAppearance().textDirection, getTargetLanguage());
+}
+
 function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTMLDivElement | null {
   if (paragraph.block?.ownerDocument === doc && paragraph.block.parentNode) {
+    paragraph.block.dir = translationDirection();
     return paragraph.block;
   }
 
   const source = paragraph.sourceElement;
   if (source.ownerDocument !== doc || !source.parentNode) return null;
 
+  const direction = translationDirection();
   const sibling = source.nextElementSibling as HTMLDivElement | null;
   if (
     sibling?.classList.contains(TRANSLATION_CLASS) &&
     sibling.dataset.sourceRefPath === paragraph.refPath
   ) {
     source.classList.add(SOURCE_CELL_CLASS);
+    sibling.dir = direction;
     paragraph.block = sibling;
     if (paragraph.translation && sibling.dataset.state !== "done") {
       setBlockState(sibling, "done", paragraph.translation);
@@ -813,6 +888,7 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
   const block = doc.createElement("div");
   block.className = TRANSLATION_CLASS;
   block.lang = getTargetLanguage();
+  block.dir = direction;
   block.dataset.sourceRefPath = paragraph.refPath;
   if (paragraph.pageIndex !== undefined) {
     block.dataset.sourcePage = String(paragraph.pageIndex + 1);
@@ -920,6 +996,7 @@ export async function translateSelectedText(reader: any, rawText: string): Promi
 export function translateReaderParagraph(
   reader: any,
   source: HTMLElement,
+  options: { force?: boolean } = {},
 ): Promise<void> {
   const pending = paragraphRequests.get(source);
   if (pending) return pending;
@@ -932,13 +1009,22 @@ export function translateReaderParagraph(
   const sourceText = (source.textContent || "").replace(/\s+/g, " ").trim();
   if (!refPath || sourceText.length < 2) return Promise.resolve();
 
-  const existingBlock = source.nextElementSibling as HTMLElement | null;
-  if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
-    const state = existingBlock.dataset.state;
-    if (state === "loading" || state === "done") return Promise.resolve();
+  if (!options.force) {
+    const existingBlock = source.nextElementSibling as HTMLElement | null;
+    if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
+      const state = existingBlock.dataset.state;
+      if (state === "loading" || state === "done") return Promise.resolve();
+    }
   }
 
-  const promise = requestReaderParagraph(reader, source, doc, refPath, sourceText);
+  const promise = requestReaderParagraph(
+    reader,
+    source,
+    doc,
+    refPath,
+    sourceText,
+    Boolean(options.force),
+  );
   paragraphRequests.set(source, promise);
   const release = () => {
     if (paragraphRequests.get(source) === promise) paragraphRequests.delete(source);
@@ -953,6 +1039,7 @@ async function requestReaderParagraph(
   doc: Document,
   refPath: string,
   sourceText: string,
+  force = false,
 ): Promise<void> {
   const { itemID, itemKey } = getReaderItem(reader);
   const engine = getEngine();
@@ -963,13 +1050,15 @@ async function requestReaderParagraph(
     sourceText,
     sourceElement: source,
     pageIndex: getPageIndexForRef(getSDTStructure(reader), refPath),
-    translation: loadCachedTranslation(
-      itemKey,
-      sourceText,
-      engineTag,
-      isFailureText,
-      targetLanguage,
-    ),
+    translation: force
+      ? ""
+      : loadCachedTranslation(
+          itemKey,
+          sourceText,
+          engineTag,
+          isFailureText,
+          targetLanguage,
+        ),
   };
 
   prepareOnDemandReading(reader, doc);
@@ -1041,9 +1130,9 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
     doc,
     {
       translateSelection: (text) => translateSelectedText(reader, text),
-      translateParagraph: (source) => {
+      translateParagraph: (source, options) => {
         dispatchToggle(reader, "shortcut");
-        return translateReaderParagraph(reader, source);
+        return translateReaderParagraph(reader, source, options);
       },
     },
     {
@@ -1055,7 +1144,21 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
         enabled: getShortcutEnabled(),
         spec: getShortcutSpec(),
       }),
+      getHoverModifier: () => getHoverModifier(),
+      getToggleShortcutSettings: () => ({
+        enabled: getToggleShortcutEnabled(),
+        spec: parseShortcut(getToggleShortcut()),
+      }),
+      getDisplayShortcutSettings: () => ({
+        enabled: getDisplayShortcutEnabled(),
+        spec: parseShortcut(getDisplayShortcut()),
+      }),
+      onToggleShortcut: () => {
+        void toggleBilingualReading(reader);
+      },
+      onCycleDisplayShortcut: () => cycleDisplayMode(reader),
       isTranslationHidden: () => isTranslationHidden(getToggleState(reader)),
+      getPopupWidth: () => getAppearance().popupMaxWidth,
     },
   );
   controllers.push({ doc, controller });
@@ -1761,6 +1864,52 @@ function openBilingualToolbarMenu(
   });
 }
 
+const autoTranslateAttempted = new WeakSet<object>();
+
+async function showCachedTranslations(reader: any): Promise<void> {
+  const doc = await ensureReadingMode(reader);
+  const root = getDocumentRoot(doc);
+  if (!root) return;
+  installStyles(doc);
+  applyDisplayMode(doc);
+  ensureReaderInteractions(reader, doc);
+
+  const itemID = Number(reader?.itemID || 0);
+  if (!itemID) return;
+  const item = Zotero.Items.get(itemID);
+  const itemKey = String(item?.key || reader?.itemKey || itemID || "reader");
+  const engineTag = getCacheEngineTag();
+  const structure = getSDTStructure(reader);
+  const paragraphs = collectParagraphs(doc, itemKey, engineTag, structure).filter(
+    (paragraph) => Boolean(paragraph.translation),
+  );
+  if (!paragraphs.length) return;
+
+  observeReadingLayout(getActiveSDTView(reader), doc);
+  for (const paragraph of paragraphs) {
+    const block = ensureTranslationBlock(doc, paragraph);
+    if (block && paragraph.translation) {
+      setBlockState(block, "done", paragraph.translation);
+    }
+  }
+  if (getToggleState(reader) === "empty") {
+    dispatchToggle(reader, "shortcut");
+  }
+  refreshReadingLayout(doc);
+}
+
+function maybeAutoTranslate(reader: any): void {
+  const mode = getAutoTranslateOnOpen();
+  if (mode === "off" || autoTranslateAttempted.has(reader)) return;
+  autoTranslateAttempted.add(reader);
+  if (getToggleState(reader) !== "empty") return;
+  if (mode === "always") {
+    void toggleBilingualReading(reader);
+    return;
+  }
+  void showCachedTranslations(reader).catch((error) => Zotero.logError(error as Error));
+}
+
 export function renderBilingualToolbarButtons(event: any): void {
   const { reader, doc, append } = event || {};
   if (!reader || reader.type !== "pdf" || !doc) return;
@@ -1794,12 +1943,7 @@ export function renderBilingualToolbarButtons(event: any): void {
   }
 
   registerToolbarHandlers(doc, DISPLAY_BUTTON_CLASS, {
-    onClick: () => {
-      const index = DISPLAY_MODES.indexOf(getDisplayMode());
-      setDisplayMode(DISPLAY_MODES[(index + 1) % DISPLAY_MODES.length]);
-      refreshDisplayModes();
-      updateDisplayButtonState(reader, doc);
-    },
+    onClick: () => cycleDisplayMode(reader, doc),
     onContextMenu: (contextEvent) =>
       openBilingualToolbarMenu(reader, doc, contextEvent.clientX, contextEvent.clientY),
   });

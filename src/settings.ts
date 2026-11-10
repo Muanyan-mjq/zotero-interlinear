@@ -1,9 +1,27 @@
 import {
+  COLOR_LIST_MAX_LENGTH,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  RECENT_COLORS_MAX,
+  SAVED_COLORS_MAX,
+  buildFontStack,
   normalizeAppearance,
+  normalizeAppearancePresets,
+  normalizeColorList,
+  normalizeColorToken,
+  normalizeThemeColor,
+  parseFontStack,
+  pushColorUnique,
+  type AppearancePreset,
   type AppearanceSettings,
+  type ColorRole,
 } from "./appearance";
+import {
+  FONT_DETECTION_CACHE_MAX_FONTS,
+  FONT_DETECTION_CACHE_VERSION,
+  normalizeFontFavorites,
+  parseFontDetectionCache,
+} from "./fontCatalog";
 import {
   DEFAULT_CLAUDE_ENDPOINT,
   normalizeClaudeEndpoint,
@@ -30,6 +48,7 @@ import {
 } from "./glossary";
 import {
   DEFAULT_SHORTCUT,
+  isValidShortcut,
   normalizeShortcut,
   parseShortcut,
   type ShortcutSpec,
@@ -140,6 +159,25 @@ const APPEARANCE_UNDERLINE_PREF = `${BASE}.appearance.underline`;
 const APPEARANCE_UNDERLINE_COLOR_PREF = `${BASE}.appearance.underlineColor`;
 const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
 const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
+const SCOPE_TITLES_PREF = `${BASE}.scope.titles`;
+const SCOPE_CAPTIONS_PREF = `${BASE}.scope.captions`;
+const SCOPE_LIST_ITEMS_PREF = `${BASE}.scope.listItems`;
+const SCOPE_NOTES_PREF = `${BASE}.scope.notes`;
+const SCOPE_BODY_PREF = `${BASE}.scope.body`;
+const TOGGLE_SHORTCUT_ENABLED_PREF = `${BASE}.interaction.toggleShortcutEnabled`;
+const TOGGLE_SHORTCUT_PREF = `${BASE}.interaction.toggleShortcut`;
+const DISPLAY_SHORTCUT_ENABLED_PREF = `${BASE}.interaction.displayShortcutEnabled`;
+const DISPLAY_SHORTCUT_PREF = `${BASE}.interaction.displayShortcut`;
+const HOVER_MODIFIER_PREF = `${BASE}.interaction.hoverModifier`;
+const AUTO_TRANSLATE_ON_OPEN_PREF = `${BASE}.interaction.autoTranslateOnOpen`;
+const APPEARANCE_V2_PREF = `${BASE}.appearance.v2`;
+const APPEARANCE_SCHEMA_PREF = `${BASE}.appearance.schema`;
+const APPEARANCE_SCHEMA_VERSION = 3;
+const APPEARANCE_PRESETS_PREF = `${BASE}.appearance.presets`;
+const FONT_FAVORITES_PREF = `${BASE}.appearance.fontFavorites`;
+const FONT_DETECTION_PREF = `${BASE}.appearance.fontDetection`;
+const RECENT_COLORS_PREF = `${BASE}.appearance.recentColors`;
+const SAVED_COLORS_PREF = `${BASE}.appearance.savedColors`;
 const DISPLAY_MODE_PREF = `${BASE}.displayMode`;
 const GLOSSARY_PREF = `${BASE}.glossary`;
 
@@ -502,6 +540,73 @@ export function setHoverDelayMs(value: number): void {
   setNumberPref(HOVER_DELAY_PREF, value, HOVER_DELAY_MIN_MS, HOVER_DELAY_MAX_MS);
 }
 
+export const DEFAULT_TOGGLE_SHORTCUT = "Alt+Shift+T";
+export const DEFAULT_DISPLAY_SHORTCUT = "Alt+Shift+D";
+export type HoverModifier = "none" | "alt" | "ctrl";
+export type AutoTranslateOnOpen = "off" | "cached" | "always";
+
+function normalizeShortcutOrDefault(raw: string, fallback: string): string {
+  const normalized = normalizeShortcut(raw);
+  return isValidShortcut(normalized) ? normalized : fallback;
+}
+
+export function getToggleShortcutEnabled(): boolean {
+  return getBoolPref(TOGGLE_SHORTCUT_ENABLED_PREF, false);
+}
+export function setToggleShortcutEnabled(value: boolean): void {
+  setBoolPref(TOGGLE_SHORTCUT_ENABLED_PREF, value);
+}
+export function getToggleShortcut(): string {
+  return normalizeShortcutOrDefault(
+    getRawStringPref(TOGGLE_SHORTCUT_PREF),
+    DEFAULT_TOGGLE_SHORTCUT,
+  );
+}
+export function setToggleShortcut(value: string): void {
+  setStringPref(
+    TOGGLE_SHORTCUT_PREF,
+    normalizeShortcutOrDefault(value, DEFAULT_TOGGLE_SHORTCUT),
+  );
+}
+export function getDisplayShortcutEnabled(): boolean {
+  return getBoolPref(DISPLAY_SHORTCUT_ENABLED_PREF, false);
+}
+export function setDisplayShortcutEnabled(value: boolean): void {
+  setBoolPref(DISPLAY_SHORTCUT_ENABLED_PREF, value);
+}
+export function getDisplayShortcut(): string {
+  return normalizeShortcutOrDefault(
+    getRawStringPref(DISPLAY_SHORTCUT_PREF),
+    DEFAULT_DISPLAY_SHORTCUT,
+  );
+}
+export function setDisplayShortcut(value: string): void {
+  setStringPref(
+    DISPLAY_SHORTCUT_PREF,
+    normalizeShortcutOrDefault(value, DEFAULT_DISPLAY_SHORTCUT),
+  );
+}
+export function getHoverModifier(): HoverModifier {
+  const value = getRawStringPref(HOVER_MODIFIER_PREF);
+  return value === "alt" || value === "ctrl" ? value : "none";
+}
+export function setHoverModifier(value: string): void {
+  setStringPref(
+    HOVER_MODIFIER_PREF,
+    value === "alt" || value === "ctrl" ? value : "none",
+  );
+}
+export function getAutoTranslateOnOpen(): AutoTranslateOnOpen {
+  const value = getRawStringPref(AUTO_TRANSLATE_ON_OPEN_PREF);
+  return value === "cached" || value === "always" ? value : "off";
+}
+export function setAutoTranslateOnOpen(value: string): void {
+  setStringPref(
+    AUTO_TRANSLATE_ON_OPEN_PREF,
+    value === "cached" || value === "always" ? value : "off",
+  );
+}
+
 export function getShortcutEnabled(): boolean {
   return getBoolPref(SHORTCUT_ENABLED_PREF, DEFAULT_SHORTCUT_ENABLED);
 }
@@ -523,6 +628,17 @@ export function getShortcutSpec(): ShortcutSpec | null {
 }
 
 export function getAppearance(): AppearanceSettings {
+  const stored = getRawStringPref(APPEARANCE_V2_PREF);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        return normalizeAppearance(parsed as Partial<AppearanceSettings>);
+      }
+    } catch (_) {
+      // Fall through to the legacy per-field prefs.
+    }
+  }
   return normalizeAppearance({
     fontSize: getNumberPref(APPEARANCE_FONT_SIZE_PREF, 16, FONT_SIZE_MIN, FONT_SIZE_MAX),
     color: getRawStringPref(APPEARANCE_COLOR_PREF),
@@ -539,7 +655,28 @@ export function getAppearance(): AppearanceSettings {
 }
 
 export function setAppearance(input: Partial<AppearanceSettings>): void {
-  const settings = normalizeAppearance({ ...getAppearance(), ...input });
+  const current = getAppearance();
+  const merged = { ...current, ...input };
+  // Legacy callers only send the flat fields. Translate them into colors so
+  // normalizeAppearance does not keep the previous structured mode.
+  if (input.colors === undefined) {
+    const colors = { ...current.colors };
+    const applyLegacy = (role: ColorRole, value: string | undefined) => {
+      if (value !== undefined) colors[role] = normalizeThemeColor(value);
+    };
+    applyLegacy("text", input.color);
+    applyLegacy("background", input.background);
+    applyLegacy("underline", input.underlineColor);
+    applyLegacy("ribbon", input.ribbonColor);
+    merged.colors = colors;
+  }
+  // A caller that only changes the CSS font-family string still gets a
+  // structured stack, so the next read and the stack UI agree.
+  if (input.fontFamily !== undefined && input.fontStack === undefined) {
+    merged.fontStack = parseFontStack(input.fontFamily);
+    merged.fontFamily = buildFontStack(merged.fontStack);
+  }
+  const settings = normalizeAppearance(merged);
   setNumberPref(APPEARANCE_FONT_SIZE_PREF, settings.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX);
   setStringPref(APPEARANCE_COLOR_PREF, settings.color);
   setStringPref(APPEARANCE_FONT_FAMILY_PREF, settings.fontFamily);
@@ -561,6 +698,148 @@ export function setAppearance(input: Partial<AppearanceSettings>): void {
   setStringPref(APPEARANCE_UNDERLINE_COLOR_PREF, settings.underlineColor);
   setBoolPref(APPEARANCE_RIBBON_PREF, settings.ribbon);
   setStringPref(APPEARANCE_RIBBON_COLOR_PREF, settings.ribbonColor);
+  setStringPref(APPEARANCE_V2_PREF, JSON.stringify(settings));
+  setNumberPref(APPEARANCE_SCHEMA_PREF, APPEARANCE_SCHEMA_VERSION, 1, 99);
+}
+
+export function getAppearancePresets(): AppearancePreset[] {
+  const stored = getRawStringPref(APPEARANCE_PRESETS_PREF);
+  if (!stored) return [];
+  try {
+    return normalizeAppearancePresets(JSON.parse(stored));
+  } catch (_) {
+    return [];
+  }
+}
+
+export function setAppearancePresets(presets: AppearancePreset[]): void {
+  setStringPref(
+    APPEARANCE_PRESETS_PREF,
+    JSON.stringify(normalizeAppearancePresets(presets)),
+  );
+}
+
+export function getFontFavorites(): string[] {
+  const stored = getRawStringPref(FONT_FAVORITES_PREF);
+  if (!stored) return [];
+  try {
+    return normalizeFontFavorites(JSON.parse(stored));
+  } catch (_) {
+    return [];
+  }
+}
+
+export function setFontFavorites(value: readonly string[]): void {
+  setStringPref(FONT_FAVORITES_PREF, JSON.stringify(normalizeFontFavorites(value)));
+}
+
+function readColorListPref(key: string, max: number): string[] {
+  const stored = getRawStringPref(key);
+  if (!stored || stored.length > COLOR_LIST_MAX_LENGTH) return [];
+  try {
+    return normalizeColorList(JSON.parse(stored), max);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeColorListPref(key: string, colors: readonly string[], max: number): string[] {
+  const normalized = normalizeColorList(colors, max);
+  setStringPref(key, JSON.stringify(normalized));
+  return normalized;
+}
+
+export function getRecentColors(): string[] {
+  return readColorListPref(RECENT_COLORS_PREF, RECENT_COLORS_MAX);
+}
+
+export function setRecentColors(colors: readonly string[]): void {
+  writeColorListPref(RECENT_COLORS_PREF, colors, RECENT_COLORS_MAX);
+}
+
+export function pushRecentColor(color: string): string[] {
+  return writeColorListPref(
+    RECENT_COLORS_PREF,
+    pushColorUnique(getRecentColors(), color, RECENT_COLORS_MAX),
+    RECENT_COLORS_MAX,
+  );
+}
+
+export function getSavedColors(): string[] {
+  return readColorListPref(SAVED_COLORS_PREF, SAVED_COLORS_MAX);
+}
+
+export function setSavedColors(colors: readonly string[]): void {
+  writeColorListPref(SAVED_COLORS_PREF, colors, SAVED_COLORS_MAX);
+}
+
+export function addSavedColor(color: string): string[] {
+  return writeColorListPref(
+    SAVED_COLORS_PREF,
+    pushColorUnique(getSavedColors(), color, SAVED_COLORS_MAX),
+    SAVED_COLORS_MAX,
+  );
+}
+
+export function removeSavedColor(color: string): string[] {
+  const token = normalizeColorToken(color);
+  if (!token) return getSavedColors();
+  const remaining = getSavedColors().filter((entry) => entry !== token);
+  return writeColorListPref(SAVED_COLORS_PREF, remaining, SAVED_COLORS_MAX);
+}
+
+export function getCachedFontDetection(): string[] | null {
+  return parseFontDetectionCache(getRawStringPref(FONT_DETECTION_PREF));
+}
+
+export function setCachedFontDetection(fonts: readonly string[]): void {
+  setStringPref(
+    FONT_DETECTION_PREF,
+    JSON.stringify({
+      version: FONT_DETECTION_CACHE_VERSION,
+      at: Date.now(),
+      fonts: fonts.slice(0, FONT_DETECTION_CACHE_MAX_FONTS),
+    }),
+  );
+}
+
+export function clearCachedFontDetection(): void {
+  try {
+    (Zotero.Prefs as any).clear(FONT_DETECTION_PREF, true);
+  } catch (_) {
+    // The preference may already have been removed.
+  }
+}
+
+export function getScopeTitles(): boolean {
+  return getBoolPref(SCOPE_TITLES_PREF, true);
+}
+export function setScopeTitles(value: boolean): void {
+  setBoolPref(SCOPE_TITLES_PREF, value);
+}
+export function getScopeCaptions(): boolean {
+  return getBoolPref(SCOPE_CAPTIONS_PREF, true);
+}
+export function setScopeCaptions(value: boolean): void {
+  setBoolPref(SCOPE_CAPTIONS_PREF, value);
+}
+export function getScopeListItems(): boolean {
+  return getBoolPref(SCOPE_LIST_ITEMS_PREF, true);
+}
+export function setScopeListItems(value: boolean): void {
+  setBoolPref(SCOPE_LIST_ITEMS_PREF, value);
+}
+export function getScopeNotes(): boolean {
+  return getBoolPref(SCOPE_NOTES_PREF, true);
+}
+export function setScopeNotes(value: boolean): void {
+  setBoolPref(SCOPE_NOTES_PREF, value);
+}
+export function getScopeBody(): boolean {
+  return getBoolPref(SCOPE_BODY_PREF, true);
+}
+export function setScopeBody(value: boolean): void {
+  setBoolPref(SCOPE_BODY_PREF, value);
 }
 
 export function getDisplayMode(): DisplayMode {

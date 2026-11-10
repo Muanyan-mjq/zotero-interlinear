@@ -966,3 +966,367 @@
 7. 高级页：确认范围、速度、缓存、关于与 GitHub 链接都在；缓存统计与清除可用。
 8. 窄窗口（约 600px）：字段变单列、标签不换行、页面无横向滚动；键盘 Tab 遍历所有控件有清晰焦点环。
 9. 切换 Zotero 浅/深主题与中英文：确认卡片、帮助文字、状态点、警告与页脚均可读，无残留英文/中文。
+
+# 外观自定义 v2（feat/appearance-v2）
+
+## 基线
+
+- 从 `feat/ui-polish` @ `a1e687b`（ui: rebuild the settings pane as five tabs）切出 `feat/appearance-v2`。
+- 基线测试：`npm run build` 通过，`npm run lint:check` 通过，`npm run test:unit` 131 pass，`npm run test:review` 51 pass。
+- 本任务不 push、不改 remote、不改写历史、不合并分支；每个 Step 单独提交。
+- 本仓库 `npm test` 会使用默认/开发 profile；实际使用 `npm run test:review`（Zotero headless + 独立 profile）作为集成测试入口，避免影响正在运行的 Zotero。
+
+## Step 1：设置页顶部与标签栏重做
+
+### 标签页的来历（先读代码后的结论）
+
+- 标签页是在本轮之前的 **Step G**（`feat/ui-polish` 的 `a1e687b`）引入的：把原 Step 15/D 的“快速跳转”芯片（`.interlinear-nav-button`，点击 `scrollIntoView`）替换为五个 `role=tab` 按钮，并用 `data-tab` 控制 section 显隐。
+- “快速跳转”芯片是 Step 15（`856940f`）加入的页内导航，只有服务/显示/外观/范围/术语表/维护六个入口，与页面实际 11 个区块顺序不一致，且 `速度与稳定性`、`单段翻译` 等区块没有入口。
+- Step G 同时**删除**了 `interlinear-speed-section` 底部的第二个“保存设置”按钮（`interlinear-save-bottom`），只保留顶部保存按钮。当前代码与测试都不再引用底部按钮。
+- 因此本次不是“新造标签页”，而是重做 Step G 的顶部：把保存按钮从左侧大红色主按钮改为右侧 Zotero 原生强调色按钮，把标签改为左侧、保存与状态右侧的紧凑吸顶工具栏。
+
+### 做了什么
+- **顶部工具栏**：`.interlinear-sticky` 内改为 `.interlinear-toolbar` 单行：左侧标签（可横向滚动、不折行溢出），右侧状态文字 + 未保存提示 + 保存按钮。窄窗口（≤640px）时操作区换到第二行并右对齐。
+- **原生按钮**：查证 Zotero 10 设置页 CSS（`chrome/content/zotero-platform/win/preferences.css`）后使用其变量：`--accent-blue`、`--accent-white`、`--fill-quinary/quarternary/senary`。保存按钮为 28px 高、4px 圆角、字重 400、`--accent-blue` 背景；品牌红只保留在 section 标题前的 6px 小方块。无法确认这些变量在所有 Zotero 主题下都存在，因此全部带 fallback（`#4072e5` 等）。
+- **标签**：字重 500；选中态只保留 2px 下划线（不再同时灰底）；悬停用极浅的 `--fill-senary`；左右方向键/Home/End 已存在并保留；窄窗口横向滚动。
+- **状态四态**：
+  - `saved`：✓ + “所有更改已保存”（初始与保存成功恢复后的默认态）。
+  - `dirty`：小圆点 + “有未保存的更改”；对应标签按钮显示小圆点（`data-dirty`）。
+  - `success`：✓ + “已保存”，2.5 秒后自动回到 `saved`。
+  - `error`：! + “保存失败：原因”；保存抛错时保留 dirty 状态，不清理标签红点。
+  - 颜色只用于图标/圆点，文字始终 `CanvasText`；对比度不依赖颜色。
+- **保留表单值与滚动位置**：切换标签不重建表单，DOM 值原样保留；每个标签的滚动位置存 `WeakMap<Document, Map<tab, scrollTop>>`，切换时保存旧标签、在下一 tick 恢复新标签。离开有未保存更改的标签时，在顶部显示 4 秒非阻塞提示“切换标签页不会丢弃未保存的更改”，并保留标签红点。
+- **保存错误处理**：`saveSettings` 改为返回 warning 列表；点击保存时 try/catch。成功显示短暂“已保存”，非法字体/快捷键等 warning 显示 5 秒黄色状态，异常显示带 detail 的失败状态。
+
+### 改动文件
+`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`src/modules/preferenceScript.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：131 pass / 0 fail。
+- `npm run test:review`（等价集成测试，独立 profile）：51 pass / 0 fail；新增的脏标记用例断言 `dirty` 状态、标签红点、切换标签后的非阻塞提示与返回后仍为 dirty。
+
+### 不确定项 / 无法目视验证
+- 无法在本机用 headless 截图证明 Zotero 设置页的真实观感；Step 8 会尝试 `canvas.drawWindow`，若失败会明确写“无法目视验证”。
+- `--accent-blue`/`--fill-*` 变量在 Zotero 10 的浅/深主题下是否都定义：已查证 Windows 平台 `preferences.css` 有定义，但其他平台/主题未逐一确认；已提供 fallback。
+- 标签横向滚动条在 Gecko 设置页中的实际宽度与触控板表现未目视。
+- 滚动位置恢复依赖 `doc.scrollingElement` 或 `window.scrollTo`；若 Zotero 用内层 `browser` 滚动，`scrollTop` 可能无效，届时表现为不恢复滚动位置（不影响表单值）。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置→Interlinear：顶部应为紧凑单行，左侧五个标签，右侧状态 + 保存；保存按钮是 Zotero 原生蓝色，不再是整块品牌红。
+2. 修改任意字段：状态变为“有未保存的更改”+ 小圆点，对应标签出现小圆点；切换标签时出现非阻塞提示，值不丢失，切回后仍是 dirty。
+3. 在长页面（外观/高级）滚到中部，切到另一个标签再切回：滚动位置应恢复；若未恢复，记录 Zotero 窗口宽度与滚动容器。
+4. 点保存：成功状态显示“已保存”约 2.5 秒后回到“所有更改已保存”；把字体输入改成非法值再保存，应显示黄色 warning 而不是成功。
+5. 用键盘聚焦标签，按 ←/→/Home/End：焦点与选中态同步；Tab 键可到达保存按钮。
+6. 把窗口缩到约 600px：标签可横向滚动、不溢出；状态文字不被截断，操作区换行到第二行。
+7. 切换 Zotero 浅/深主题：保存按钮、状态图标、标签下划线与文字对比度可读。
+
+## Step 2：字体系统重做（P1）
+
+### 起点与接手范围
+
+- Claude Code 完成了 `src/appearance.ts` 的字体模型、CSS 构造器，以及 XHTML 里的字号模式/字重/斜体/行距/方向等控件骨架；`src/modules/preferenceScript.ts` 的 `readAppearanceForm` 在替换后一度编译失败，字体列表/检测/字体栈 UI 全部未完成。
+- 本步补齐：纯字体目录与检测模块、收藏与检测缓存、搜索式字体列表、字体栈构建器、始终可见的高级 CSS 输入、自动语言字体栈、字重/斜体/字距/相对字号、文字方向、阅读器 `dir` 属性、缓存键回归测试。
+- 默认值仍为“继承阅读器字体”，因此默认 CSS 输出与 Step 1 前一致；只有用户显式选择字体或字重等属性时才追加声明。
+
+### 字体目录与检测（纯函数）
+
+- 新增 `src/fontCatalog.ts`（无 import，供 Node 类型剥离直接加载）：232 个候选字体，覆盖 Windows/macOS/Linux 的 Latin、简体/繁体中文、日文、韩文、阿拉伯、希伯来、泰文、天城文、等宽与系统别名；每个候选带 `group`（sans/serif/mono/zh/ja-ko/other）与 `script`。
+- 检测方式：`canvas.measureText` 对同一段文字分别测量 `monospace`、`serif`、`sans-serif` 三个基线，与候选字体宽度比较；差值 > 0.5px 视为已安装。这是 Firefox 115 没有本地字体枚举 API 时的替代方案，不依赖指纹接口。
+- 检测按 24 个候选一块、`setTimeout(0)` 分片执行，不阻塞设置页；结果写入 `appearance.fontDetection` 缓存（版本 1、30 天 TTL、最多 512 条），再次打开直接使用缓存；“重新扫描”强制重测。
+- “显示全部候选”开关在检测不可用或被防指纹策略抹平时仍可浏览/选择全部字体；未检测到的行加 `data-undetected="true"` 与警告图标，只警告不阻止保存。
+- 字体名验证与 `appearance.ts` 规则一致（`\p{L}\p{N}` 开头、字母/数字/空格/点/下划线/连字符、≤80 字符、拒绝 `url()`/`expression`/控制字符）；因 Node 单测无法解析无扩展名 TS import，`fontCatalog.ts` 内联了一份同规则验证器，并在单测里用 `appearance.ts` 的验证器交叉核对全部候选。
+
+### 字体 UI
+
+- 搜索框 + 显示全部 + 检测状态（`role=status`，`aria-live=polite`）+ 重新扫描。
+- 列表按“阅读器默认 / 收藏 / 无衬线 / 衬线 / 等宽 / 中文 / 日韩 / 其他”分组；每行用自身字体渲染样张（CJK 用中文/日文/韩文样张），行内提供“设为主字体 / 收藏 / 加入回退”。
+- 顶部固定项：继承阅读器字体、系统无衬线、系统衬线、系统等宽。
+- 字体栈：主字体 + 最多 6 个有序回退 + 一个 generic 兜底；chip 支持上移/下移/移除，修改后立即写入高级输入并刷新预览。
+- 高级 CSS `font-family` 输入始终可见且可编辑；非法内容保留在输入框中并显示行内错误，保存时给出黄色 warning、保留上一份有效字体，不清空用户输入。
+- 收藏写入 `appearance.fontFavorites`（最多 24 个、去重、大小写不敏感），收藏操作立即持久化但不把设置页标脏。
+
+### 文本属性与方向
+
+- 字重 100–900（默认 400）、斜体开关、字距 −0.05–0.3em（默认 0）、字号模式 px（10–32，默认 16）或 em 比例（0.9–1.2，默认 1）。
+- 文字方向 auto/ltr/rtl：auto 按目标语言判断 RTL（ar/he/fa/ur 等）；阅读器译文块写入 `dir` 属性，CSS 使用 `text-align: start`，切换设置后对已打开的阅读器同步更新 `dir`。
+- 目标语言专属默认字体栈（autoFontByLanguage，默认开）：CJK/阿拉伯/希伯来/泰文/天城文各给跨平台栈；用户显式选择的字体栈优先于语言默认栈。
+
+### 缓存键
+
+- 抽出 `src/translationCacheKey.ts`（无 import 纯函数），缓存键只含引擎标记、itemKey、源文本长度/哈希、目标语言；新增 Node 回归测试，断言外观字段从未进入缓存模块（源码扫描），并验证相同翻译输入键稳定、四类输入变化会改变键。
+- 因此改字体/颜色/字距/方向不会触发重新翻译，只重新应用 CSS。
+
+### 改动文件
+
+`src/fontCatalog.ts`（新）、`src/translationCacheKey.ts`（新）、`src/appearance.ts`、`src/settings.ts`、`src/bilingualReader.ts`、`src/translationCache.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/fontCatalog.node.test.mjs`（新）、`test/translationCacheKey.node.test.mjs`（新）、`test/startup.test.ts`、`package.json`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过（修掉两处 `no-control-regex`，等价改用 `\p{Cc}`，未放宽验证）。
+- `npm run test:unit`：149 pass / 0 fail（字体目录 13 项 + 缓存键 5 项为新增）。
+- `npm run test:review`（Zotero headless，独立 profile）：52 pass / 0 fail。新增用例覆盖：非法高级字体保存保留旧值并 warning、字体列表/搜索/收藏/字体栈、字体检测与缓存、显示全部时未检测字体标记。
+- 检测可靠性记录（Gecko 115 / Windows / headless Zotero）：232 个候选中测得 40 个，列表行数与缓存条目数完全一致；虚构字体 `__InterlinearNoSuchFont__` 未出现；常用 Arial/Georgia/Consolas/微软拼音字体族按预期被识别。若用户开启 `privacy.resistFingerprinting` 导致测量被抹平，界面会显示检测失败/空结果，但仍可通过“显示全部候选”手选。
+
+### 不确定项 / 未目视验证
+
+- 未在真实 Zotero 设置窗口中目视字体列表高度、滚动与 sticky 分组标题；headless 只断言 DOM 与状态。
+- `canvas.measureText` 在开启防指纹的 Gecko 中可能让所有字体宽度相同，检测会返回空；该场景只做了降级设计，未在开启 `privacy.resistFingerprinting=true` 的 Zotero 中实测。
+- 列表样张是否真的以对应字体渲染，取决于系统是否安装该字体；未安装时浏览器回退到 generic，属预期行为。
+- 字体栈最多 6 个回退是硬限制，超出时“加入回退”按钮无反馈（当前实现直接忽略），是否需要提示留待 Step 8 评估。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 打开设置→外观：字体列表应自动扫描并显示检测状态；等待结束后列表只显示已装字体，点击“显示全部候选”能看到未装字体且带 `?` 警告标记。
+2. 搜索 `Georgia`：列表过滤到对应行，行内样张用 Georgia 渲染；清空搜索恢复分组列表。
+3. 点击某字体的星标：该字体出现在“收藏”分组顶部；关闭再打开设置页后收藏仍在。
+4. 点击某字体行：主字体 chip 出现，高级输入同步为 CSS 栈；用 `+` 加两个回退，再用 ↑/↓/× 调整/删除，预览即时变化。
+5. 在高级输入里输入 `Arial; color: red`：出现行内错误；点保存后出现黄色警告、字体保留上一份有效值，输入框回填有效值。
+6. 字重选 700、勾选斜体、字距 0.1、字号模式 em 1.1：预览与已打开阅读器的译文块同步变化；改回默认后样式恢复。
+7. 目标语言切到阿拉伯语（或手动把方向设为 RTL）：译文块文字右对齐、标点位置正确；切回中文/英文恢复 LTR。
+8. 修改任意字体/颜色设置后，已翻译的文档不应重新请求翻译；观察网络面板或缓存命中状态确认。
+
+## Step 3：颜色系统重做（P1）
+
+### 做了什么
+- **数据模型**：`AppearanceSettings` 新增 `colors: Record<ColorRole, ThemeColor>`，`ColorRole` 覆盖 text/background/underline/ribbon/border/source/loading/error；每个角色有 `mode: theme | single | split` 与 `light/dark` 值。旧的 `color/background/underlineColor/ribbonColor` 字段保留并由 `normalizeAppearance` 从 `colors` 派生，旧偏好与旧缓存读取兼容。
+- **自实现取色器**（无新依赖）：SV 面板 + 色相条 + 透明度滑块 + HEX + R/G/B + H/S/L 数值输入；SV 面板支持方向键（Shift 加速），色相/透明度/数值输入均可键盘操作；同时保留原生 `input[type=color]` 作为“系统取色器”入口。当文档没有 `PointerEvent` 时（自定义面板不可用）自动降级为直接打开原生取色器。
+- **色板与复用**：`buildColorPalette()` 生成 5 行 × 8 列色板；最近使用最多 12 个、我的颜色最多 24 个，存 JSON 偏好（`appearance.recentColors` / `appearance.savedColors`），读取时严格校验为 hex、去重、限长；取色器提供复制/粘贴 HEX（Clipboard API 不可用时回退 `execCommand`）。
+- **浅深分别配色**：每个颜色卡片有“跟随主题 / 统一颜色 / 浅深分别设置”三态下拉；split 时显示深色行，浅色与深色各有独立 HEX/取色器；预览卡片增加“预览深色主题”开关，`buildTranslationCSS(..., { colorScheme })` 让预览在浅/深之间切换。阅读器里自动模式额外输出 `:root[data-color-scheme="dark"]` 覆盖块。
+- **适用颜色项**：译文文字、译文背景、下划线、左侧色带、译文边框、原文淡化色、加载中状态色、出错状态色；每张卡片都有“恢复默认”。原文淡化目前以颜色 + 透明度形式输出，后续 Step 4 会接入透明度范围。
+- **对比度**：新增 `parseColorToRgba`、`rgbaToHsl`、`hslToRgba`、`compositeRgba`、`contrastRatioOver`；文字色/背景色带 alpha 时先合成到当前主题底色，再计算 WCAG 对比度；浅色与深色各检查一次，低于 4.5:1 显示非阻塞警告并给出两个比值。
+- **存储**：旧值（3/6 位 hex、rgb()、命名色）读取兼容；新值带 alpha 时规范化为 8 位 HEX（`#RRGGBBAA`）；`appearance.v2` JSON 保存完整结构，旧逐字段偏好继续同步写入，便于回退与旧代码读取。验证只接受 `#RGB/#RRGGBB/#RRGGBBAA`、rgb()/hsl() 与字母命名色，拒绝分号、花括号、`url()`、`expression` 等注入。
+- **设置页结构**：删除 XHTML 中四段静态颜色控件，改为 `#interlinear-appearance-color-controls` 宿主，由 `COLOR_CONTROLS` 表动态构建 8 张卡片，避免颜色项与 HTML 双份维护。
+
+### 改动文件
+`src/appearance.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：162 pass / 0 fail（新增颜色解析、HSL/RGB 互转、alpha 合成、对比度、旧值兼容、恶意输入等用例）。
+- `npm run test:review`（Zotero headless，独立 profile）：53 pass / 0 fail。新增/更新用例覆盖：split 深浅色写入、深色预览、额外颜色角色（border/source/loading/error）存在、色板/最近使用/我的颜色、取色器打开与 HEX 同步、非法颜色拒绝、主题模式对比度警告。
+
+### 不确定项 / 未目视验证
+- 自定义取色器在真实 Zotero 设置窗口中的布局、滚动与触摸板拖动未目视；headless 只断言 DOM/状态与生成的 CSS。
+- Clipboard API 在 Zotero chrome 文档中的可用性未实测；复制/粘贴失败会显示状态文字并使用回退路径。
+- 8 位 HEX 在旧版阅读器/打印导出中的 alpha 表现取决于 Gecko；打印模式会改用 6 位/显式颜色，不会把深色主题带入纸张。
+- 颜色角色 `source` 目前输出为 `color`；是否会让 Zotero 原生高亮观感受影响未在真实 PDF 上验证，Step 4 会改为更保守的 opacity 方案并补回归。
+- 深色覆盖块依赖阅读器设置 `:root[data-color-scheme="dark"]`；未在所有 Zotero 主题上确认该属性是否会设置，代码同时输出显式 scheme 的 CSS 作为兜底。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置→外观→颜色：确认 8 张颜色卡片（文字/背景/下划线/色带/边框/原文/加载/错误）按统一布局显示，每张都有模式下拉、预览、取色器、HEX、恢复默认。
+2. 点“自定义…”打开取色器：拖动 SV 面板、色相条、透明度滑块，确认 HEX/RGB/HSL 同步、预览变化；用键盘方向键移动 SV 光标；按 Esc/关闭按钮退出。
+3. 在“我的颜色”保存一个颜色，关闭再打开设置页，确认仍在；复制 HEX 后粘贴到另一个颜色卡片。
+4. 把文字颜色设为 split，浅色 #333333、深色 #EEEEEE，勾选“预览深色主题”，确认预览变浅色字；切到阅读器深色主题，确认译文块使用深色值。
+5. 把文字色 #777777、背景 #FFFFFF：确认出现浅色/深色两个对比度比值的警告；改成 #000000 后警告消失；保存不被阻止。
+6. 输入非法值 `red; } body { display:none` 或 `url(evil)`：确认被拒绝、显示行内错误、不写入偏好，页面样式无异常。
+7. 修改颜色后保存，确认已打开的阅读器立即变化且没有重新发起翻译请求；关闭重开仍保持。
+8. 在浅色/深色 Zotero 主题下检查 8 张卡片的文字、边框、状态点对比度，并确认取色器面板不被裁切（滚动到视口内）。
+
+## Step 4：下划线、色带与译文块样式系统（P1）
+
+### 做了什么
+- **文字装饰**：`textDecoration` 支持 underline/overline/line-through 多选（旧 `underline` 布尔继续同步为是否包含 underline）；线型 solid/double/dotted/dashed/wavy；粗细 0=自动、0.5–8px；距文字 -1=自动、0–12px；skip-ink 自动/关闭；颜色复用 `colors.underline`（含浅深分别与透明度）。CSS 输出 `text-decoration`、`text-decoration-style`、`text-decoration-thickness`、`text-underline-offset`、`text-decoration-skip-ink`、`text-decoration-color`。
+- **段落分隔线**：`divider` 开关、线型、粗细 1–6px、与文字距离 0–2em、颜色角色 `divider`；输出 `border-bottom`，距离通过增加 `padding-bottom` 实现。**“随文字”长度未实现**：它需要把整段文本包进 inline 元素或使用 background-image 裁剪，会改变块布局/选择行为；当前只提供整行分隔线，已记入 BACKLOG。
+- **色带**：位置 left/right、宽度 1–12px、线型 solid/dashed/dotted/double、圆角 0–8px（物理左上/左下或右上/右下圆角）、与文字间距 0–2em（加到该侧内边距）；关闭时保留旧的 `border-left: none` 输出。
+- **译文块布局**：垂直/水平内边距 0–2em、圆角 0–16px、边框宽 0–4px + 线型 + `colors.border`、左缩进 0–4em（`margin-inline-start`）、首行缩进 0–4em、对齐 start/justify/center、最大宽度 0=不限 / 40–100ch、整体不透明度 40–100%、原文与译文间距 0–2em、显示译文时原文淡化 40–100%（`sourceDim`，输出独立 `.interlinear-source { opacity }` 规则）。
+- **默认输出冻结**：新增两个精确快照测试，固定默认 reader/print CSS 与改动前逐字节一致；所有新 CSS 声明只在非默认值时追加。默认色带仍是 `border-left: 4px solid #2f6fdf`，默认 padding/margin 保持不变。
+- **单测**：多装饰组合、divider/右色带/块布局输出、越界夹取、恶意/未知枚举回落、`maxWidthCh` 0/40–100、opacity/sourceDim 夹取；新增集成用例修改全部 Step 4 控件并断言 `getAppearance()`、旧偏好与已打开阅读器的 `<style>`。
+- **原生高亮回归**：`test/readingLayout.test.ts` 在真实 Zotero 阅读器 fixture 中，在译文块上追加 padding、四边 border、右色带、圆角、左缩进与首行缩进后，仍断言高亮对齐误差 <2px、存储 PDF 坐标不变。
+- **设置页**：外观页新增“文字装饰 / 段落分隔线 / 色带 / 译文块布局”四张卡片；分隔线与色带关闭时对应输入自动禁用；所有标签/帮助/枚举走 Fluent。
+
+### 改动文件
+`src/appearance.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`、`test/startup.test.ts`、`test/readingLayout.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：165 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：54 pass / 0 fail（新增 Step 4 控件保存用例；readingLayout 对齐回归用例已扩展）。
+
+### 不确定项 / 未目视验证
+- `text-decoration-thickness`、`text-underline-offset`、`text-decoration-skip-ink` 在 Zotero 10 的 Gecko 中按标准支持（Firefox 70+），但未在真实 PDF 上逐项截图。
+- 逻辑圆角（`border-top-*-radius`）与右色带组合在 RTL 文本下的视觉表现未目视；当前使用物理边，色带位置与书写方向无关。
+- “随文字”分隔线未实现，原因见上；已写入 `docs/dev/BACKLOG.md`。
+- `sourceDim` 用 `opacity` 淡化原文，可能同时淡化原文上的原生高亮覆盖层；集成测试只断言几何位置，未目视确认高亮颜色是否变淡。默认 100% 不生效，不影响现有用户。
+- 最大宽度以 `ch` 为单位，实际宽度取决于当前字体；窄屏下 `max-width` 可能小于可用宽度，属预期。
+- 分栏模式下新增的块 padding/border 是否让左右列换行未在真实 PDF 上验证；几何观察器会跟随高度变化。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→外观→文字装饰：同时勾选下划线/上划线/删除线，线型选波浪、粗细 2px、距离 4px、取消 skip-ink；保存后译文块应同时出现三种装饰，线型/粗细/偏移生效。
+2. 打开“段落分隔线”，选虚线、2px、距离 0.5em：译文块下方出现分隔线，文字与线之间多出 0.5em。
+3. 色带改为右侧、6px、点线、圆角 4px、与文字间距 0.5em：译文块右侧出现点线色带，右侧内边距增加，圆角只出现在右侧。
+4. 译文块布局：垂直 padding 0.6、水平 1.2、圆角 10、边框 2px 双线、左缩进 1em、首行缩进 0.5em、两端对齐、最大宽度 72ch、不透明度 80%：保存后逐项观察；窄屏下最大宽度不应导致横向滚动。
+5. 把“显示译文时淡化原文”设为 60%：译文显示时原文变淡；关闭对照后原文恢复；检查 Zotero 原生高亮是否仍可见、位置不偏移。
+6. 在左右双栏模式下重复第 1–4 步：确认两列仍并排、不换行、高亮矩形仍覆盖原文；滚动和缩放后位置不漂移。
+7. 点 🖨️ 导出：确认打印稿保留字重/斜体/字距/装饰/分隔线/色带，深色主题不会印成深色底。
+8. 切换浅/深主题：确认色带、分隔线、边框的默认颜色对比度可读；显式颜色在两种主题下都按设置输出。
+
+## Step 6：界面跟随与阅读器内体验（P2）
+
+### 做了什么
+- **划词弹窗 / 阅读助手跟随**：新增 `uiFollowAppearance`（默认开）。开启时，弹窗通过 `--interlinear-ui-font-family`、`--interlinear-ui-font-size` 使用与译文相同的字体/字号；阅读助手根节点在 `onRender` 时同步字体与字号。弹窗宽度新增 `popupMaxWidth`（280–720px，默认 380），`readerInteractions` 在打开时读取并用于定位与宽度；关闭跟随时回退 13px。
+- **导出外观**：新增 `exportMode`（默认 `reader` = 与阅读器一致；`print` = 打印专用浅底黑字）。`readerUI` 按该值选择 `buildTranslationCSS(..., "reader" | "print")`，reader 模式传入当前浅/深 scheme；导出的 JSON 外观方案不包含任何 Provider 配置或密钥。
+- **翻译范围**：新增 `scope.body/titles/captions/listItems/notes`（默认全开）。`collectParagraphs` 动态拼接选择器；全部关闭时返回空列表并沿用既有“未找到可翻译段落”错误。参考文献跳过逻辑不变。
+- **加载/错误状态**：保留 `colors.loading/error`；新增 `stateAnimation`（默认关，保持现状）与 `reduceMotion`。开启动画时注入 `interlinear-pulse`；无论开关如何，`@media (prefers-reduced-motion: reduce)` 都会关闭动画。
+- **译文块操作**：译文块显式 `user-select: text`；右键或双击译文块打开菜单：重新翻译此段 / 复制译文 / 复制原文。重新翻译走 `translateReaderParagraph(..., { force: true })`：跳过缓存命中、复用 `paragraphRequests` 去重，仍通过同一 Provider 与缓存写入；复制使用 Clipboard API，失败回退隐藏 textarea + `execCommand`，并显示 1.6 秒非阻塞提示。
+- **设置页**：外观页新增“界面与导出”卡片（跟随开关、弹窗宽度、导出模式、动画、减少动画）；显示页新增“翻译范围”卡片（正文/标题/图注/列表项/旁注）。全部文案走 Fluent。
+
+### 改动文件
+`src/appearance.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`src/bilingualReader.ts`、`src/readerInteractions.ts`、`src/readerUI.ts`、`src/chatPane.ts`、`addon/prefs.js`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：169 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：57 pass / 0 fail。新增用例：
+  - 翻译范围：仅正文开启时，p/h1/figcaption/li/aside 混合文档只产生 1 个请求与 1 个译文块。
+  - 译文块右键菜单：3 个动作、重新翻译带 `force=true`、双击再次打开。
+- 既有 provider/缓存/快捷键/悬停用例全部保持通过。
+
+### 不确定项 / 未目视验证
+- 划词弹窗跟随后在真实深色阅读器中的字体/宽度观感未目视；固定定位与滚动重定位行为沿用既有实现（滚动后弹窗不跟随）。
+- 阅读助手在 ItemPane 重新挂载时是否总是触发 `onRender` 未实测；若宿主复用 DOM 而不重新渲染，字体需重开侧栏后更新。
+- Clipboard API 在 Zotero reader iframe 中的可用性未实测；失败时回退路径会显示“复制失败”。
+- 导出“与阅读器一致”会把深色主题的译文块带到浅色导出页，这是有意行为；打印模式仍强制浅底黑字。
+- 动画默认关闭；开启后 `prefers-reduced-motion` 的媒体查询在 Zotero 10 中是否按系统设置生效未实测（标准 CSS 行为）。
+- 右键/双击菜单在真实 PDF 阅读器中的定位与遮挡未目视；`readerMenu` 已有外部点击/Esc/滚动关闭逻辑。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→外观→界面与导出：关闭“跟随译文字体和字号”后，划词弹窗与阅读助手回到 13px；重新开启并改字号/字体后，两者同步变化。
+2. 调整“划词弹窗最大宽度”到 280 与 720，选中一段文字：弹窗宽度随之变化，且不超出视口。
+3. 导出模式选“与阅读器一致”：在深色主题下导出，译文块保持深色；切到“打印专用”后重新导出，译文块为浅底黑字。
+4. 显示页→翻译范围：只保留正文，刷新一篇含标题/图注/列表/旁注的论文；确认只翻译正文，参考文献仍跳过。
+5. 打开“加载动画”：刷新时“正在翻译…”有脉冲动画；系统开启“减少动态效果”后动画停止；关闭开关后无动画。
+6. 右键译文块：菜单含重新翻译/复制译文/复制原文；点重新翻译会重新请求该段（其他段不重复请求）；复制成功出现“已复制”提示。
+7. 双击译文块同样打开菜单；拖动选择译文文字可正常复制；错误/暂停块点击重试仍可用。
+8. 浅/深主题下检查菜单、提示、弹窗与阅读助手的对比度。
+
+## Step 5：外观方案（P2）
+
+> 说明：Step 5 的代码与 Step 6 在同一个提交（`cbde85d`）中落地。会话中断导致两步未分开提交；功能与测试记录按 Step 分开写在本文档中。
+
+### 做了什么
+- **内置方案 6 套**：默认、护眼纸张、学术衬线、高对比、暗色优化、极简。每套是 `DEFAULT_APPEARANCE` 上的完整覆盖，应用时先保存当前外观为撤销快照，再写入偏好并同步整张表单（字体栈/字重/颜色/装饰/块布局/预览）。顶部状态显示“已应用 X”，可点“撤销上次应用”恢复。
+- **我的方案**：名称输入 + 保存当前 / 应用 / 重命名 / 删除；存 `appearance.presets` JSON，最多 20 个，名称 60 字符、控制字符剔除、大小写不敏感去重；同名保存视为覆盖。
+- **导入/导出**：`src/appearanceFiles.ts` 复用 ztoolkit.FilePicker + Zotero.File；JSON 格式 `{format:"interlinear-appearance", version:2, appearance, presets}`，导出只含外观与我的方案，不含任何 Provider/API Key。导入限制 256KB，校验 format/version，未知键忽略并在状态行报告数量，所有值经 `normalizeAppearance` 夹取/拒绝；不执行任何内容。
+- **重置全部外观**：带 `confirm` 确认，应用默认方案；可撤销。
+- **schema 版本**：`appearance.schema` 当前为 3（颜色角色/字体/装饰字段增加时递增）；`appearance.v2` 保存完整结构，旧逐字段偏好继续同步写入。导入接受 version 1–2（1 视为旧结构，经 normalize 迁移）。
+- **单测**：`normalizeAppearancePresets` 去重/截断/拒绝非法项；导入拒绝超大/坏 JSON/错误 format/未来版本；未知键报告；恶意字体/颜色不进入结果；导出往返且不含 provider 字段。
+- **集成测试**：应用“学术衬线”后 `getAppearance().textAlign === "justify"`、字体主项为 Georgia，表单下拉同步；撤销恢复；保存/应用/删除“我的方案”。
+
+### 改动文件
+`src/appearance.ts`、`src/settings.ts`、`src/appearancePresets.ts`（新）、`src/appearanceFiles.ts`（新）、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：169 pass / 0 fail（Step 5 时点）。
+- `npm run test:review`：55 pass / 0 fail（Step 5 时点；含预设应用/撤销/我的方案用例）。
+
+### 不确定项
+- 文件选择器与真实文件读写未在设置窗口中手工点击验证；集成测试只覆盖纯函数与表单。
+- 应用方案会立即写入偏好并刷新阅读器；如果用户在其它标签还有未保存设置，全局“未保存”状态仍保留，这是有意的（不能替用户丢掉别的改动）。
+- “撤销上次应用”只在当前设置窗口生命周期内有效，关闭窗口后丢失。
+- 内置方案是固定数据；以后改默认值需要同步更新方案，未做版本迁移。
+- 导入时同名“我的方案”会被导入文件覆盖；没有逐项确认。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 外观页顶部六个方案按钮：逐个点击，确认预览与已打开阅读器立即变化；点“撤销上次应用”恢复点击前的外观。
+2. 输入名称保存当前为“我的方案”，关闭再打开设置页确认仍在；应用/重命名/删除各一次。
+3. 导出一个 JSON，检查不含 apiKey/endpoint/prompt；改几项外观后导入，确认值恢复且状态行报告未知键数量。
+4. 导入一个 300KB 文件或损坏 JSON：确认状态行显示错误且外观不被改写。
+5. 点“重置全部外观”：确认弹窗出现；确认后恢复默认，取消则不变；随后可撤销。
+6. 在浅/深主题下检查方案按钮、状态行与撤销按钮的可读性。
+
+## Step 7：快捷键与触发（P2）
+
+### 做了什么
+- **新增两个可配置快捷键**：显示/隐藏译文（默认 `Alt+Shift+T`，默认关闭）、循环切换排版（默认 `Alt+Shift+D`，默认关闭）。复用现有录制控件：点击输入框按键录制，Backspace/Delete 恢复默认；`readerInteractions` 在 `keydown` 中先于单段翻译快捷键匹配。
+- **冲突检测**：`shortcutsEqual` 精确比较修饰键与按键；`isReservedShortcut` 保守列出 Ctrl/Cmd + A/C/F/L/N/O/P/Q/R/S/T/V/W/X/Y/Z 等 Zotero/浏览器常见快捷键。三者任意重复或命中保留组合时，设置页显示非阻塞黄色警告；保存时把该警告并入 warning 状态，但不阻止保存。
+- **悬停修饰键**：`hoverModifier` 可选 none/alt/ctrl（默认 none，保持现状）。Alt 模式下按住 Alt 悬停仍显示虚线高亮，同时按停留时间触发自动翻译；Ctrl 模式下未按 Ctrl 不启动计时。同段移动 >6px 才重新计时，滚动/移出/按下鼠标/选区/弹窗仍会取消。
+- **打开论文时自动翻译**：`autoTranslateOnOpen` 可选 off（默认）/ cached / always。
+  - cached：`showCachedTranslations` 只收集已有缓存的段落，插入译文块并直接置 done，不发任何请求；若没有缓存段落则不做任何事。
+  - always：等同自动点一次工具栏开关，启动全文翻译；设置页在选择 always 时显示“可能产生 API 费用”的警告。
+  - 每个 reader 只尝试一次（WeakSet），已有非 empty 开关状态时跳过。
+- **测试**：快捷键纯函数单测（精确比较、保留组合）；集成用例保存三项新设置、断言偏好与冲突提示；既有 57 个集成用例保持通过。
+
+### 改动文件
+`src/shortcut.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`src/readerInteractions.ts`、`src/bilingualReader.ts`、`addon/prefs.js`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/shortcut.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`（生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：171 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：58 pass / 0 fail。
+
+### 不确定项
+- `isReservedShortcut` 的保留键列表是保守启发式，不代表 Zotero 全部快捷键；只警告不阻止。
+- 新快捷键默认关闭，避免与用户现有 Zotero 快捷键冲突；需要用户主动开启。
+- Alt 悬停修饰键与原有“Alt 悬停高亮”共用 Alt；同时按住 Alt 时两者都会表现，已在代码中复用同一计时器，但真实鼠标路径未目视。
+- `always` 自动翻译在真实 PDF 打开时是否早于阅读模式就绪、是否会与服务商限流冲突未实测；`prepareAndRun` 会等待阅读模式，失败会走非阻塞错误提示。
+- cached 模式只显示缓存段落，不会翻译未缓存段落；用户看到的是混合状态（部分段落有译文），这是“仅此前翻译过的论文”的预期。
+- 新快捷键只在交互控制器附加后生效；未开启过对照的阅读器仍需先触发一次工具栏/悬停/快捷键以附加控制器（既有行为）。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→显示与交互：开启“显示/隐藏快捷键”，录制 `Ctrl+Alt+T`；在阅读器按该组合键，译文显示/隐藏切换；再按一次恢复。
+2. 开启“排版循环快捷键”，录制 `Ctrl+Alt+D`；连按四次，四种布局依次切换，工具栏 `◫` 标题同步。
+3. 把显示/隐藏快捷键改成与单段翻译相同的 `Alt+Enter`：设置页出现冲突警告；保存后仍可保存但状态为 warning。
+4. 悬停修饰键选“按住 Ctrl”：不按 Ctrl 悬停不翻译；按住 Ctrl 停留到时间后翻译；Alt 悬停高亮仍正常。
+5. 选“按住 Alt”：按住 Alt 悬停出现虚线高亮并自动翻译；松开 Alt 移动不触发。
+6. 自动翻译选“仅缓存”：打开一篇之前翻译过的论文，译文块直接出现且不发请求；打开没翻译过的论文不出现译文。
+7. 自动翻译选“总是”：打开新论文自动开始全文翻译；设置页能看到费用警告；再次打开同一阅读器不重复启动。
+8. 关闭自动翻译，确认打开论文不再自动显示/翻译；切换浅/深主题检查新增下拉与警告的可读性。
+
+## Step 8：设置页整体检查与自查修复
+
+### 做了什么
+- **默认值/范围/保存/读取路径核对**：外观新增字段全部进入 `AppearanceSettings`、`normalizeAppearance`、`appearance.v2`、`readAppearanceForm`、`hydrateStyleControls`/`hydrateFontControls`、`applyAppearanceToForm`；翻译范围与 Step 7 设置进入 `settings.ts`、`addon/prefs.js`、设置页保存/加载。数值范围在读取与写入两侧夹取，枚举走白名单。
+- **“保存后立即应用”核实**：外观保存调用 `refreshTranslationStyles()` + `refreshDisplayModes()`，已打开阅读器即时更新；显示模式/悬停/快捷键在下次交互读取；翻译范围与 skipLastPages 需要下次全量翻译才生效，设置页帮助文案已说明。
+- **信息架构/折叠**：外观页的“文字装饰 / 段落分隔线 / 色带 / 译文块布局 / 界面与导出”收进原生 `<details>`，默认折叠；保留方案、预览、排版、颜色在首屏。600px 下字段单列、标签不换行、标签栏横向滚动；宽屏最大宽度 880px。
+- **一致性**：颜色/字体/装饰/块布局控件统一“标签 + 控件 + 帮助文字”网格；数值输入统一宽度、单位后缀；所有新增文案 en/zh 同步（511 ↔ 511 键）。
+- **文档**：新增 `docs/dev/SETTINGS.md`（全部偏好键/类型/范围/默认/作用/缓存影响）；新增 `docs/dev/BACKLOG.md`（P3 与暂不可行项）；README 中英文与 CHANGELOG 更新到当前实现。
+- **自查发现的问题**：
+  - 直接 `readNumberInput` 空输入会被 `Number("") === 0` 解析为 0，因此新控件必须在 `hydrateStyleControls` 中回填；已实现并有集成用例覆盖。
+  - 预设应用后表单需要整体回填，否则预览与阅读器已变但控件仍旧；已实现 `applyAppearanceToForm`。
+  - 动态颜色卡片与旧静态卡片的重复 ID：已删除旧静态 DOM，改为宿主 + 表驱动渲染。
+  - 显示模式快捷键/按钮共用 `cycleDisplayMode`；修复传 `toolbarDoc` 以保证测试/即时按钮状态。
+  - Step 5 与 Step 6 因会话中断落在同一提交（`cbde85d`），已在 PROGRESS 标注，不再拆分历史。
+  - 字体检测列表把“已检测到”的字体也标成 `?`：`state.detected` 保留原大小写，而 `filterFontCandidates` 内部转小写，导致 `undetected` 判断大小写不匹配；已在渲染前构造小写集合，并补集成断言。
+  - 自动翻译“总是”的警告在切回非 always 后不消失：警告同步函数只在初始化时调用；改为切换回显示页时也同步。
+  - “翻译范围”在显示页与高级页重名：显示页改为“内容范围”，高级页改为“页面范围”。
+  - 聊天上下文不读取翻译范围：`collectChatContext` 增加 `paragraphSelector` 选项，`chatPane` 按 `scope.*` 构造选择器。
+  - 版本号提升到 **0.6.0**（外观 v2、字体/颜色/装饰/方案/触发方式均为新功能）。
+
+### 截图自检
+- `canvas.drawWindow` 直截 Zotero 窗口在 headless 下失败（scaffold 只报 `undefined`），临时截图测试已删除。
+- 改用更可靠的近似方案：临时集成测试打开真实偏好页、切到每个标签，等待字体检测完成，把 `#interlinear-settings-root` 的**初始化后真实 DOM**（含动态颜色卡片、字体列表、表单值、展开的 preview shadow 内容）序列化到 `.scaffold/preview-{tab}.html`，再用 Playwright/Chromium 加载同一份 `preferences.css` 截图。为了全页截图，临时把 sticky 改为 static、把 `file://` 图标换成本地相对路径；这些只是截图预览处理，不进入产品代码。
+- 产物：`docs/dev/screenshots/service.png`、`display.png`、`appearance.png`、`appearance-dark.png`、`service-dark.png`、`glossary.png`、`advanced.png`。已据此检查顶部工具栏、标签、方案区、字体列表、颜色卡、折叠组与深浅主题；并修复了下述问题。
+- **限制**：这不是真实 Zotero GUI 截图，XUL/平台主题的原生差异、真实滚动容器与字体光栅化未覆盖；真实 GUI 仍建议人工过一遍。
+
+### 测试结果（最终）
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：171 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：58 pass / 0 fail。
+- `npm test`：未运行（本机无 `.env`；`test:review` 是独立 profile 的安全等价入口）。
+
+### 仍待决定 / 未完成
+1. **真实 Zotero GUI 目视验证**：只完成了“真实 DOM + 同一 CSS”的 Chromium 近似截图；真实 Zotero 窗口仍建议人工过一遍。
+2. **导出流程阻塞式 alert/confirm**：未改，见 BACKLOG。
+3. **阅读器工具栏右键菜单历史问题**：未在用户机器复测；侧边栏面板仍兜底。
+4. **P3 全部项**：见 `docs/dev/BACKLOG.md`，未实现。
+5. **Step 5/6 同提交**：历史已形成，按“不改写历史”约束保留。
+
+### 我需要手动在 Zotero 里验证的清单（最终）
+1. 打开设置→五个标签：顶部工具栏、保存状态四态、标签切换保留滚动/表单值；600px 与宽屏都不溢出。
+2. 外观页：内置方案应用/撤销、我的方案保存/应用/重命名/删除、JSON 导入导出/重置；高级组默认折叠且展开后布局正常。
+3. 字体：检测状态、搜索/分组/收藏、字体栈增删排序、高级 CSS 非法值警告。
+4. 颜色：自实现取色器、HEX/RGB/HSL/透明度、浅深分别配色、最近/我的颜色、对比度警告。
+5. 装饰/分隔线/色带/块布局：逐项修改并观察阅读器与导出；左右分栏下高亮不偏移。
+6. 显示与交互：悬停修饰键（none/Alt/Ctrl）、单段/显示隐藏/排版循环快捷键、冲突提示、自动翻译（关/仅缓存/总是）。
+7. 导出/划词弹窗/阅读助手：导出模式、弹窗宽度、界面跟随、深浅主题对比度。
+8. 译文块右键/双击：重新翻译、复制译文/原文；错误块点击重试；缓存/请求不重复。

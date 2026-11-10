@@ -153,3 +153,51 @@ export function matchesShortcut(
   if (!!event.metaKey !== spec.meta) return false;
   return normalizeEventKey(event.key) === spec.key;
 }
+
+/** Exact modifier+key equality for two configured shortcuts. */
+export function shortcutsEqual(
+  first: string,
+  second: string,
+): boolean {
+  const a = parseShortcut(first);
+  const b = parseShortcut(second);
+  if (!a || !b) return false;
+  return (
+    a.ctrl === b.ctrl &&
+    a.alt === b.alt &&
+    a.shift === b.shift &&
+    a.meta === b.meta &&
+    a.key === b.key
+  );
+}
+
+const RESERVED_PRIMARY_KEYS = new Set([
+  "A",
+  "C",
+  "F",
+  "L",
+  "N",
+  "O",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "V",
+  "W",
+  "X",
+  "Y",
+  "Z",
+]);
+
+/**
+ * Conservative check for shortcuts commonly owned by Zotero or the browser.
+ * It only warns; the recorder still accepts the combination so a user can
+ * override a platform convention deliberately.
+ */
+export function isReservedShortcut(value: string): boolean {
+  const spec = parseShortcut(value);
+  if (!spec) return false;
+  if (!(spec.ctrl || spec.meta)) return false;
+  return RESERVED_PRIMARY_KEYS.has(spec.key);
+}

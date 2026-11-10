@@ -17,76 +17,81 @@
     ></html:p>
 
     <html:div class="interlinear-sticky">
-      <html:div id="interlinear-settings-actionbar" class="interlinear-actionbar">
-        <html:button
-          id="interlinear-save"
-          type="button"
-          class="interlinear-button interlinear-button-primary interlinear-save-button"
-        ></html:button>
-        <html:span
-          id="interlinear-settings-status"
-          class="interlinear-settings-status"
-          role="status"
-          aria-live="polite"
-        ></html:span>
-        <html:span
-          id="interlinear-save-hint"
-          class="interlinear-save-hint"
-          aria-live="polite"
-        ></html:span>
-      </html:div>
+      <html:div class="interlinear-toolbar">
+        <html:div
+          id="interlinear-settings-tabs"
+          class="interlinear-tabs"
+          role="tablist"
+          aria-label="Settings sections"
+        >
+          <html:button
+            id="interlinear-tab-service"
+            type="button"
+            class="interlinear-tab"
+            role="tab"
+            data-tab="service"
+            aria-selected="true"
+            aria-controls="interlinear-service-section interlinear-google-section interlinear-openai-section interlinear-claude-section interlinear-gemini-section interlinear-ollama-section"
+          ></html:button>
+          <html:button
+            id="interlinear-tab-display"
+            type="button"
+            class="interlinear-tab"
+            role="tab"
+            data-tab="display"
+            aria-selected="false"
+            aria-controls="interlinear-display-mode-section interlinear-interaction-section"
+          ></html:button>
+          <html:button
+            id="interlinear-tab-appearance"
+            type="button"
+            class="interlinear-tab"
+            role="tab"
+            data-tab="appearance"
+            aria-selected="false"
+            aria-controls="interlinear-appearance-section"
+          ></html:button>
+          <html:button
+            id="interlinear-tab-glossary"
+            type="button"
+            class="interlinear-tab"
+            role="tab"
+            data-tab="glossary"
+            aria-selected="false"
+            aria-controls="interlinear-glossary-section"
+          ></html:button>
+          <html:button
+            id="interlinear-tab-advanced"
+            type="button"
+            class="interlinear-tab"
+            role="tab"
+            data-tab="advanced"
+            aria-selected="false"
+            aria-controls="interlinear-page-section interlinear-speed-section interlinear-cache-section interlinear-about-section"
+          ></html:button>
+        </html:div>
 
-      <html:div
-        id="interlinear-settings-tabs"
-        class="interlinear-tabs"
-        role="tablist"
-        aria-label="Settings sections"
-      >
-        <html:button
-          id="interlinear-tab-service"
-          type="button"
-          class="interlinear-tab"
-          role="tab"
-          data-tab="service"
-          aria-selected="true"
-          aria-controls="interlinear-service-section interlinear-google-section interlinear-openai-section interlinear-claude-section interlinear-gemini-section interlinear-ollama-section"
-        ></html:button>
-        <html:button
-          id="interlinear-tab-display"
-          type="button"
-          class="interlinear-tab"
-          role="tab"
-          data-tab="display"
-          aria-selected="false"
-          aria-controls="interlinear-display-mode-section interlinear-interaction-section"
-        ></html:button>
-        <html:button
-          id="interlinear-tab-appearance"
-          type="button"
-          class="interlinear-tab"
-          role="tab"
-          data-tab="appearance"
-          aria-selected="false"
-          aria-controls="interlinear-appearance-section"
-        ></html:button>
-        <html:button
-          id="interlinear-tab-glossary"
-          type="button"
-          class="interlinear-tab"
-          role="tab"
-          data-tab="glossary"
-          aria-selected="false"
-          aria-controls="interlinear-glossary-section"
-        ></html:button>
-        <html:button
-          id="interlinear-tab-advanced"
-          type="button"
-          class="interlinear-tab"
-          role="tab"
-          data-tab="advanced"
-          aria-selected="false"
-          aria-controls="interlinear-page-section interlinear-speed-section interlinear-cache-section interlinear-about-section"
-        ></html:button>
+        <html:div
+          id="interlinear-settings-actionbar"
+          class="interlinear-toolbar-actions"
+        >
+          <html:span
+            id="interlinear-settings-status"
+            class="interlinear-settings-status"
+            role="status"
+            aria-live="polite"
+          ></html:span>
+          <html:span
+            id="interlinear-save-hint"
+            class="interlinear-save-hint"
+            aria-live="polite"
+          ></html:span>
+          <html:button
+            id="interlinear-save"
+            type="button"
+            class="interlinear-button interlinear-button-primary interlinear-save-button"
+          ></html:button>
+        </html:div>
       </html:div>
     </html:div>
 
@@ -689,6 +694,20 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-hover-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-hover-modifier-label"
+              for="interlinear-hover-modifier"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-hover-modifier" class="interlinear-select">
+                <html:option id="interlinear-hover-modifier-none" value="none"></html:option>
+                <html:option id="interlinear-hover-modifier-alt" value="alt"></html:option>
+                <html:option id="interlinear-hover-modifier-ctrl" value="ctrl"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
 
           <html:div class="interlinear-divider"></html:div>
 
@@ -720,7 +739,144 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-shortcut-help" class="interlinear-help"></html:p>
+          <html:p id="interlinear-shortcut-conflict" class="interlinear-warning"></html:p>
+
+          <html:div class="interlinear-divider"></html:div>
+          <html:h4 id="interlinear-extra-shortcuts-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-toggle-shortcut-enabled"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-toggle-shortcut-enabled-label"
+              for="interlinear-toggle-shortcut-enabled"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-toggle-shortcut-label"
+              for="interlinear-toggle-shortcut"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-toggle-shortcut"
+                type="text"
+                class="interlinear-input interlinear-input-shortcut"
+              />
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-display-shortcut-enabled"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-display-shortcut-enabled-label"
+              for="interlinear-display-shortcut-enabled"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-display-shortcut-label"
+              for="interlinear-display-shortcut"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-display-shortcut"
+                type="text"
+                class="interlinear-input interlinear-input-shortcut"
+              />
+            </html:div>
+          </html:div>
+
+          <html:div class="interlinear-divider"></html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-auto-translate-label"
+              for="interlinear-auto-translate"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-auto-translate" class="interlinear-select">
+                <html:option id="interlinear-auto-translate-off" value="off"></html:option>
+                <html:option id="interlinear-auto-translate-cached" value="cached"></html:option>
+                <html:option id="interlinear-auto-translate-always" value="always"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-auto-translate-warning" class="interlinear-warning"></html:p>
           <html:p id="interlinear-interaction-help" class="interlinear-note"></html:p>
+        </html:div>
+      </html:div>
+
+      <html:div
+        id="interlinear-scope-section"
+        class="interlinear-section"
+        data-tab="display"
+        hidden="true"
+        role="region"
+        aria-labelledby="interlinear-scope-title"
+      >
+        <html:div class="interlinear-section-head">
+          <html:h3 id="interlinear-scope-title"></html:h3>
+        </html:div>
+        <html:div class="interlinear-card">
+          <html:div class="interlinear-check-row">
+            <html:input id="interlinear-scope-body" type="checkbox" class="interlinear-checkbox" />
+            <html:label
+              id="interlinear-scope-body-label"
+              for="interlinear-scope-body"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input id="interlinear-scope-titles" type="checkbox" class="interlinear-checkbox" />
+            <html:label
+              id="interlinear-scope-titles-label"
+              for="interlinear-scope-titles"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-scope-captions"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-scope-captions-label"
+              for="interlinear-scope-captions"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-scope-list-items"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-scope-list-items-label"
+              for="interlinear-scope-list-items"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input id="interlinear-scope-notes" type="checkbox" class="interlinear-checkbox" />
+            <html:label
+              id="interlinear-scope-notes-label"
+              for="interlinear-scope-notes"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:p id="interlinear-scope-help" class="interlinear-help"></html:p>
         </html:div>
       </html:div>
 
@@ -737,6 +893,89 @@
           <html:h3 id="interlinear-appearance-title"></html:h3>
         </html:div>
 
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-appearance-presets-title" class="interlinear-subtitle"></html:h4>
+          <html:div
+            id="interlinear-appearance-builtin-presets"
+            class="interlinear-actions interlinear-preset-chips"
+          ></html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-appearance-my-presets-label"
+              for="interlinear-appearance-my-presets"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select
+                id="interlinear-appearance-my-presets"
+                class="interlinear-select"
+              ></html:select>
+              <html:button
+                id="interlinear-appearance-apply-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+              <html:button
+                id="interlinear-appearance-delete-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-appearance-preset-name-label"
+              for="interlinear-appearance-preset-name"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-appearance-preset-name"
+                type="text"
+                class="interlinear-input"
+              />
+              <html:button
+                id="interlinear-appearance-save-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+              <html:button
+                id="interlinear-appearance-rename-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-actions">
+            <html:button
+              id="interlinear-appearance-import"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:button
+              id="interlinear-appearance-export"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:button
+              id="interlinear-appearance-undo"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:button
+              id="interlinear-appearance-reset"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:span
+              id="interlinear-appearance-preset-status"
+              class="interlinear-inline-status"
+              role="status"
+              aria-live="polite"
+            ></html:span>
+          </html:div>
+        </html:div>
+
         <html:div class="interlinear-preview">
           <html:div class="interlinear-preview-head">
             <html:span
@@ -747,6 +986,17 @@
               id="interlinear-appearance-preview-help"
               class="interlinear-preview-help"
             ></html:span>
+            <html:label class="interlinear-check-row interlinear-check-inline">
+              <html:input
+                id="interlinear-appearance-preview-scheme"
+                type="checkbox"
+                class="interlinear-checkbox"
+              />
+              <html:span
+                id="interlinear-appearance-preview-scheme-label"
+                class="interlinear-check-label"
+              ></html:span>
+            </html:label>
           </html:div>
           <html:div
             id="interlinear-appearance-preview"
@@ -783,43 +1033,199 @@
           </html:div>
           <html:div class="interlinear-field">
             <html:label
-              id="interlinear-appearance-font-family-label"
-              for="interlinear-appearance-font-select"
+              id="interlinear-font-size-mode-label"
+              for="interlinear-font-size-mode"
               class="interlinear-field-label"
             ></html:label>
             <html:div class="interlinear-field-control">
-              <html:select
-                id="interlinear-appearance-font-select"
-                class="interlinear-select"
-              ></html:select>
+              <html:select id="interlinear-font-size-mode" class="interlinear-select">
+                <html:option id="interlinear-font-size-mode-px" value="px"></html:option>
+                <html:option id="interlinear-font-size-mode-em" value="em"></html:option>
+              </html:select>
+              <html:label
+                id="interlinear-font-size-em-label"
+                for="interlinear-font-size-em"
+                class="interlinear-sr-only"
+              ></html:label>
+              <html:input
+                id="interlinear-font-size-em"
+                type="number"
+                min="0.9"
+                max="1.2"
+                step="0.01"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span id="interlinear-font-size-em-unit" class="interlinear-unit"></html:span>
+            </html:div>
+            <html:p id="interlinear-font-size-mode-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field interlinear-field-stacked">
+            <html:label
+              id="interlinear-appearance-font-family-label"
+              for="interlinear-font-search"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-font-toolbar">
+              <html:input
+                id="interlinear-font-search"
+                type="search"
+                class="interlinear-input"
+              />
+              <html:label class="interlinear-check-row interlinear-check-inline">
+                <html:input
+                  id="interlinear-font-show-all"
+                  type="checkbox"
+                  class="interlinear-checkbox"
+                />
+                <html:span
+                  id="interlinear-font-show-all-label"
+                  class="interlinear-check-label"
+                ></html:span>
+              </html:label>
+            </html:div>
+            <html:div class="interlinear-font-detection-row">
+              <html:span
+                id="interlinear-font-detection-status"
+                class="interlinear-inline-status"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+              <html:button
+                id="interlinear-font-rescan"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+            </html:div>
+            <html:div
+              id="interlinear-font-list"
+              class="interlinear-font-list"
+              role="listbox"
+              aria-labelledby="interlinear-appearance-font-family-label"
+            ></html:div>
+            <html:p
+              id="interlinear-appearance-font-family-help"
+              class="interlinear-help"
+            ></html:p>
+          </html:div>
+          <html:div class="interlinear-field interlinear-field-stacked">
+            <html:label
+              id="interlinear-font-stack-label"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div id="interlinear-font-stack" class="interlinear-font-stack"></html:div>
+            <html:div class="interlinear-font-generic-row">
+              <html:label
+                id="interlinear-font-generic-label"
+                for="interlinear-font-generic"
+                class="interlinear-field-label"
+              ></html:label>
+              <html:select id="interlinear-font-generic" class="interlinear-select">
+                <html:option id="interlinear-font-generic-none" value=""></html:option>
+                <html:option id="interlinear-font-generic-sans" value="sans-serif"></html:option>
+                <html:option id="interlinear-font-generic-serif" value="serif"></html:option>
+                <html:option id="interlinear-font-generic-mono" value="monospace"></html:option>
+              </html:select>
             </html:div>
           </html:div>
-          <html:div
-            id="interlinear-appearance-font-custom-row"
-            class="interlinear-field"
-            hidden="true"
-          >
+          <html:div class="interlinear-field interlinear-field-stacked">
             <html:label
-              id="interlinear-appearance-font-custom-label"
+              id="interlinear-font-advanced-label"
               for="interlinear-appearance-font-family"
               class="interlinear-field-label"
             ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-appearance-font-family"
-                type="text"
-                class="interlinear-input"
-              />
-            </html:div>
+            <html:input
+              id="interlinear-appearance-font-family"
+              type="text"
+              class="interlinear-input"
+            />
             <html:span
               id="interlinear-appearance-font-family-error"
               class="interlinear-inline-error"
             ></html:span>
+            <html:p id="interlinear-font-advanced-help" class="interlinear-help"></html:p>
           </html:div>
-          <html:p
-            id="interlinear-appearance-font-family-help"
-            class="interlinear-help"
-          ></html:p>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-font-auto-language"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-font-auto-language-label"
+              for="interlinear-font-auto-language"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:p id="interlinear-font-auto-language-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-font-weight-label"
+              for="interlinear-font-weight"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-font-weight" class="interlinear-select">
+                <html:option id="interlinear-font-weight-100" value="100"></html:option>
+                <html:option id="interlinear-font-weight-200" value="200"></html:option>
+                <html:option id="interlinear-font-weight-300" value="300"></html:option>
+                <html:option id="interlinear-font-weight-400" value="400"></html:option>
+                <html:option id="interlinear-font-weight-500" value="500"></html:option>
+                <html:option id="interlinear-font-weight-600" value="600"></html:option>
+                <html:option id="interlinear-font-weight-700" value="700"></html:option>
+                <html:option id="interlinear-font-weight-800" value="800"></html:option>
+                <html:option id="interlinear-font-weight-900" value="900"></html:option>
+              </html:select>
+              <html:label class="interlinear-check-row interlinear-check-inline">
+                <html:input
+                  id="interlinear-font-italic"
+                  type="checkbox"
+                  class="interlinear-checkbox"
+                />
+                <html:span
+                  id="interlinear-font-italic-label"
+                  class="interlinear-check-label"
+                ></html:span>
+              </html:label>
+            </html:div>
+            <html:p id="interlinear-font-weight-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-letter-spacing-label"
+              for="interlinear-letter-spacing"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-letter-spacing"
+                type="number"
+                min="-0.05"
+                max="0.3"
+                step="0.01"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span
+                id="interlinear-letter-spacing-unit"
+                class="interlinear-unit"
+              ></html:span>
+            </html:div>
+            <html:p id="interlinear-letter-spacing-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-text-direction-label"
+              for="interlinear-text-direction"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-text-direction" class="interlinear-select">
+                <html:option id="interlinear-text-direction-auto" value="auto"></html:option>
+                <html:option id="interlinear-text-direction-ltr" value="ltr"></html:option>
+                <html:option id="interlinear-text-direction-rtl" value="rtl"></html:option>
+              </html:select>
+            </html:div>
+            <html:p id="interlinear-text-direction-help" class="interlinear-help"></html:p>
+          </html:div>
           <html:div class="interlinear-field">
             <html:label
               id="interlinear-appearance-line-height-label"
@@ -892,137 +1298,42 @@
           </html:div>
         </html:div>
 
-        <html:div class="interlinear-card">
-          <html:h4
+        <html:details class="interlinear-details">
+          <html:summary
             id="interlinear-appearance-colors-title"
-            class="interlinear-subtitle"
-          ></html:h4>
+            class="interlinear-details-summary"
+          ></html:summary>
+          <html:div class="interlinear-details-body">
+        <html:div class="interlinear-card">
+
+          
+
+          
 
           <html:div
-            id="interlinear-appearance-color-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-color-label"
-                for="interlinear-appearance-color"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-color-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-color"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-color-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-color-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
-            </html:div>
-            <html:div class="interlinear-color-inherit-row">
-              <html:input
-                id="interlinear-appearance-color-inherit"
-                type="checkbox"
-                class="interlinear-checkbox"
-              />
-              <html:label
-                id="interlinear-appearance-color-inherit-label"
-                for="interlinear-appearance-color-inherit"
-                class="interlinear-check-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-color-inherit-help"
-                class="interlinear-inherit-help"
-              ></html:span>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-color-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-color-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-color-help"
-              class="interlinear-help"
-            ></html:p>
-          </html:div>
-
-          <html:div
-            id="interlinear-appearance-background-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-background-label"
-                for="interlinear-appearance-background"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-background-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-background"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-background-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-background-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
-            </html:div>
-            <html:div class="interlinear-color-inherit-row">
-              <html:input
-                id="interlinear-appearance-background-inherit"
-                type="checkbox"
-                class="interlinear-checkbox"
-              />
-              <html:label
-                id="interlinear-appearance-background-inherit-label"
-                for="interlinear-appearance-background-inherit"
-                class="interlinear-check-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-background-inherit-help"
-                class="interlinear-inherit-help"
-              ></html:span>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-background-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-background-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-background-help"
-              class="interlinear-help"
-            ></html:p>
-          </html:div>
+            id="interlinear-appearance-color-controls"
+            class="interlinear-color-controls"
+          ></html:div>
 
           <html:p
             id="interlinear-appearance-contrast-warning"
             class="interlinear-warning"
           ></html:p>
+        </html:div>
+          </html:div>
+        </html:details>
 
+        <html:details class="interlinear-details interlinear-advanced">
+          <html:summary
+            id="interlinear-appearance-advanced-summary"
+            class="interlinear-details-summary"
+          ></html:summary>
+          <html:div class="interlinear-details-body">
+        <html:div class="interlinear-card">
+          <html:h4
+            id="interlinear-decoration-title"
+            class="interlinear-subtitle"
+          ></html:h4>
           <html:div class="interlinear-check-row">
             <html:input
               id="interlinear-appearance-underline"
@@ -1034,67 +1345,165 @@
               for="interlinear-appearance-underline"
               class="interlinear-check-label"
             ></html:label>
+            <html:input
+              id="interlinear-decoration-overline"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-decoration-overline-label"
+              for="interlinear-decoration-overline"
+              class="interlinear-check-label"
+            ></html:label>
+            <html:input
+              id="interlinear-decoration-line-through"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-decoration-line-through-label"
+              for="interlinear-decoration-line-through"
+              class="interlinear-check-label"
+            ></html:label>
           </html:div>
-          <html:div
-            id="interlinear-appearance-underline-color-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-underline-color-label"
-                for="interlinear-appearance-underline-color"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-underline-color-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-underline-color"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-underline-color-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-underline-color-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-decoration-style-label"
+              for="interlinear-decoration-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-decoration-style" class="interlinear-select">
+                <html:option id="interlinear-decoration-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-decoration-style-double" value="double"></html:option>
+                <html:option id="interlinear-decoration-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-decoration-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-decoration-style-wavy" value="wavy"></html:option>
+              </html:select>
             </html:div>
-            <html:div class="interlinear-color-inherit-row">
-              <html:input
-                id="interlinear-appearance-underline-color-inherit"
-                type="checkbox"
-                class="interlinear-checkbox"
-              />
-              <html:label
-                id="interlinear-appearance-underline-color-inherit-label"
-                for="interlinear-appearance-underline-color-inherit"
-                class="interlinear-check-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-underline-color-inherit-help"
-                class="interlinear-inherit-help"
-              ></html:span>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-underline-color-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-underline-color-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-underline-color-help"
-              class="interlinear-help"
-            ></html:p>
           </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-decoration-thickness-label"
+              for="interlinear-decoration-thickness"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-decoration-thickness"
+                type="number"
+                min="0"
+                max="8"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+            <html:p id="interlinear-decoration-thickness-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-decoration-offset-label"
+              for="interlinear-decoration-offset"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-decoration-offset"
+                type="number"
+                min="-1"
+                max="12"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+            <html:p id="interlinear-decoration-offset-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-decoration-skip-ink"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-decoration-skip-ink-label"
+              for="interlinear-decoration-skip-ink"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+        </html:div>
 
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-divider-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-divider"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-divider-label"
+              for="interlinear-divider"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-divider-style-label"
+              for="interlinear-divider-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-divider-style" class="interlinear-select">
+                <html:option id="interlinear-divider-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-divider-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-divider-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-divider-style-double" value="double"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-divider-width-label"
+              for="interlinear-divider-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-divider-width"
+                type="number"
+                min="1"
+                max="6"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-divider-offset-label"
+              for="interlinear-divider-offset"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-divider-offset"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+            <html:p id="interlinear-divider-offset-help" class="interlinear-help"></html:p>
+          </html:div>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-ribbon-title" class="interlinear-subtitle"></html:h4>
           <html:div class="interlinear-check-row">
             <html:input
               id="interlinear-appearance-ribbon"
@@ -1107,53 +1516,376 @@
               class="interlinear-check-label"
             ></html:label>
           </html:div>
-          <html:div
-            id="interlinear-appearance-ribbon-color-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-ribbon-color-label"
-                for="interlinear-appearance-ribbon-color"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-ribbon-color-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-ribbon-color"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-ribbon-color-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-ribbon-color-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-position-label"
+              for="interlinear-ribbon-position"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-ribbon-position" class="interlinear-select">
+                <html:option id="interlinear-ribbon-position-left" value="left"></html:option>
+                <html:option id="interlinear-ribbon-position-right" value="right"></html:option>
+              </html:select>
             </html:div>
-            <html:span
-              id="interlinear-appearance-ribbon-color-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-ribbon-color-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-ribbon-color-help"
-              class="interlinear-help"
-            ></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-width-label"
+              for="interlinear-ribbon-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-ribbon-width"
+                type="number"
+                min="1"
+                max="12"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-style-label"
+              for="interlinear-ribbon-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-ribbon-style" class="interlinear-select">
+                <html:option id="interlinear-ribbon-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-ribbon-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-ribbon-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-ribbon-style-double" value="double"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-radius-label"
+              for="interlinear-ribbon-radius"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-ribbon-radius"
+                type="number"
+                min="0"
+                max="8"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-padding-label"
+              for="interlinear-ribbon-padding"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-ribbon-padding"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
           </html:div>
         </html:div>
-      </html:div>
 
-      <!-- Glossary -->
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-block-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-padding-y-label"
+              for="interlinear-block-padding-y"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-padding-y"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-padding-x-label"
+              for="interlinear-block-padding-x"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-padding-x"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-radius-label"
+              for="interlinear-block-radius"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-radius"
+                type="number"
+                min="0"
+                max="16"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-border-width-label"
+              for="interlinear-block-border-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-border-width"
+                type="number"
+                min="0"
+                max="4"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-border-style-label"
+              for="interlinear-block-border-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-block-border-style" class="interlinear-select">
+                <html:option id="interlinear-block-border-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-block-border-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-block-border-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-block-border-style-double" value="double"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-indent-label"
+              for="interlinear-block-indent"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-indent"
+                type="number"
+                min="0"
+                max="4"
+                step="0.1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-first-line-indent-label"
+              for="interlinear-first-line-indent"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-first-line-indent"
+                type="number"
+                min="0"
+                max="4"
+                step="0.1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-align-label"
+              for="interlinear-block-align"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-block-align" class="interlinear-select">
+                <html:option id="interlinear-block-align-start" value="start"></html:option>
+                <html:option id="interlinear-block-align-justify" value="justify"></html:option>
+                <html:option id="interlinear-block-align-center" value="center"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-max-width-label"
+              for="interlinear-block-max-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-max-width"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">ch</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-opacity-label"
+              for="interlinear-block-opacity"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-opacity"
+                type="number"
+                min="40"
+                max="100"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">%</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-source-dim-label"
+              for="interlinear-source-dim"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-source-dim"
+                type="number"
+                min="40"
+                max="100"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">%</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-source-gap-label"
+              for="interlinear-source-gap"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-source-gap"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-interface-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-ui-follow-appearance"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-ui-follow-appearance-label"
+              for="interlinear-ui-follow-appearance"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-popup-max-width-label"
+              for="interlinear-popup-max-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-popup-max-width"
+                type="number"
+                min="280"
+                max="720"
+                step="10"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-export-mode-label"
+              for="interlinear-export-mode"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-export-mode" class="interlinear-select">
+                <html:option id="interlinear-export-mode-reader" value="reader"></html:option>
+                <html:option id="interlinear-export-mode-print" value="print"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-state-animation"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-state-animation-label"
+              for="interlinear-state-animation"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-reduce-motion"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-reduce-motion-label"
+              for="interlinear-reduce-motion"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+        </html:div>
+          </html:div>
+        </html:details>
+      </html:div>
       <html:div
         id="interlinear-glossary-section"
         class="interlinear-section"
