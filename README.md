@@ -10,16 +10,23 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 
 [中文文档](README-zh-CN.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
+<!-- Screenshot placeholders (capture on a clean Zotero 10 profile before release):
+     docs/images/toolbar-toggle.png    reader toolbar with the Interlinear toggle, display-mode button, and progress
+     docs/images/settings-appearance.png  settings page with the live preview card and save bar
+     docs/images/side-by-side.png      side-by-side reading mode
+-->
+
 ## Features
 
 - **Five built-in translation services.** Google Translate works out of the box with no API key. OpenAI-compatible endpoints, Anthropic Claude, Google Gemini, and Ollama are one settings page away. No companion plugin is required.
-- **Four layouts.** Translation below the source, side-by-side columns, translation only, or source only. A toolbar button cycles through them; side-by-side keeps the first lines aligned without disturbing Zotero's native highlights.
+- **Four layouts.** Translation below the source, side-by-side columns, translation only, or source only. A dedicated display-mode button cycles through them; side-by-side keeps the first lines aligned without disturbing Zotero's native highlights.
+- **One toolbar toggle.** The main toolbar button starts a translation run, then shows or hides the result. While a run is in progress, clicking it pauses and hides; clicking again shows the translations and resumes unfinished paragraphs. Each reader keeps its own state.
 - **Translate as you read.** Rest the pointer on a paragraph, press your custom shortcut, Alt-click, or select text — each triggers a single-paragraph translation without starting a full-document run.
 - **Full-document runs that behave.** Progress and cancel from the toolbar, viewport-first ordering that re-sorts as you page, short-paragraph batching, concurrency and rate limits, timeouts, automatic pause after repeated failures, and click-to-retry on any failed paragraph.
 - **Glossary.** Import/export CSV or TSV term lists. Terms are injected into LLM prompts and enforced as a post-translation replacement on every service, including Google.
 - **Reading assistant.** A chat sidebar answers questions about the selected paragraph, the current page, or the whole document (LLM services only).
 - **Bilingual PDF export.** The current source-plus-translation view is re-typeset into a searchable PDF and attached to the Zotero item.
-- **Appearance control.** Font size, font presets, text/background colors via picker and swatches, line height, paragraph spacing, light/dark/auto theme, underline, and a left ribbon (blue by default).
+- **Appearance control with live preview.** A preview card above the controls re-renders with the same CSS the reader uses, so layout and colors update as you change them. Font size, a font selector with cross-platform stacks plus a custom family, text/background/underline/ribbon colors via picker and swatches, line height, paragraph spacing, light/dark/auto theme, underline, and a left ribbon (blue by default).
 - **Caching.** Translations are cached per service, language pair, and glossary, with a one-click cleanup in settings.
 - English and Simplified Chinese UI; errors appear as non-blocking notices inside the reader.
 
@@ -33,11 +40,11 @@ Requires **Zotero 10 (desktop)**. See [Acknowledgements](#acknowledgements) if y
 
 ## Configuration
 
-Open **Edit → Settings → Interlinear**. The page is organized into six sections with a jump menu and an explicit Save button:
+Open **Edit → Settings → Interlinear**. The page has a jump menu, an appearance live preview, and a save bar that stays visible while you scroll; modified fields show an unsaved-changes hint:
 
-- **Service** — pick a backend and fill in its endpoint, model, and API key; choose source and target languages. Each backend has a **Test connection** button that reports success or the actual failure reason in place.
+- **Service** — pick a backend and fill in its endpoint, model, and API key; choose source and target languages. Each backend has a **Test connection** button that reports running, success, or the actual failure reason in place.
 - **Display** — default layout, hover translation (on/off and dwell delay), and the single-paragraph shortcut.
-- **Appearance** — everything listed under Features above; colors use a picker plus preset swatches, with a "follow theme" option.
+- **Appearance** — live preview plus everything listed under Features above; colors use a picker plus preset swatches, with a "follow theme" option.
 - **Scope** — skip trailing pages (e.g. references), plus speed and reliability knobs: concurrency, request gap, request size limits, timeout, and the consecutive-failure pause threshold.
 - **Glossary** — import/export term files.
 - **Maintenance** — translation cache usage and cleanup.
@@ -47,10 +54,10 @@ Open **Edit → Settings → Interlinear**. The page is organized into six secti
 ## Usage
 
 1. Open a PDF in Zotero and switch to **reading mode**.
-2. Left-click the Interlinear toolbar icon to translate the document; left-click again to remove the translations. Right-click the icon for the full menu: retranslate, cancel, layouts, export, chat, settings.
-3. While reading, hover a paragraph, use your shortcut, Alt-click, or select text to translate just that part. During a full run, these reuse in-flight requests instead of calling the service twice.
-4. Use the display-mode button to cycle layouts. Failed or paused paragraphs show a retry affordance — click it to retry just that paragraph.
-5. Export the bilingual view as a PDF attachment from the right-click menu, or open the reading assistant to ask questions about the document.
+2. Left-click the Interlinear toolbar icon to start a full-document run. Once translations exist, the same button hides them to show the original, and shows them again; if a run is in progress the first click pauses it, and a paused run resumes when translations are shown again. Right-click the icon for retranslate, cancel, export, and settings.
+3. The display-mode button next to it cycles the four layouts. Failed or paused paragraphs show a retry affordance — click it to retry just that paragraph.
+4. While reading, hover a paragraph, use your shortcut, Alt-click, or select text to translate just that part. During a full run, these reuse in-flight requests instead of calling the service twice.
+5. Open the reading assistant from the reader sidebar to ask questions about the selection, the current page, or the whole document; export the bilingual view as a PDF attachment from the toolbar menu.
 
 ## Known limitations
 

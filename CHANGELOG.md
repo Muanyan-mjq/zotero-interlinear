@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
+## [Unreleased]
+
+### Added
+
+- Live appearance preview in settings: a preview card reuses the reader's own
+  translation/display CSS in an isolated shadow root and updates as fields
+  change, including the selected layout, theme, colors, font, and spacing.
+- Font selector with curated cross-platform stacks (sans, serif, mono) plus a
+  validated custom family input, replacing the font preset chips.
+- Reusable color controls for text, background, underline, and ribbon: native
+  picker, hex input, preset swatches, inherit-from-theme option, reset, and a
+  low-contrast warning.
+- Settings navigation, a sticky save bar, a global unsaved-changes hint, unit
+  suffixes on numeric fields, clearer heading levels, and keyboard focus rings.
+
+### Changed
+
+- The main reader toolbar button is now a show/hide/pause toggle with
+  independent state per reader; layouts are switched by the dedicated
+  display-mode button.
+- Settings typography and layout: source and target languages occupy separate
+  rows, labels no longer wrap, and the appearance section is grouped around
+  the live preview.
+- Retranslate/cancel/export/settings remain in the toolbar context menu;
+  connection tests report running, success, warning, or failure in place.
+
+### Fixed
+
+- Unsaved-change hints now appear for every settings field, not only fields
+  with a dedicated handler.
+- The target-language label no longer wraps or clips in a narrow preferences
+  window.
+
 ## [0.5.1] - 2026-11-10
 
 First release as **Interlinear**, an independent project. Upstream attribution
