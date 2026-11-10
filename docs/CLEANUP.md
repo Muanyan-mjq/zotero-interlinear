@@ -75,7 +75,7 @@
 - 未发现 `TODO` / `FIXME` / `HACK` 标记。
 - 本地 `git config` 作者为 `MU anyan <muanyan7@gmail.com>`；这是提交历史的一部分，本阶段不改写。
 
-## Step 2：保留清单与参考示例（待执行）
+## Step 2：保留清单与参考示例（已执行）
 
 保留：
 
@@ -86,7 +86,7 @@
 - 全部真正使用的源码、图标、locale 键、脚本、构建配置。
 - 内部 `bilingual*` 命名（见 D 表建议）。
 
-参考示例：从 `git show ab3eb00^:src/modules/examples.ts` 提取 `registerReaderItemPaneSection` 到 `docs/reference/itempane-section-example.ts`，文件头注明来源提交、原作者、用途（只读参考，不参与构建）。该示例可用于将来扩展阅读助手侧栏或 Zotero 条目面板。
+参考示例：已从 `git show ab3eb00^:src/modules/examples.ts` 提取 `registerReaderItemPaneSection` 到 `docs/reference/itempane-section-example.ts`；文件头注明来源提交、上游模板、用途，并确认该文件不在 `tsconfig` 的 `include` 中（只读参考，不参与构建）。该示例可用于将来扩展阅读助手侧栏或 Zotero 条目面板。
 
 ## Step 3：删除执行计划（按类别，一类一个 `cleanup:` 提交）
 
