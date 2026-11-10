@@ -8,8 +8,26 @@ declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
       "engine": string;
+      "google.baseUrl": string;
+      "openai.endpoint": string;
+      "openai.model": string;
+      "openai.apiKey": string;
+      "openai.prompt": string;
+      "openai.temperature": string;
+      "claude.endpoint": string;
+      "claude.model": string;
+      "claude.apiKey": string;
+      "claude.prompt": string;
+      "claude.temperature": string;
+      "gemini.baseUrl": string;
+      "gemini.model": string;
+      "gemini.apiKey": string;
+      "gemini.prompt": string;
+      "gemini.temperature": string;
       "ollama.url": string;
       "ollama.model": string;
+      "language.source": string;
+      "language.target": string;
       "requestGapMs": number;
       "maxConcurrent": number;
       "maxCharsPerRequest": number;
@@ -17,6 +35,23 @@ declare namespace _ZoteroTypes {
       "maxConsecutiveErrors": number;
       "requestTimeoutMs": number;
       "skipLastPages": number;
+      "displayMode": string;
+      "interaction.hoverTranslate": boolean;
+      "interaction.hoverDelayMs": number;
+      "interaction.shortcutEnabled": boolean;
+      "interaction.shortcut": string;
+      "glossary": string;
+      "appearance.fontSize": number;
+      "appearance.color": string;
+      "appearance.fontFamily": string;
+      "appearance.lineHeightPercent": number;
+      "appearance.paragraphSpacing": number;
+      "appearance.background": string;
+      "appearance.theme": string;
+      "appearance.underline": boolean;
+      "appearance.underlineColor": string;
+      "appearance.ribbon": boolean;
+      "appearance.ribbonColor": string;
     };
   }
 }

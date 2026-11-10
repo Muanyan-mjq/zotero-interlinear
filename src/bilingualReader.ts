@@ -1,20 +1,23 @@
 import {
-  DEFAULT_OLLAMA_MODEL,
-  DEFAULT_OLLAMA_URL,
+  getAppearance,
   getCacheEngineTag,
+  getDisplayMode,
   getEngine,
+  getGlossaryEntries,
+  getHoverDelayMs,
+  getHoverTranslateEnabled,
   getMaxBatchParagraphs,
   getMaxCharsPerRequest,
   getMaxConcurrent,
   getMaxConsecutiveErrors,
-  getOllamaModel,
-  getOllamaURL,
   getRequestGapMs,
   getRequestTimeoutMs,
+  getShortcutEnabled,
+  getShortcutSpec,
   getSkipLastPages,
-  setEngine,
-  setOllamaModel,
-  setOllamaURL,
+  getSourceLanguage,
+  getTargetLanguage,
+  setDisplayMode,
   type TranslationEngine,
 } from "./settings";
 import {
@@ -24,22 +27,52 @@ import {
 } from "./translationCache";
 import {
   buildBatchPayload,
-  packBatchItems,
   parseBatchResult,
   splitTextForRequest,
   type BatchInput,
 } from "./translationPipeline";
+import { isFailureText } from "./translationFailure";
+import { applyGlossaryToTranslation } from "./glossary";
+import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
-import { cleanupReadingLayout, observeReadingLayout } from "./readingLayout";
+import { buildTranslationCSS } from "./appearance";
+import { buildDisplayModeCSS, DISPLAY_MODES, type DisplayMode } from "./displayMode";
+import {
+  cleanupReadingLayout,
+  observeReadingLayout,
+  refreshReadingLayout,
+} from "./readingLayout";
+import {
+  attachReaderInteractions,
+  type InteractionController,
+} from "./readerInteractions";
+import {
+  closeReaderMenu,
+  openReaderMenu,
+  type ReaderMenuEntry,
+} from "./readerMenu";
+import { exportBilingualPDF } from "./readerUI";
+import { getString } from "./utils/locale";
+import { registerToolbarHandlers } from "./toolbarEvents";
+import { INTERLINEAR_ICON_DATA_URL } from "./interlinearIcon";
+import {
+  transition,
+  isTranslationVisible,
+  isTranslationHidden,
+  type ToggleState,
+  type ToggleEvent,
+  type ToggleTransition,
+} from "./readerToggle";
 
-const PLUGIN_ID = "bilingual-reader@zotero.local";
-const TARGET_LANG = "zh-CN";
-const TRANSLATION_CLASS = "bilingual-reader-translation";
-const TOOLBAR_BUTTON_CLASS = "bilingual-reader-toolbar-button";
-const REFRESH_BUTTON_CLASS = "bilingual-reader-refresh-button";
-const STYLE_ID = "bilingual-reader-style";
-const PREFERENCES_PANE_ID = "bilingual-reader-preferences";
-const MAHJONG_EMOJI = "🀄";
+const TRANSLATION_CLASS = "interlinear-translation";
+const SOURCE_CELL_CLASS = "interlinear-source";
+const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
+const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
+const DISPLAY_BUTTON_CLASS = "interlinear-display-button";
+const PROGRESS_CLASS = "interlinear-progress";
+const ERROR_NOTICE_CLASS = "interlinear-error-notice";
+const STYLE_ID = "interlinear-style";
+const PREFERENCES_PANE_ID = "interlinear-preferences";
 
 interface ReaderParagraph {
   refPath: string;
@@ -54,9 +87,35 @@ interface RunState {
   generation: number;
   running: boolean;
   cancellation?: CancellationToken;
+  completed: number;
+  total: number;
+}
+
+interface ReaderInteractions {
+  doc: Document;
+  controller: InteractionController;
+}
+
+interface InteractionWatcher {
+  timeouts: ReturnType<typeof setTimeout>[];
+  doc: Document | null;
+  onLoad: ((event: Event) => void) | null;
 }
 
 const runStates = new WeakMap<object, RunState>();
+const toggleStates = new WeakMap<object, ToggleState>();
+const interactionControllers = new WeakMap<object, ReaderInteractions[]>();
+const interactionWatchers = new WeakMap<object, InteractionWatcher>();
+const INTERACTION_ATTACH_DELAYS_MS = [0, 150, 500, 1500, 3000];
+const IFRAME_LOAD_RETRY_DELAYS_MS = [60, 400, 1200];
+// Shared by the full-document scheduler and on-demand triggers so the same
+// paragraph is never requested twice at once.
+const paragraphRequests = new WeakMap<HTMLElement, Promise<void>>();
+const errorNotices = new WeakMap<Document, { element: HTMLElement; timer: any }>();
+
+function defaultRunState(): RunState {
+  return { generation: 0, running: false, completed: 0, total: 0 };
+}
 
 interface TranslationResponse {
   text: string;
@@ -67,27 +126,18 @@ interface TranslationJobItem extends BatchInput {
   paragraphIndex: number;
 }
 
-function isFailureText(text: string): boolean {
-  const value = text.trim();
-  if (!value) return true;
-  return (
-    /^\[请求错误\]/u.test(value) ||
-    /此翻译服务不可用/u.test(value) ||
-    /(?:request|service|parse) error\s*:/iu.test(value) ||
-    /HTTP\s+(?:GET|POST)?[^\n]*failed with status code/iu.test(value) ||
-    /Translate for Zotero 未返回译文/u.test(value)
-  );
-}
-
 class RunCancelledError extends Error {
   constructor() {
-    super("翻译任务已取消。");
+    super("Translation cancelled.");
     this.name = "RunCancelledError";
   }
 }
 
 function isCancellationError(error: unknown): boolean {
-  return error instanceof RunCancelledError || /翻译任务已取消/u.test(String(error));
+  return (
+    error instanceof RunCancelledError ||
+    (error as any)?.name === "RunCancelledError"
+  );
 }
 
 async function raceWithTimeoutAndCancellation<T>(
@@ -113,7 +163,14 @@ async function raceWithTimeoutAndCancellation<T>(
     const onCancel = () => finish(reject, new RunCancelledError());
 
     const timeoutID = setTimeout(() => {
-      finish(reject, new Error(`翻译请求超过 ${Math.round(timeoutMs / 1000)} 秒，已跳过。`));
+      finish(
+        reject,
+        new Error(
+          getString("error-request-timeout", {
+            args: { seconds: String(Math.round(timeoutMs / 1000)) },
+          }),
+        ),
+      );
     }, timeoutMs);
     removeCancelListener = cancellation.onCancel(onCancel);
 
@@ -148,98 +205,22 @@ async function cancellableDelay(
   });
 }
 
-async function translateWithPDFTranslate(
-  text: string,
-  itemID: number,
-): Promise<TranslationResponse> {
-  const pdfTranslate = (Zotero as any).PDFTranslate;
-  if (!pdfTranslate?.api?.translate) {
-    throw new Error(
-      "未检测到 Translate for Zotero。请先安装并启用 zotero-pdf-translate，或在设置中切换为 Ollama。",
-    );
-  }
-
-  const options: Record<string, any> = {
-    pluginID: PLUGIN_ID,
-    itemID,
-    langto: TARGET_LANG,
-  };
-  const task = await pdfTranslate.api.translate(text, options);
-  const result = String(task?.result || "").trim();
-
-  if (task?.status && task.status !== "success") {
-    throw new Error(result || "Translate for Zotero 翻译任务失败。");
-  }
-  if (!result || isFailureText(result)) {
-    throw new Error(result || "Translate for Zotero 未返回译文，请检查翻译服务配置或网络状态。");
-  }
-  const actualService = String(task?.service || "").trim();
-  return { text: result, engineTag: getCacheEngineTag(actualService) };
-}
-
-async function translateWithOllama(text: string): Promise<TranslationResponse> {
-  const baseURL = getOllamaURL();
-  const model = getOllamaModel();
-  const url = `${baseURL}/api/chat`;
-
-  const body = {
-    model,
-    stream: false,
-    keep_alive: "30m",
-    messages: [
-      {
-        role: "system",
-        content:
-          "你是专业的生物医学论文翻译助手。把用户提供的英文准确翻译为简体中文。保留基因、蛋白、药物、统计学符号、数字、单位、图表编号和文献引用；不要总结，不要解释，不要添加前言，只输出译文。如果出现 [[BRSEG_0000]] 这类分段标记，必须逐字原样保留标记及其顺序。",
-      },
-      {
-        role: "user",
-        content: text,
-      },
-    ],
-    options: {
-      temperature: 0.1,
-    },
-  };
-
-  const xhr = await Zotero.HTTP.request("POST", url, {
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    responseType: "json",
-    timeout: getRequestTimeoutMs(),
-  });
-
-  if (!xhr || xhr.status < 200 || xhr.status >= 300) {
-    throw new Error(`Ollama 请求失败：HTTP ${xhr?.status || "unknown"}`);
-  }
-
-  let response: any = xhr.response;
-  if (typeof response === "string") {
-    try {
-      response = JSON.parse(response);
-    } catch (_) {
-      // Common validation below handles malformed responses.
-    }
-  }
-
-  const result = response?.message?.content;
-  if (!result || typeof result !== "string") {
-    throw new Error("Ollama 未返回有效译文。请确认 Ollama 已启动、模型名称正确并可正常运行。");
-  }
-  return { text: result.trim(), engineTag: getCacheEngineTag() };
-}
-
 async function translateText(
   text: string,
   itemID: number,
   engine: TranslationEngine,
 ): Promise<TranslationResponse> {
-  if (engine === "ollama") {
-    return translateWithOllama(text);
-  }
-  return translateWithPDFTranslate(text, itemID);
+  const provider = getTranslationProvider(engine);
+  const result = await provider.translate(text, {
+    itemID,
+    sourceLanguage: getSourceLanguage(),
+    targetLanguage: getTargetLanguage(),
+    timeoutMs: getRequestTimeoutMs(),
+  });
+  return {
+    text: applyGlossaryToTranslation(result.text, getGlossaryEntries()),
+    engineTag: getCacheEngineTag(),
+  };
 }
 
 async function translateTextLimited(
@@ -291,6 +272,11 @@ function getSDTStructure(reader: any): any | null {
   }
 }
 
+/** Exposed to the chat sidebar, which reads the same active SDT view. */
+export function getReaderDocument(reader: any): Document | null {
+  return getSDTDocument(reader);
+}
+
 function getDocumentRoot(doc: Document): HTMLElement | null {
   try {
     return doc.documentElement as HTMLElement | null;
@@ -304,22 +290,116 @@ function isDeadObjectError(error: unknown): boolean {
 }
 
 function nextGeneration(reader: any): number {
-  const current = runStates.get(reader) || { generation: 0, running: false };
+  const current = runStates.get(reader) || defaultRunState();
   current.cancellation?.cancel();
   current.generation += 1;
   current.running = true;
+  current.completed = 0;
+  current.total = 0;
   current.cancellation = new CancellationToken();
   runStates.set(reader, current);
   return current.generation;
 }
 
 function cancelRun(reader: any): void {
-  const current = runStates.get(reader) || { generation: 0, running: false };
+  const current = runStates.get(reader) || defaultRunState();
   current.cancellation?.cancel();
   current.generation += 1;
   current.running = false;
+  current.completed = 0;
+  current.total = 0;
   current.cancellation = undefined;
   runStates.set(reader, current);
+  updateToolbarProgress(reader);
+}
+
+export function cancelBilingualReading(reader: any): void {
+  dispatchToggle(reader, "run-cancelled");
+  cancelRun(reader);
+}
+
+export function isBilingualRunning(reader: any): boolean {
+  return Boolean(runStates.get(reader)?.running);
+}
+
+function getToggleState(reader: any): ToggleState {
+  const state = toggleStates.get(reader) || "empty";
+  if (state === "empty" || state === "running") return state;
+  // The reader can replace its SDT document (re-render, split view switch).
+  // Without translation blocks the reader is untranslated again.
+  try {
+    const doc = getSDTDocument(reader);
+    if (!doc?.querySelector(`.${TRANSLATION_CLASS}`)) {
+      toggleStates.delete(reader);
+      return "empty";
+    }
+  } catch (_) {
+    toggleStates.delete(reader);
+    return "empty";
+  }
+  return state;
+}
+
+function setTranslationsHidden(reader: any, hidden: boolean): void {
+  const doc = getSDTDocument(reader);
+  const content = doc?.querySelector("#sdt-content") as HTMLElement | null;
+  if (!doc || !content) return;
+  if (hidden) {
+    // All display-mode CSS is scoped by data-interlinear-display, so removing
+    // it restores the native layout (including side-by-side margins) while
+    // the blocks and their results stay in the DOM.
+    delete content.dataset.interlinearDisplay;
+    content.dataset.interlinearHidden = "true";
+  } else {
+    delete content.dataset.interlinearHidden;
+    content.dataset.interlinearDisplay = getDisplayMode();
+  }
+  // The layout MutationObserver does not watch data-* attributes.
+  refreshReadingLayout(doc);
+}
+
+function markLoadingBlocksPaused(reader: any): void {
+  const doc = getSDTDocument(reader);
+  if (!doc) return;
+  const blocks = Array.from(
+    doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="loading"]`),
+  ) as HTMLElement[];
+  for (const block of blocks) {
+    setBlockState(block, "paused", getString("paragraph-paused"));
+  }
+}
+
+function dispatchToggle(reader: any, event: ToggleEvent): ToggleTransition {
+  const result = transition(getToggleState(reader), event);
+  if (result.state === "empty") toggleStates.delete(reader);
+  else toggleStates.set(reader, result.state);
+
+  for (const effect of result.effects) {
+    try {
+      if (effect === "pause-run") {
+        cancelRun(reader);
+        markLoadingBlocksPaused(reader);
+      } else if (effect === "hide") {
+        setTranslationsHidden(reader, true);
+      } else if (effect === "show") {
+        setTranslationsHidden(reader, false);
+      } else if (effect === "mark-paused") {
+        markLoadingBlocksPaused(reader);
+      }
+      // start-run / resume-run / clear-translations need async orchestration
+      // and are executed by the calling event handler.
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
+  updateToolbarProgress(reader);
+  return result;
+}
+
+function reportToggleError(reader: any, error: any): void {
+  if (isDeadObjectError(error) || isCancellationError(error)) return;
+  dispatchToggle(reader, "reset");
+  showError(reader, error?.message || String(error));
 }
 
 function isCurrentRun(reader: any, generation: number, doc: Document): boolean {
@@ -353,6 +433,22 @@ function finishRun(reader: any, generation: number): void {
   if (!state || state.generation !== generation) return;
   state.running = false;
   state.cancellation = undefined;
+  state.completed = 0;
+  state.total = 0;
+  dispatchToggle(reader, "run-finished");
+}
+
+function setRunProgress(
+  reader: any,
+  generation: number,
+  completed: number,
+  total: number,
+): void {
+  const state = runStates.get(reader);
+  if (!state || state.generation !== generation) return;
+  state.completed = completed;
+  state.total = total;
+  updateToolbarProgress(reader);
 }
 
 async function ensureReadingMode(reader: any): Promise<Document> {
@@ -361,14 +457,14 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 
   const internal = getInternalReader(reader);
   if (!internal) {
-    throw new Error("无法访问 Zotero PDF 阅读器。");
+    throw new Error(getString("error-reader-unavailable"));
   }
 
   const primary = internal._lastViewPrimary !== false || !internal._secondaryView;
   if (typeof internal._setReadingMode === "function") {
     await internal._setReadingMode(primary, true);
   } else {
-    throw new Error("当前 Zotero 版本未提供可用的阅读模式接口。请先手动开启“阅读模式”后重试。");
+    throw new Error(getString("error-reading-mode-unsupported"));
   }
 
   for (let i = 0; i < 150; i++) {
@@ -377,24 +473,16 @@ async function ensureReadingMode(reader: any): Promise<Document> {
     await Zotero.Promise.delay(100);
   }
 
-  throw new Error("Zotero 阅读模式加载超时。请关闭并重新打开 PDF 后重试。");
+  throw new Error(getString("error-reading-mode-timeout"));
 }
 
 function installStyles(doc: Document): void {
-  if (doc.getElementById(STYLE_ID)) return;
-
-  const style = doc.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = `
-    .${TRANSLATION_CLASS} {
-      box-sizing: border-box;
-      border-left: 4px solid #c7354a;
-      margin: 0.65em 0 1.25em;
-      padding: 0.45em 0.95em;
-      line-height: 1.75;
-      font-size: 1em;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
+  const appearance = getAppearance();
+  const css = `
+${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader")}
+${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraphSpacing)}
+    #sdt-content[data-interlinear-hidden="true"] .${TRANSLATION_CLASS} {
+      display: none;
     }
     .${TRANSLATION_CLASS}[data-state="loading"] {
       opacity: 0.62;
@@ -403,10 +491,189 @@ function installStyles(doc: Document): void {
     .${TRANSLATION_CLASS}[data-state="paused"] {
       opacity: 0.78;
     }
+    .interlinear-source-hover {
+      outline: 1px dashed currentColor;
+      outline-offset: 2px;
+    }
+    .interlinear-source-hover-auto {
+      outline: 1px dotted currentColor;
+      outline-offset: 3px;
+    }
+    .interlinear-selection-popup {
+      position: fixed;
+      z-index: 2147483000;
+      min-width: 320px;
+      max-width: 420px;
+      padding: 8px;
+      border: 1px solid rgba(127, 127, 127, 0.45);
+      border-radius: 6px;
+      background: Canvas;
+      color: CanvasText;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .interlinear-selection-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .interlinear-selection-popup button {
+      padding: 3px 10px;
+      border: 1px solid rgba(127, 127, 127, 0.45);
+      border-radius: 4px;
+      background: ButtonFace;
+      color: ButtonText;
+      cursor: pointer;
+    }
+    .interlinear-selection-popup button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .interlinear-selection-close {
+      margin-left: auto;
+      font-size: 16px;
+      line-height: 1;
+    }
+    .interlinear-selection-result {
+      margin-top: 6px;
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      user-select: text;
+    }
+    .interlinear-selection-result[data-state="error"] {
+      color: #b3261e;
+    }
+    .interlinear-progress {
+      margin-inline: 4px;
+      font-size: 11px;
+      opacity: 0.75;
+      white-space: nowrap;
+    }
+    .${TRANSLATION_CLASS}[data-state="error"],
+    .${TRANSLATION_CLASS}[data-state="paused"] {
+      cursor: pointer;
+    }
+    .${ERROR_NOTICE_CLASS} {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2147483001;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      max-width: min(680px, calc(100% - 32px));
+      padding: 8px 10px;
+      border: 1px solid rgba(179, 38, 30, 0.55);
+      border-radius: 6px;
+      background: Canvas;
+      color: CanvasText;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .${ERROR_NOTICE_CLASS} .interlinear-error-notice-text {
+      user-select: text;
+    }
+    .${ERROR_NOTICE_CLASS} .interlinear-error-notice-close {
+      flex: none;
+      padding: 0 4px;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
   `;
 
-  const target = doc.head || doc.documentElement;
-  target?.append(style);
+  let style = doc.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = STYLE_ID;
+    const target = doc.head || doc.documentElement;
+    target?.append(style);
+  }
+  style.textContent = css;
+}
+
+/**
+ * Switch layout without moving Zotero's source nodes. Source and translation
+ * stay siblings, so native annotation ranges keep pointing at the same text.
+ */
+function applyDisplayMode(doc: Document, mode: DisplayMode = getDisplayMode()): void {
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (!content) return;
+  // Hidden readers keep the native layout until the user shows translations.
+  if (content.dataset.interlinearHidden === "true") return;
+  content.dataset.interlinearDisplay = mode;
+  refreshReadingLayout(doc);
+}
+
+function getDisplayModeLabel(mode: DisplayMode): string {
+  switch (mode) {
+    case "side-by-side":
+      return getString("display-mode-side-by-side");
+    case "target-only":
+      return getString("display-mode-target-only");
+    case "source-only":
+      return getString("display-mode-source-only");
+    default:
+      return getString("display-mode-top-bottom");
+  }
+}
+
+function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {
+  if (!toolbarDoc) {
+    try {
+      toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+    } catch (_) {
+      toolbarDoc = undefined;
+    }
+  }
+  const button = toolbarDoc?.querySelector(
+    `.${DISPLAY_BUTTON_CLASS}`,
+  ) as HTMLButtonElement | null;
+  if (!button) return;
+  const mode = getDisplayMode();
+  button.dataset.mode = mode;
+  const title = getString("toolbar-display-title", {
+    args: { mode: getDisplayModeLabel(mode) },
+  });
+  button.title = title;
+  button.setAttribute("aria-label", title);
+}
+
+/** Re-apply the display mode to readers that are already open. */
+export function refreshDisplayModes(): void {
+  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  for (const reader of readers) {
+    try {
+      if (reader.type !== "pdf") continue;
+      const doc = getSDTDocument(reader);
+      if (doc?.querySelector("#sdt-content")) applyDisplayMode(doc);
+      updateDisplayButtonState(reader);
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
+}
+
+/** Re-apply appearance settings to readers that are already open. */
+export function refreshTranslationStyles(): void {
+  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  for (const reader of readers) {
+    try {
+      if (reader.type !== "pdf") continue;
+      const doc = getSDTDocument(reader);
+      if (doc?.querySelector("#sdt-content")) installStyles(doc);
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
 }
 
 function isTranslatableElement(element: HTMLElement): boolean {
@@ -509,7 +776,13 @@ function collectParagraphs(
       sourceText,
       sourceElement: element,
       pageIndex,
-      translation: loadCachedTranslation(itemKey, sourceText, engineTag, isFailureText),
+      translation: loadCachedTranslation(
+        itemKey,
+        sourceText,
+        engineTag,
+        isFailureText,
+        getTargetLanguage(),
+      ),
     });
   }
 
@@ -529,29 +802,39 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
     sibling?.classList.contains(TRANSLATION_CLASS) &&
     sibling.dataset.sourceRefPath === paragraph.refPath
   ) {
+    source.classList.add(SOURCE_CELL_CLASS);
     paragraph.block = sibling;
+    if (paragraph.translation && sibling.dataset.state !== "done") {
+      setBlockState(sibling, "done", paragraph.translation);
+    }
     return sibling;
   }
 
   const block = doc.createElement("div");
   block.className = TRANSLATION_CLASS;
-  block.lang = TARGET_LANG;
+  block.lang = getTargetLanguage();
   block.dataset.sourceRefPath = paragraph.refPath;
   if (paragraph.pageIndex !== undefined) {
     block.dataset.sourcePage = String(paragraph.pageIndex + 1);
   }
 
   if (paragraph.translation) {
-    block.dataset.state = "done";
-    block.textContent = paragraph.translation;
+    setBlockState(block, "done", paragraph.translation);
   } else {
-    block.dataset.state = "loading";
-    block.textContent = "等待翻译…";
+    setBlockState(block, "loading", getString("paragraph-waiting"));
   }
 
+  source.classList.add(SOURCE_CELL_CLASS);
   source.after(block);
   paragraph.block = block;
   return block;
+}
+
+/** On-demand triggers can run before any full translation installed reader UI. */
+function prepareOnDemandReading(reader: any, doc: Document): void {
+  installStyles(doc);
+  applyDisplayMode(doc);
+  observeReadingLayout(getActiveSDTView(reader), doc);
 }
 
 function clearTranslations(doc: Document): void {
@@ -564,23 +847,449 @@ function clearTranslations(doc: Document): void {
     }
   }
 
+  const sources = Array.from(
+    doc.querySelectorAll(`.${SOURCE_CELL_CLASS}`),
+  ) as HTMLElement[];
+  for (const source of sources) {
+    try {
+      source.classList.remove(SOURCE_CELL_CLASS);
+    } catch (_) {
+      // Same iframe replacement case as above.
+    }
+  }
+
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (content) {
+    delete content.dataset.interlinearDisplay;
+    delete content.dataset.interlinearHidden;
+  }
+
   const root = getDocumentRoot(doc);
-  if (root) delete root.dataset.bilingualReaderRunning;
+  if (root) delete root.dataset.interlinearRunning;
   cleanupReadingLayout(doc);
 }
 
-function showError(reader: any, message: string): void {
-  try {
-    reader?._iframeWindow?.alert?.(message);
-    return;
-  } catch (_) {
-    // Fall through to the Zotero main window.
+function getReaderItem(reader: any): { itemID: number; itemKey: string } {
+  const itemID = Number(reader?.itemID || 0);
+  if (!itemID) throw new Error(getString("reader-item-missing"));
+  const item = Zotero.Items.get(itemID);
+  return { itemID, itemKey: String(item?.key || reader?.itemKey || itemID) };
+}
+
+/** Translate only the user's selection and return the text for the popup. */
+export async function translateSelectedText(reader: any, rawText: string): Promise<string> {
+  const text = String(rawText || "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (text.length < 2) throw new Error(getString("selection-empty-translation"));
+
+  const { itemID, itemKey } = getReaderItem(reader);
+  const engine = getEngine();
+  const engineTag = getCacheEngineTag();
+  const targetLanguage = getTargetLanguage();
+  const cached = loadCachedTranslation(
+    itemKey,
+    text,
+    engineTag,
+    isFailureText,
+    targetLanguage,
+  );
+  if (cached) return cached;
+
+  const response = await raceWithTimeoutAndCancellation(
+    translateTextLimited(text, (chunk) => translateText(chunk, itemID, engine)),
+    getRequestTimeoutMs(),
+    new CancellationToken(),
+  );
+  if (!response.text?.trim()) throw new Error(getString("selection-empty-translation"));
+  if (isFailureText(response.text)) throw new Error(response.text);
+
+  saveCachedTranslation(
+    itemKey,
+    text,
+    response.text,
+    response.engineTag || engineTag,
+    isFailureText,
+    targetLanguage,
+  );
+  flushTranslationCacheIndex();
+  return response.text;
+}
+
+/** Translate the paragraph under a hover / shortcut / Alt+click trigger. */
+export function translateReaderParagraph(
+  reader: any,
+  source: HTMLElement,
+): Promise<void> {
+  const pending = paragraphRequests.get(source);
+  if (pending) return pending;
+
+  const doc = source?.ownerDocument;
+  if (!doc || !source.closest?.("#sdt-content")) return Promise.resolve();
+  if (source.closest?.(`.${TRANSLATION_CLASS}`)) return Promise.resolve();
+
+  const refPath = source.dataset?.refPath || "";
+  const sourceText = (source.textContent || "").replace(/\s+/g, " ").trim();
+  if (!refPath || sourceText.length < 2) return Promise.resolve();
+
+  const existingBlock = source.nextElementSibling as HTMLElement | null;
+  if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
+    const state = existingBlock.dataset.state;
+    if (state === "loading" || state === "done") return Promise.resolve();
   }
 
+  const promise = requestReaderParagraph(reader, source, doc, refPath, sourceText);
+  paragraphRequests.set(source, promise);
+  const release = () => {
+    if (paragraphRequests.get(source) === promise) paragraphRequests.delete(source);
+  };
+  void promise.then(release, release);
+  return promise;
+}
+
+async function requestReaderParagraph(
+  reader: any,
+  source: HTMLElement,
+  doc: Document,
+  refPath: string,
+  sourceText: string,
+): Promise<void> {
+  const { itemID, itemKey } = getReaderItem(reader);
+  const engine = getEngine();
+  const engineTag = getCacheEngineTag();
+  const targetLanguage = getTargetLanguage();
+  const paragraph: ReaderParagraph = {
+    refPath,
+    sourceText,
+    sourceElement: source,
+    pageIndex: getPageIndexForRef(getSDTStructure(reader), refPath),
+    translation: loadCachedTranslation(
+      itemKey,
+      sourceText,
+      engineTag,
+      isFailureText,
+      targetLanguage,
+    ),
+  };
+
+  prepareOnDemandReading(reader, doc);
+  const block = ensureTranslationBlock(doc, paragraph);
+  if (!block) return;
+
+  if (paragraph.translation) {
+    setBlockState(block, "done", paragraph.translation);
+    refreshReadingLayout(doc);
+    dispatchToggle(reader, "paragraph-translated");
+    return;
+  }
+
+  setBlockState(block, "loading", getString("paragraph-translating"));
   try {
-    Zotero.getMainWindow()?.alert(message);
+    const response = await raceWithTimeoutAndCancellation(
+      translateTextLimited(sourceText, (chunk) => translateText(chunk, itemID, engine)),
+      getRequestTimeoutMs(),
+      new CancellationToken(),
+    );
+    if (!response.text?.trim()) throw new Error(getString("selection-empty-translation"));
+    if (isFailureText(response.text)) throw new Error(response.text);
+
+    paragraph.translation = response.text;
+    saveCachedTranslation(
+      itemKey,
+      sourceText,
+      response.text,
+      response.engineTag || engineTag,
+      isFailureText,
+      targetLanguage,
+    );
+    flushTranslationCacheIndex();
+    if (block.isConnected) {
+      setBlockState(block, "done", response.text);
+    }
+    dispatchToggle(reader, "paragraph-translated");
+  } catch (error: any) {
+    if (block.isConnected) {
+      setBlockState(
+        block,
+        "error",
+        getString("paragraph-translate-failed", {
+          args: { detail: String(error?.message || error) },
+        }),
+      );
+    }
+    throw error;
+  } finally {
+    refreshReadingLayout(doc);
+  }
+}
+
+function ensureReaderInteractions(reader: any, doc: Document): void {
+  const controllers = interactionControllers.get(reader) || [];
+  for (let index = controllers.length - 1; index >= 0; index -= 1) {
+    const entry = controllers[index];
+    if (entry.doc === doc) return;
+    if (isInteractionDocumentAlive(entry.doc)) continue;
+    controllers.splice(index, 1);
+    try {
+      entry.controller.dispose();
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
+
+  const controller = attachReaderInteractions(
+    doc,
+    {
+      translateSelection: (text) => translateSelectedText(reader, text),
+      translateParagraph: (source) => {
+        dispatchToggle(reader, "shortcut");
+        return translateReaderParagraph(reader, source);
+      },
+    },
+    {
+      getHoverSettings: () => ({
+        enabled: getHoverTranslateEnabled(),
+        delayMs: getHoverDelayMs(),
+      }),
+      getShortcutSettings: () => ({
+        enabled: getShortcutEnabled(),
+        spec: getShortcutSpec(),
+      }),
+      isTranslationHidden: () => isTranslationHidden(getToggleState(reader)),
+    },
+  );
+  controllers.push({ doc, controller });
+  interactionControllers.set(reader, controllers);
+}
+
+function isInteractionDocumentAlive(doc: Document): boolean {
+  try {
+    return !!doc.defaultView;
   } catch (_) {
+    return false;
+  }
+}
+
+function hasReaderInteractions(reader: any, doc: Document): boolean {
+  return !!interactionControllers.get(reader)?.some((entry) => entry.doc === doc);
+}
+
+function getReaderSDTDocuments(reader: any): Document[] {
+  const docs: Document[] = [];
+  const internal = getInternalReader(reader);
+  const views = [
+    internal?._primarySDTView,
+    internal?._secondarySDTView,
+    getActiveSDTView(reader),
+  ];
+  for (const view of views) {
+    try {
+      const doc = view?._iframeDocument || view?._iframe?.contentDocument;
+      if (doc && !docs.includes(doc)) docs.push(doc);
+    } catch (_) {
+      // A split view's iframe may already have been destroyed.
+    }
+  }
+  return docs;
+}
+
+function attachInteractionsToReaderDocument(reader: any, doc: Document): boolean {
+  if (!doc.querySelector("#sdt-content")) return false;
+  if (hasReaderInteractions(reader, doc)) return true;
+  ensureReaderInteractions(reader, doc);
+  return true;
+}
+
+/**
+ * Attach the hover/shortcut/selection controller as soon as a reader exposes
+ * its SDT document. Interactions used to be attached only from prepareAndRun,
+ * so a reader that had never run a full translation ignored hover and the
+ * shortcut entirely. Reading mode (and each split-view pane) can also be
+ * enabled after the reader mounts, so watch iframe loads and retry briefly.
+ */
+export function watchReaderInteractions(reader: any): void {
+  if (!reader || reader.type !== "pdf" || reader._isUninitialized) return;
+  if (interactionWatchers.has(reader)) return;
+
+  const state: InteractionWatcher = { timeouts: [], doc: null, onLoad: null };
+  interactionWatchers.set(reader, state);
+
+  const tryAttach = () => {
+    for (const doc of getReaderSDTDocuments(reader)) {
+      try {
+        attachInteractionsToReaderDocument(reader, doc);
+      } catch (error) {
+        Zotero.logError(error as Error);
+      }
+    }
+  };
+
+  const clearScheduledRetries = () => {
+    for (const timeout of state.timeouts) {
+      try {
+        clearTimeout(timeout);
+      } catch (_) {
+        // The main window may already be shutting down.
+      }
+    }
+    state.timeouts = [];
+  };
+
+  const scheduleRetries = (delays: number[]) => {
+    clearScheduledRetries();
+    for (const delay of delays) {
+      state.timeouts.push(
+        setTimeout(() => {
+          try {
+            tryAttach();
+          } catch (error) {
+            Zotero.logError(error as Error);
+          }
+        }, delay),
+      );
+    }
+  };
+
+  tryAttach();
+  scheduleRetries(INTERACTION_ATTACH_DELAYS_MS);
+
+  try {
+    const outerDoc = reader?._iframeWindow?.document as Document | undefined;
+    if (outerDoc) {
+      state.doc = outerDoc;
+      state.onLoad = (event: Event) => {
+        const target = event?.target as Element | null;
+        if (target?.localName !== "iframe") return;
+        scheduleRetries(IFRAME_LOAD_RETRY_DELAYS_MS);
+      };
+      outerDoc.addEventListener("load", state.onLoad, true);
+    }
+  } catch (_) {
+    // The reader window can disappear while it is being inspected.
+  }
+}
+
+function stopWatchingReaderInteractions(reader: any): void {
+  const state = interactionWatchers.get(reader);
+  if (!state) return;
+  interactionWatchers.delete(reader);
+
+  for (const timeout of state.timeouts) {
+    try {
+      clearTimeout(timeout);
+    } catch (_) {
+      // The main window may already be shutting down.
+    }
+  }
+  if (state.doc && state.onLoad) {
+    try {
+      state.doc.removeEventListener("load", state.onLoad, true);
+    } catch (_) {
+      // The reader document may already be gone.
+    }
+  }
+}
+
+function getNoticeDocument(reader: any): Document | null {
+  try {
+    const sdt = getSDTDocument(reader);
+    if (sdt?.body || sdt?.documentElement) return sdt;
+  } catch (_) {
+    // The SDT view may not exist before reading mode is initialized.
+  }
+  try {
+    const doc = reader?._iframeWindow?.document as Document | undefined;
+    if (doc?.body || doc?.documentElement) return doc;
+  } catch (_) {
+    // The reader may already be closed.
+  }
+  return null;
+}
+
+function clearNoticeTimer(doc: Document): void {
+  const state = errorNotices.get(doc);
+  if (!state?.timer) return;
+  try {
+    const win: any = doc.defaultView || Zotero.getMainWindow();
+    win?.clearTimeout?.(state.timer);
+  } catch (_) {
+    // The iframe may have been replaced.
+  }
+}
+
+function dismissErrorNotice(doc: Document): void {
+  clearNoticeTimer(doc);
+  const state = errorNotices.get(doc);
+  errorNotices.delete(doc);
+  try {
+    state?.element.remove();
+  } catch (_) {
+    // The iframe may already be gone.
+  }
+}
+
+/** Non-blocking replacement for window.alert: a dismissible in-reader toast. */
+function showError(reader: any, message: string): void {
+  try {
     Zotero.logError(new Error(message));
+  } catch (_) {
+    // Outside Zotero there is nowhere to report.
+  }
+
+  const doc = getNoticeDocument(reader);
+  const host = doc?.body || doc?.documentElement;
+  if (!doc || !host) return;
+
+  clearNoticeTimer(doc);
+  let notice = doc.querySelector(`.${ERROR_NOTICE_CLASS}`) as HTMLElement | null;
+  if (!notice) {
+    notice = doc.createElement("div");
+    notice.className = ERROR_NOTICE_CLASS;
+    notice.setAttribute("role", "alert");
+
+    const text = doc.createElement("span");
+    text.className = "interlinear-error-notice-text";
+
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.className = "interlinear-error-notice-close";
+    close.textContent = "×";
+    close.title = getString("error-notice-close");
+    close.setAttribute("aria-label", getString("error-notice-close"));
+    close.addEventListener("click", () => dismissErrorNotice(doc));
+
+    notice.append(text, close);
+    host.append(notice);
+  }
+
+  const text = notice.querySelector(".interlinear-error-notice-text");
+  if (text) text.textContent = message;
+
+  try {
+    const win: any = doc.defaultView || Zotero.getMainWindow();
+    const timer = win?.setTimeout?.(() => dismissErrorNotice(doc), 12000);
+    errorNotices.set(doc, { element: notice, timer });
+  } catch (_) {
+    errorNotices.set(doc, { element: notice, timer: null });
+  }
+}
+
+function setBlockState(
+  block: HTMLElement | null | undefined,
+  state: "loading" | "done" | "error" | "paused",
+  text: string,
+): void {
+  if (!block) return;
+  block.dataset.state = state;
+  block.textContent = text;
+  if (state === "error" || state === "paused") {
+    block.title = getString("paragraph-retry-title");
+    block.setAttribute("role", "button");
+    block.tabIndex = 0;
+  } else {
+    block.removeAttribute("title");
+    block.removeAttribute("role");
+    block.removeAttribute("tabindex");
   }
 }
 
@@ -589,8 +1298,7 @@ function markUnfinishedPaused(doc: Document, paragraphs: ReaderParagraph[]): voi
     if (paragraph.translation) continue;
     const block = ensureTranslationBlock(doc, paragraph);
     if (!block || block.dataset.state === "error") continue;
-    block.dataset.state = "paused";
-    block.textContent = "已暂停：连续翻译失败。请检查翻译服务后点击 🔄 重试。";
+    setBlockState(block, "paused", getString("paragraph-paused"));
   }
 }
 
@@ -620,7 +1328,10 @@ async function translateParagraphs(
   const requestGapMs = getRequestGapMs();
   const requestTimeoutMs = getRequestTimeoutMs();
   const configuredConcurrent = getMaxConcurrent();
-  const concurrency = engine === "ollama" ? 1 : configuredConcurrent;
+  // Local LLM servers and the free Google endpoint are rate sensitive; the
+  // paid/remote relays can use the configured concurrency.
+  const concurrency =
+    engine === "ollama" ? 1 : engine === "google" ? Math.min(configuredConcurrent, 2) : configuredConcurrent;
   const pendingIndexes = paragraphs
     .map((paragraph, index) => (paragraph.translation ? -1 : index))
     .filter((index) => index >= 0);
@@ -638,15 +1349,47 @@ async function translateParagraphs(
     return;
   }
 
+  setRunProgress(reader, generation, 0, pendingIndexes.length);
   const cancellation = getRunCancellation(reader, generation);
-  const jobItems: TranslationJobItem[] = pendingIndexes.map((paragraphIndex) => ({
-    id: String(paragraphIndex),
-    paragraphIndex,
-    text: paragraphs[paragraphIndex].sourceText,
-  }));
-  const jobs = packBatchItems(jobItems, getMaxCharsPerRequest(), getMaxBatchParagraphs());
+  const maxItems = Math.max(1, getMaxBatchParagraphs());
+  const maxChars = getMaxCharsPerRequest();
+  const remaining = new Set<number>(pendingIndexes);
+  let orderedIndexes = pendingIndexes.slice();
+  let lastViewportPoll = Date.now();
 
-  let cursor = 0;
+  // Re-read geometry as the user pages through the document. Small documents
+  // re-sort on every claim; large ones poll at most twice per second so the
+  // queue does not spend its time measuring off-screen paragraphs.
+  const reorderRemaining = () => {
+    const now = Date.now();
+    if (remaining.size > 120 && now - lastViewportPoll < 400) return;
+    lastViewportPoll = now;
+    orderedIndexes = Array.from(remaining).sort(
+      (a, b) => getViewportDistance(paragraphs[a], doc) - getViewportDistance(paragraphs[b], doc),
+    );
+  };
+
+  const claimNextJob = (): TranslationJobItem[] => {
+    reorderRemaining();
+    const job: TranslationJobItem[] = [];
+    for (const index of orderedIndexes) {
+      if (!remaining.has(index)) continue;
+      const item: TranslationJobItem = {
+        id: String(index),
+        paragraphIndex: index,
+        text: paragraphs[index].sourceText,
+      };
+      if (job.length) {
+        const candidate = [...job, item];
+        if (candidate.length > maxItems || buildBatchPayload(candidate).length > maxChars) break;
+      }
+      job.push(item);
+      remaining.delete(index);
+      if (job.length >= maxItems || buildBatchPayload(job).length > maxChars) break;
+    }
+    return job;
+  };
+
   let completed = 0;
   let failureStreak = 0;
   let aborted = false;
@@ -701,17 +1444,80 @@ async function translateParagraphs(
     return fallback;
   };
 
+  const adoptCached = (paragraph: ReaderParagraph): boolean => {
+    if (paragraph.translation) return true;
+    const cached = loadCachedTranslation(
+      itemKey,
+      paragraph.sourceText,
+      engineTag,
+      isFailureText,
+      getTargetLanguage(),
+    );
+    if (!cached) return false;
+    paragraph.translation = cached;
+    const liveBlock = ensureTranslationBlock(doc, paragraph);
+    if (liveBlock?.parentNode) {
+      setBlockState(liveBlock, "done", cached);
+    }
+    return true;
+  };
+
   const worker = async () => {
     while (!aborted && isCurrentRun(reader, generation, doc)) {
-      const slot = cursor++;
-      if (slot >= jobs.length) return;
-      const job = jobs[slot];
+      const scheduled = claimNextJob();
+      if (!scheduled.length) return;
+      const busy: Array<{ item: TranslationJobItem; promise: Promise<void> }> = [];
+      const job: TranslationJobItem[] = [];
+
+      for (const item of scheduled) {
+        const paragraph = paragraphs[item.paragraphIndex];
+        if (adoptCached(paragraph)) {
+          completed += 1;
+          setRunProgress(reader, generation, completed, pendingIndexes.length);
+          continue;
+        }
+        const pending = paragraphRequests.get(paragraph.sourceElement);
+        if (pending) {
+          busy.push({ item, promise: pending });
+        } else {
+          job.push(item);
+        }
+      }
+
+      if (busy.length) {
+        await Promise.allSettled(busy.map((entry) => entry.promise));
+        if (!isCurrentRun(reader, generation, doc)) return;
+        for (const { item } of busy) {
+          const paragraph = paragraphs[item.paragraphIndex];
+          if (adoptCached(paragraph)) {
+            completed += 1;
+            setRunProgress(reader, generation, completed, pendingIndexes.length);
+          } else {
+            job.push(item);
+          }
+        }
+      }
+
+      if (!job.length) continue;
 
       for (const item of job) {
         const block = ensureTranslationBlock(doc, paragraphs[item.paragraphIndex]);
         if (!block) continue;
-        block.dataset.state = "loading";
-        block.textContent = `正在翻译…（已完成 ${completed}/${pendingIndexes.length}）`;
+        setBlockState(
+          block,
+          "loading",
+          getString("paragraph-translating-progress", {
+            args: { done: completed, total: pendingIndexes.length },
+          }),
+        );
+      }
+
+      let releaseJob: () => void = () => undefined;
+      const shared = new Promise<void>((resolve) => {
+        releaseJob = resolve;
+      });
+      for (const item of job) {
+        paragraphRequests.set(paragraphs[item.paragraphIndex].sourceElement, shared);
       }
 
       try {
@@ -727,14 +1533,15 @@ async function translateParagraphs(
             response.text,
             response.engineTag || engineTag,
             isFailureText,
+            getTargetLanguage(),
           );
 
           const liveBlock = paragraph.block;
           if (liveBlock?.parentNode) {
-            liveBlock.dataset.state = "done";
-            liveBlock.textContent = response.text;
+            setBlockState(liveBlock, "done", response.text);
           }
           completed += 1;
+          setRunProgress(reader, generation, completed, pendingIndexes.length);
         }
         failureStreak = 0;
       } catch (error: any) {
@@ -742,6 +1549,7 @@ async function translateParagraphs(
         if (isDeadObjectError(error)) {
           aborted = true;
           cancelRun(reader);
+          dispatchToggle(reader, "run-paused");
           return;
         }
         if (!isCurrentRun(reader, generation, doc)) return;
@@ -750,8 +1558,13 @@ async function translateParagraphs(
         for (const item of job) {
           const liveBlock = paragraphs[item.paragraphIndex].block;
           if (liveBlock?.parentNode) {
-            liveBlock.dataset.state = "error";
-            liveBlock.textContent = `翻译失败：${error?.message || String(error)}`;
+            setBlockState(
+              liveBlock,
+              "error",
+              getString("paragraph-translate-failed", {
+                args: { detail: String(error?.message || error) },
+              }),
+            );
           }
         }
 
@@ -759,33 +1572,43 @@ async function translateParagraphs(
           aborted = true;
           markUnfinishedPaused(doc, paragraphs);
           cancelRun(reader);
+          dispatchToggle(reader, "run-paused");
           return;
+        }
+      } finally {
+        releaseJob();
+        for (const item of job) {
+          const sourceElement = paragraphs[item.paragraphIndex].sourceElement;
+          if (paragraphRequests.get(sourceElement) === shared) {
+            paragraphRequests.delete(sourceElement);
+          }
         }
       }
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, () => worker()));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, pendingIndexes.length) }, () => worker()),
+  );
 
   finishRun(reader, generation);
 }
 
-async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
+async function prepareAndRun(reader: any): Promise<void> {
   const doc = await ensureReadingMode(reader);
   const root = getDocumentRoot(doc);
-  if (!root) throw new Error("无法访问 Zotero 阅读模式页面。");
+  if (!root) throw new Error(getString("error-reading-mode-page"));
 
   installStyles(doc);
   cancelRun(reader);
 
-  if (refresh) {
-    clearTranslations(doc);
-  }
+  applyDisplayMode(doc);
+  ensureReaderInteractions(reader, doc);
 
   const itemID = Number(reader?.itemID || 0);
   const item = itemID ? Zotero.Items.get(itemID) : null;
   const itemKey = String(item?.key || reader?.itemKey || itemID || "reader");
-  if (!itemID) throw new Error("无法取得当前 PDF 的 Zotero 条目编号。");
+  if (!itemID) throw new Error(getString("error-item-id-missing"));
 
   try {
     await (Zotero as any).SDT?.ensure?.(itemID, { isPriority: true });
@@ -798,7 +1621,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   const structure = getSDTStructure(reader);
   const paragraphs = collectParagraphs(doc, itemKey, engineTag, structure);
   if (!paragraphs.length) {
-    throw new Error("当前阅读模式中没有检测到可翻译的正文段落，或已被末尾页数设置全部排除。");
+    throw new Error(getString("error-no-paragraphs"));
   }
 
   observeReadingLayout(getActiveSDTView(reader), doc);
@@ -807,7 +1630,7 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   }
 
   const generation = nextGeneration(reader);
-  root.dataset.bilingualReaderRunning = "true";
+  root.dataset.interlinearRunning = "true";
   try {
     await translateParagraphs(
       reader,
@@ -822,47 +1645,31 @@ async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
   } finally {
     flushTranslationCacheIndex();
     const liveRoot = getDocumentRoot(getSDTDocument(reader) || doc);
-    if (liveRoot) delete liveRoot.dataset.bilingualReaderRunning;
+    if (liveRoot) delete liveRoot.dataset.interlinearRunning;
   }
 }
 
 export async function toggleBilingualReading(reader: any): Promise<void> {
   try {
-    const doc = await ensureReadingMode(reader);
-
-    if (doc.querySelector(`.${TRANSLATION_CLASS}`)) {
-      cancelRun(reader);
-      clearTranslations(doc);
-      return;
+    const { effects } = dispatchToggle(reader, "toggle");
+    if (effects.includes("start-run") || effects.includes("resume-run")) {
+      await prepareAndRun(reader);
     }
-
-    await prepareAndRun(reader, false);
   } catch (error: any) {
-    if (!isDeadObjectError(error) && !isCancellationError(error)) {
-      showError(reader, error?.message || String(error));
-    }
+    reportToggleError(reader, error);
   }
 }
 
 export async function refreshBilingualReading(reader: any): Promise<void> {
   try {
+    dispatchToggle(reader, "refresh");
     cancelRun(reader);
     const doc = await ensureReadingMode(reader);
     clearTranslations(doc);
     await Zotero.Promise.delay(30);
-    await prepareAndRun(reader, false);
+    await prepareAndRun(reader);
   } catch (error: any) {
-    if (!isDeadObjectError(error) && !isCancellationError(error)) {
-      showError(reader, error?.message || String(error));
-    }
-  }
-}
-
-function getPromptWindow(reader: any): any {
-  try {
-    return reader?._iframeWindow || Zotero.getMainWindow();
-  } catch (_) {
-    return Zotero.getMainWindow();
+    reportToggleError(reader, error);
   }
 }
 
@@ -874,40 +1681,7 @@ export function configureTranslation(reader: any): void {
     Zotero.logError(error as Error);
   }
 
-  // Retain a minimal fallback for unusual installations where Zotero cannot
-  // open a registered plugin preference pane.
-  const win = getPromptWindow(reader);
-  if (!win?.prompt) {
-    showError(reader, "无法打开翻译设置窗口。请在 Zotero 设置 → 中英对照 中配置。");
-    return;
-  }
-
-  const currentEngine = getEngine();
-  const answer = win.prompt(
-    "快速切换翻译后端：\n1 = Translate for Zotero（推荐）\n2 = Ollama\n\n完整设置请前往 Zotero 设置 → 中英对照。",
-    currentEngine === "ollama" ? "2" : "1",
-  );
-  if (answer === null) return;
-
-  if (String(answer).trim() === "2") {
-    const url = win.prompt("Ollama 地址：", getOllamaURL() || DEFAULT_OLLAMA_URL);
-    if (url === null) return;
-
-    const model = win.prompt(
-      "Ollama 模型名称：\n本地推荐：gpt-oss:20b\n云端可用：gpt-oss:120b-cloud",
-      getOllamaModel() || DEFAULT_OLLAMA_MODEL,
-    );
-    if (model === null) return;
-
-    setEngine("ollama");
-    setOllamaURL(String(url));
-    setOllamaModel(String(model));
-    win.alert?.("已切换为 Ollama。点击 🔄 会清除旧结果并重新翻译。");
-    return;
-  }
-
-  setEngine("pdftranslate");
-  win.alert?.("已切换为 Translate for Zotero，并跟随其当前默认服务。点击 🔄 即可重试。");
+  showError(reader, getString("settings-open-failed"));
 }
 
 function createToolbarButton(
@@ -915,42 +1689,131 @@ function createToolbarButton(
   className: string,
   text: string,
   title: string,
-  onClick: (event: Event) => void,
 ): HTMLButtonElement {
   const button = doc.createElement("button");
   button.className = `toolbar-button ${className}`;
   button.type = "button";
   button.tabIndex = -1;
-  button.textContent = text;
   button.title = title;
   button.setAttribute("aria-label", title);
-  button.style.minWidth = "34px";
-  button.style.paddingInline = "5px";
-  button.style.fontSize = "19px";
-  button.style.lineHeight = "1";
-  button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
-  button.addEventListener("click", (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onClick(event);
-  });
+  button.style.minWidth = "24px";
+  button.style.paddingInline = "2px";
+  button.style.display = "inline-flex";
+  button.style.alignItems = "center";
+  button.style.justifyContent = "center";
+  if (text) {
+    button.textContent = text;
+    button.style.fontSize = "16px";
+    button.style.lineHeight = "1";
+    button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  }
   return button;
+}
+
+function createInterlinearIcon(doc: Document): HTMLImageElement {
+  // The reader document has a resource:// base URL, so chrome:// image URLs
+  // never load. Embed the shipped icon as a data URI instead.
+  const image = doc.createElement("img");
+  image.src = INTERLINEAR_ICON_DATA_URL;
+  image.alt = "";
+  image.setAttribute("aria-hidden", "true");
+  image.style.width = "16px";
+  image.style.height = "16px";
+  image.style.display = "block";
+  image.style.pointerEvents = "none";
+  return image;
+}
+
+function openBilingualToolbarMenu(
+  reader: any,
+  doc: Document,
+  x: number,
+  y: number,
+): void {
+  const running = isBilingualRunning(reader);
+  const entries: ReaderMenuEntry[] = [
+    { action: "refresh", label: getString("toolbar-menu-refresh") },
+    {
+      action: "cancel",
+      label: getString("toolbar-menu-cancel"),
+      disabled: !running,
+    },
+    "separator",
+    { action: "export", label: getString("toolbar-menu-export") },
+    { action: "settings", label: getString("toolbar-menu-settings") },
+  ];
+
+  openReaderMenu(doc, {
+    x,
+    y,
+    entries,
+    onSelect: (action) => {
+      if (action === "refresh") {
+        void refreshBilingualReading(reader);
+      } else if (action === "cancel") {
+        cancelBilingualReading(reader);
+      } else if (action === "export") {
+        void exportBilingualPDF(reader);
+      } else if (action === "settings") {
+        configureTranslation(reader);
+      }
+    },
+  });
 }
 
 export function renderBilingualToolbarButtons(event: any): void {
   const { reader, doc, append } = event || {};
-  if (!reader || reader.type !== "pdf" || !doc || typeof append !== "function") return;
+  if (!reader || reader.type !== "pdf" || !doc) return;
+
+  watchReaderInteractions(reader);
+  if (typeof append !== "function") return;
+
+  registerToolbarHandlers(doc, TOOLBAR_BUTTON_CLASS, {
+    onClick: () => void toggleBilingualReading(reader),
+    onContextMenu: (contextEvent) =>
+      openBilingualToolbarMenu(
+        reader,
+        doc,
+        contextEvent.clientX,
+        contextEvent.clientY,
+      ),
+  });
+  registerToolbarHandlers(doc, REFRESH_BUTTON_CLASS, {
+    onClick: () => void refreshBilingualReading(reader),
+  });
 
   if (!doc.querySelector(`.${TOOLBAR_BUTTON_CLASS}`)) {
-    append(
-      createToolbarButton(
-        doc,
-        TOOLBAR_BUTTON_CLASS,
-        MAHJONG_EMOJI,
-        "开启/关闭中英段落对照",
-        () => void toggleBilingualReading(reader),
-      ),
+    const button = createToolbarButton(
+      doc,
+      TOOLBAR_BUTTON_CLASS,
+      "",
+      getString("toolbar-toggle-title"),
     );
+    button.append(createInterlinearIcon(doc));
+    append(button);
+  }
+
+  registerToolbarHandlers(doc, DISPLAY_BUTTON_CLASS, {
+    onClick: () => {
+      const index = DISPLAY_MODES.indexOf(getDisplayMode());
+      setDisplayMode(DISPLAY_MODES[(index + 1) % DISPLAY_MODES.length]);
+      refreshDisplayModes();
+      updateDisplayButtonState(reader, doc);
+    },
+    onContextMenu: (contextEvent) =>
+      openBilingualToolbarMenu(reader, doc, contextEvent.clientX, contextEvent.clientY),
+  });
+
+  if (!doc.querySelector(`.${DISPLAY_BUTTON_CLASS}`)) {
+    append(createToolbarButton(doc, DISPLAY_BUTTON_CLASS, "◫", ""));
+  }
+  updateDisplayButtonState(reader, doc);
+
+  if (!doc.querySelector(`.${PROGRESS_CLASS}`)) {
+    const progress = doc.createElement("span") as HTMLSpanElement;
+    progress.className = PROGRESS_CLASS;
+    progress.hidden = true;
+    append(progress);
   }
 
   if (!doc.querySelector(`.${REFRESH_BUTTON_CLASS}`)) {
@@ -959,15 +1822,77 @@ export function renderBilingualToolbarButtons(event: any): void {
         doc,
         REFRESH_BUTTON_CLASS,
         "🔄",
-        "取消当前任务、清除错误结果，并按当前设置重新翻译",
-        () => void refreshBilingualReading(reader),
+        getString("toolbar-refresh-title"),
       ),
     );
   }
+
+  updateToolbarProgress(reader);
+}
+
+function updateToolbarProgress(reader: any): void {
+  let toolbarDoc: Document | undefined;
+  try {
+    toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+  } catch (_) {
+    toolbarDoc = undefined;
+  }
+  if (!toolbarDoc) return;
+
+  const state = runStates.get(reader);
+  const running = !!state?.running;
+  const done = state?.completed || 0;
+  const total = state?.total || 0;
+
+  const progress = toolbarDoc.querySelector(`.${PROGRESS_CLASS}`) as HTMLElement | null;
+  if (progress) {
+    progress.hidden = !(running && total > 0);
+    progress.textContent = running && total > 0 ? `${done}/${total}` : "";
+  }
+
+  const toggle = toolbarDoc.querySelector(
+    `.${TOOLBAR_BUTTON_CLASS}`,
+  ) as HTMLButtonElement | null;
+  if (!toggle) return;
+  const toggleState = getToggleState(reader);
+  const visible = isTranslationVisible(toggleState);
+  toggle.setAttribute("aria-pressed", String(visible));
+  // A neutral translucent fill reads as "active" in both light and dark themes.
+  toggle.style.background = visible ? "rgba(127, 127, 127, 0.28)" : "";
+  toggle.style.borderRadius = visible ? "4px" : "";
+
+  let title: string;
+  if (running) {
+    title = getString("toolbar-toggle-running-title", { args: { done, total } });
+  } else if (toggleState === "hidden-paused") {
+    title = getString("toolbar-toggle-resume-title");
+  } else if (toggleState === "hidden") {
+    title = getString("toolbar-toggle-show-title");
+  } else if (toggleState === "shown" || toggleState === "shown-paused") {
+    title = getString("toolbar-toggle-hide-title");
+  } else {
+    title = getString("toolbar-toggle-title");
+  }
+  toggle.title = title;
+  toggle.setAttribute("aria-label", title);
 }
 
 export function cleanupBilingualReader(reader: any): void {
   cancelRun(reader);
+  toggleStates.delete(reader);
+  stopWatchingReaderInteractions(reader);
+
+  const interactions = interactionControllers.get(reader);
+  if (interactions) {
+    interactionControllers.delete(reader);
+    for (const entry of interactions) {
+      try {
+        entry.controller.dispose();
+      } catch (error) {
+        Zotero.logError(error as Error);
+      }
+    }
+  }
 
   const internal = getInternalReader(reader);
   for (const view of [internal?._primarySDTView, internal?._secondarySDTView]) {
@@ -986,9 +1911,13 @@ export function cleanupBilingualReader(reader: any): void {
     toolbarDoc = undefined;
   }
 
+  closeReaderMenu(toolbarDoc);
+
   const buttons = toolbarDoc
     ? (Array.from(
-        toolbarDoc.querySelectorAll(`.${TOOLBAR_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}`),
+        toolbarDoc.querySelectorAll(
+          `.${TOOLBAR_BUTTON_CLASS}, .${DISPLAY_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}, .${PROGRESS_CLASS}`,
+        ),
       ) as HTMLElement[])
     : [];
   for (const button of buttons) {

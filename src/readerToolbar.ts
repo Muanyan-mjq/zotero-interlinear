@@ -1,7 +1,8 @@
 import { cleanupBilingualReader, renderBilingualToolbarButtons } from "./bilingualReader";
 import { cleanupReaderUI, renderReaderExportButton } from "./readerUI";
+import { config } from "../package.json";
 
-const PLUGIN_ID = "bilingual-reader@zotero.local";
+const PLUGIN_ID = config.addonID;
 const STARTUP_RECONCILE_DELAYS_MS = [250, 1000, 3000];
 
 type ToolbarRenderer = (event: any) => void;
@@ -14,12 +15,12 @@ const toolbarRenderers: ToolbarRenderer[] = [
 let registered = false;
 let reconcileTimeouts: ReturnType<typeof setTimeout>[] = [];
 
-function applyFallbackSectionLayout(section: HTMLElement): void {
+function applyToolbarSectionLayout(section: HTMLElement): void {
   // Never inherit Zotero's generic ".section" layout rules here. Some Zotero
   // 10 builds/themes apply a vertical layout to that class, which can stack our
-  // toolbar buttons. Keep the fallback container fully namespaced and explicit.
+  // toolbar buttons. Keep our container fully namespaced and explicit.
   section.classList.remove("section");
-  section.classList.add("bilingual-reader-toolbar-section");
+  section.classList.add("interlinear-toolbar-section");
   section.style.display = "inline-flex";
   section.style.flexDirection = "row";
   section.style.alignItems = "center";
@@ -30,9 +31,9 @@ function applyFallbackSectionLayout(section: HTMLElement): void {
   section.style.overflow = "visible";
 }
 
-function getOrCreateFallbackSection(doc: Document, container: Element): HTMLElement {
+function getOrCreateToolbarSection(doc: Document, container: Element): HTMLElement {
   let section = container.querySelector(
-    ".bilingual-reader-toolbar-section",
+    ".interlinear-toolbar-section",
   ) as HTMLElement | null;
 
   if (!section) {
@@ -40,8 +41,28 @@ function getOrCreateFallbackSection(doc: Document, container: Element): HTMLElem
     container.append(section);
   }
 
-  applyFallbackSectionLayout(section);
+  applyToolbarSectionLayout(section);
   return section;
+}
+
+/**
+ * Zotero's renderToolbar append clones nodes into the reader iframe with
+ * Components.utils.cloneInto(). Clones lose event listeners and can lose child
+ * nodes, which made the toolbar buttons inert and icon-less in real Zotero.
+ * Append our controls directly to the toolbar container instead.
+ */
+export function resolveToolbarAppend(
+  event: any,
+): ((...elements: HTMLElement[]) => void) | null {
+  const doc = event?.doc as Document | undefined;
+  const container = doc?.querySelector?.(".toolbar .custom-sections") || null;
+  if (doc && container) {
+    return (...elements: HTMLElement[]) => {
+      if (!elements.length) return;
+      getOrCreateToolbarSection(doc, container).append(...elements);
+    };
+  }
+  return typeof event?.append === "function" ? event.append : null;
 }
 
 /** Catch readers whose toolbar mounted before plugin installation/startup. */
@@ -51,16 +72,9 @@ export function reconcileReaderToolbars(): void {
     try {
       if (reader.type !== "pdf" || reader._isUninitialized) continue;
       const doc = reader._iframeWindow?.document as Document | undefined;
-      const container = doc?.querySelector(".toolbar .custom-sections");
-      if (!doc || !container) continue;
+      if (!doc?.querySelector(".toolbar .custom-sections")) continue;
 
-      renderReaderToolbar({
-        reader,
-        doc,
-        append: (...elements: HTMLElement[]) => {
-          getOrCreateFallbackSection(doc, container).append(...elements);
-        },
-      });
+      renderReaderToolbar({ reader, doc });
     } catch (error) {
       // A reader can close or replace its iframe while being inspected.
       Zotero.logError(error as Error);
@@ -87,16 +101,30 @@ function scheduleStartupReconcile(): void {
 }
 
 /**
- * Render every Bilingual Reader control from one Zotero Reader listener.
+ * Render every Interlinear control from one Zotero Reader listener.
  *
  * Zotero dispatches Reader listeners synchronously without isolating exceptions.
  * Keeping our controls in one listener removes ordering dependencies, while the
  * per-control guard prevents one optional control from hiding the other icons.
  */
+function resolveReaderDocument(event: any): Document | null {
+  try {
+    const doc = event?.reader?._iframeWindow?.document as Document | undefined;
+    if (doc) return doc;
+  } catch (_) {
+    // The reader window can disappear while its event is still being handled.
+  }
+  return (event?.doc as Document | undefined) || null;
+}
+
 export function renderReaderToolbar(event: any): void {
+  const doc = resolveReaderDocument(event);
+  const withDoc = doc && doc !== event?.doc ? { ...event, doc } : event;
+  const append = resolveToolbarAppend(withDoc);
+  const target = append ? { ...withDoc, append } : withDoc;
   for (const render of toolbarRenderers) {
     try {
-      render(event);
+      render(target);
     } catch (error) {
       Zotero.logError(error as Error);
     }
@@ -132,7 +160,7 @@ export function unregisterReaderToolbar(): void {
   for (const reader of readers) {
     cleanupReader(reader);
     try {
-      reader._iframeWindow?.document?.querySelector(".bilingual-reader-toolbar-section")?.remove();
+      reader._iframeWindow?.document?.querySelector(".interlinear-toolbar-section")?.remove();
     } catch (_) {
       // The reader may already have closed.
     }

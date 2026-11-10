@@ -1,5 +1,7 @@
 import { assert } from "chai";
 import { cleanupReadingLayout, observeReadingLayout } from "../src/readingLayout";
+import { toggleBilingualReading, cleanupBilingualReader } from "../src/bilingualReader";
+import { clearTranslationCache } from "../src/translationCache";
 
 function nativeTest(title: string, run: () => Promise<void>): void {
   it(title, async function () {
@@ -131,7 +133,7 @@ describe("native Zotero reading-mode highlight layout", function () {
     async function () {
       assert.isBelow(alignmentError(), 2);
       const block = doc.createElement("div");
-      block.className = "bilingual-reader-translation";
+      block.className = "interlinear-translation";
       block.style.cssText = "height:70px;line-height:20px";
       block.textContent = "等待翻译…";
       doc.querySelector('[data-ref-path="0"]')!.after(block);
@@ -193,6 +195,52 @@ describe("native Zotero reading-mode highlight layout", function () {
     } finally {
       cleanupReadingLayout(doc);
       view._handleViewUpdate = original;
+    }
+  });
+
+  nativeTest("keeps native highlights aligned when hiding and re-showing translations", async function () {
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const batchPref = "extensions.zotero.interlinear.maxBatchParagraphs";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousBatch = Zotero.Prefs.get(batchPref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const previousSDT = (Zotero as any).SDT;
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      Zotero.Prefs.set(batchPref, 1, true);
+      (Zotero as any).SDT = { ensure: async () => undefined };
+      (Zotero.HTTP as any).request = async () => ({
+        status: 200,
+        response: [[["对齐测试译文。", "", null, null]]],
+      });
+
+      await toggleBilingualReading(reader);
+      assert.isBelow(alignmentError(), 2, "Inserted translations must stay aligned");
+      assert.isAbove(doc.querySelectorAll(".interlinear-translation").length, 0);
+
+      await toggleBilingualReading(reader);
+      assert.equal(doc.querySelector("#sdt-content")?.getAttribute("data-interlinear-hidden"), "true");
+      assert.isBelow(alignmentError(), 2, "Hiding must recalculate native highlight coordinates");
+
+      await toggleBilingualReading(reader);
+      assert.isNull(doc.querySelector("#sdt-content")?.getAttribute("data-interlinear-hidden"));
+      assert.isBelow(alignmentError(), 2, "Re-showing must recalculate highlight coordinates again");
+      assert.equal(
+        view._annotations[0].position.rects[0][1],
+        690,
+        "Stored PDF coordinates stay unchanged across hide/show",
+      );
+    } finally {
+      cleanupBilingualReader(reader);
+      clearTranslationCache();
+      (Zotero as any).SDT = previousSDT;
+      (Zotero.HTTP as any).request = previousRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+      if (previousBatch === undefined) Zotero.Prefs.clear(batchPref, true);
+      else Zotero.Prefs.set(batchPref, previousBatch, true);
     }
   });
 });

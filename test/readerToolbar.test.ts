@@ -1,10 +1,12 @@
 import { assert } from "chai";
+import { config } from "../package.json";
 import {
   reconcileReaderToolbars,
   registerReaderToolbar,
   renderReaderToolbar,
   unregisterReaderToolbar,
 } from "../src/readerToolbar";
+import { closeReaderMenu } from "../src/readerMenu";
 
 describe("reader toolbar recovery", function () {
   let originalReaders: any[];
@@ -17,7 +19,7 @@ describe("reader toolbar recovery", function () {
     const { AddonManager } = ChromeUtils.importESModule(
       "resource://gre/modules/AddonManager.sys.mjs",
     );
-    installedAddon = await AddonManager.getAddonByID("bilingual-reader@zotero.local");
+    installedAddon = await AddonManager.getAddonByID(config.addonID);
     await installedAddon.disable();
   });
 
@@ -44,7 +46,7 @@ describe("reader toolbar recovery", function () {
 
   function assertButtons(doc: Document, expected = 1) {
     for (const name of ["toolbar", "refresh", "export"]) {
-      assert.lengthOf(doc.querySelectorAll(`.bilingual-reader-${name}-button`), expected);
+      assert.lengthOf(doc.querySelectorAll(`.interlinear-${name}-button`), expected);
     }
   }
 
@@ -79,7 +81,7 @@ describe("reader toolbar recovery", function () {
     reconcileReaderToolbars();
 
     const section = reader._iframeWindow.document.querySelector(
-      ".bilingual-reader-toolbar-section",
+      ".interlinear-toolbar-section",
     ) as HTMLElement | null;
     assert.exists(section);
     assert.isFalse(section!.classList.contains("section"));
@@ -134,7 +136,48 @@ describe("reader toolbar recovery", function () {
     await Zotero.Promise.delay(400);
     assertButtons(reader._iframeWindow.document, 0);
     assert.notExists(
-      reader._iframeWindow.document.querySelector(".bilingual-reader-toolbar-section"),
+      reader._iframeWindow.document.querySelector(".interlinear-toolbar-section"),
     );
+  });
+
+  it("renders interactive controls when Zotero's cloneInto append throws", function () {
+    const reader = makeReader();
+    const doc = reader._iframeWindow.document as Document;
+
+    renderReaderToolbar({
+      reader,
+      doc,
+      append: () => {
+        // Zotero's renderToolbar append hands DOM nodes to
+        // Components.utils.cloneInto(), which throws for DOM nodes.
+        throw new Error("Encountered unsupported value type writing structured clone");
+      },
+    });
+
+    const toggle = doc.querySelector(
+      ".interlinear-toolbar-button",
+    ) as HTMLButtonElement | null;
+    assert.exists(toggle);
+    assert.isTrue(
+      doc.querySelector(".interlinear-toolbar-section")?.contains(toggle as Node),
+      "controls must be injected directly, not through the cloning append",
+    );
+    const icon = toggle?.querySelector("img") as HTMLImageElement | null;
+    assert.exists(icon);
+    assert.match(String(icon?.src), /^data:image\/png;base64,/);
+    assert.equal(icon?.style.width, "16px");
+    assert.equal(icon?.style.height, "16px");
+
+    const win = Zotero.getMainWindow() as any;
+    toggle!.dispatchEvent(
+      new win.MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 20,
+      }),
+    );
+    assert.exists(doc.querySelector(".interlinear-reader-menu"));
+    closeReaderMenu(doc);
   });
 });

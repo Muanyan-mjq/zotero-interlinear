@@ -1,5 +1,10 @@
-const TRANSLATION_CLASS = "bilingual-reader-translation";
-const EXPORT_BUTTON_CLASS = "bilingual-reader-export-button";
+import { buildTranslationCSS } from "./appearance";
+import { getAppearance, getTargetLanguage } from "./settings";
+import { getString } from "./utils/locale";
+import { registerToolbarHandlers } from "./toolbarEvents";
+
+const TRANSLATION_CLASS = "interlinear-translation";
+const EXPORT_BUTTON_CLASS = "interlinear-export-button";
 const PRINTER_EMOJI = "🖨️";
 
 function getInternalReader(reader: any): any {
@@ -45,9 +50,9 @@ function confirmMessage(reader: any, message: string): boolean {
 }
 
 function applyEmojiButtonStyle(button: HTMLButtonElement): void {
-  button.style.minWidth = "34px";
-  button.style.paddingInline = "5px";
-  button.style.fontSize = "19px";
+  button.style.minWidth = "24px";
+  button.style.paddingInline = "2px";
+  button.style.fontSize = "16px";
   button.style.lineHeight = "1";
   button.style.fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
 }
@@ -57,7 +62,6 @@ function createToolbarEmojiButton(
   className: string,
   emoji: string,
   title: string,
-  onClick: (button: HTMLButtonElement) => void,
 ): HTMLButtonElement {
   const button = doc.createElement("button");
   button.className = `toolbar-button ${className}`;
@@ -67,12 +71,9 @@ function createToolbarEmojiButton(
   button.title = title;
   button.setAttribute("aria-label", title);
   applyEmojiButtonStyle(button);
-
-  button.addEventListener("click", (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onClick(button);
-  });
+  button.style.display = "inline-flex";
+  button.style.alignItems = "center";
+  button.style.justifyContent = "center";
   return button;
 }
 
@@ -83,7 +84,7 @@ function sanitizeFileName(value: string): string {
     return character;
   });
   const cleaned = chars.join("").replace(/\s+/g, " ").trim();
-  return (cleaned || "中英对照翻译").slice(0, 120);
+  return (cleaned || getString("export-default-title")).slice(0, 120);
 }
 
 function escapeHTML(value: string): string {
@@ -108,7 +109,7 @@ function getTranslationStats(doc: Document): { done: number; unfinished: number 
 
 function buildExportHTML(doc: Document, title: string): string {
   const sourceRoot = doc.querySelector("#sdt-content") as HTMLElement | null;
-  if (!sourceRoot) throw new Error("无法读取当前 Zotero 阅读模式正文。");
+  if (!sourceRoot) throw new Error(getString("export-error-source"));
 
   const root = sourceRoot.cloneNode(true) as HTMLElement;
   const unfinishedBlocks = Array.from(
@@ -122,11 +123,11 @@ function buildExportHTML(doc: Document, title: string): string {
   for (const element of removable) element.remove();
 
   const baseURI = doc.baseURI || "about:blank";
-  const safeTitle = escapeHTML(title || "中英对照翻译");
+  const safeTitle = escapeHTML(title || getString("export-default-title"));
   const safeBaseURI = escapeHTML(baseURI);
 
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${escapeHTML(getTargetLanguage())}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -186,17 +187,7 @@ function buildExportHTML(doc: Document, title: string): string {
     color: inherit;
     text-decoration: none;
   }
-  .${TRANSLATION_CLASS} {
-    margin: 0.18em 0 0.7em !important;
-    padding: 0.12em 0 0.12em 0.78em !important;
-    border-left: 2.2pt solid #c7354a !important;
-    color: #222 !important;
-    background: transparent !important;
-    font-size: 10.2pt !important;
-    line-height: 1.58 !important;
-    break-inside: avoid-page;
-    page-break-inside: avoid;
-  }
+  ${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "print")}
   .${TRANSLATION_CLASS}[data-state="done"]::before {
     content: "";
   }
@@ -217,22 +208,29 @@ async function waitForGeneratedFile(file: any): Promise<void> {
     }
     await Zotero.Promise.delay(100);
   }
-  throw new Error("PDF 打印任务已结束，但没有检测到有效的输出文件。");
+  throw new Error(getString("export-error-no-output"));
 }
 
 async function importExportedPDF(tempFile: any, sourceAttachment: any): Promise<any> {
   const parentItemID = Number(sourceAttachment?.parentItemID || 0);
   if (!parentItemID) {
-    throw new Error("当前 PDF 没有父级文献条目，无法作为条目附件保存。请先为该 PDF 创建父级条目。");
+    throw new Error(getString("export-error-no-parent"));
   }
 
   const parentItem = Zotero.Items.get(parentItemID);
-  const parentTitle = String(parentItem?.getField?.("title") || "中英对照翻译").trim();
+  const parentTitle = String(
+    parentItem?.getField?.("title") || getString("export-default-title"),
+  ).trim();
   const attachment = await (Zotero.Attachments as any).importFromFile({
     file: tempFile,
     parentItemID,
   });
-  attachment.setField("title", `${parentTitle || "文献"} - 中英对照翻译`);
+  attachment.setField(
+    "title",
+    getString("export-attachment-title", {
+      args: { title: parentTitle || getString("export-default-item") },
+    }),
+  );
   await attachment.saveTx();
   return attachment;
 }
@@ -240,11 +238,11 @@ async function importExportedPDF(tempFile: any, sourceAttachment: any): Promise<
 function getHiddenBrowserConstructor(): any {
   const chromeUtils = (globalThis as any).ChromeUtils;
   if (!chromeUtils?.importESModule) {
-    throw new Error("当前 Zotero 无法加载隐藏打印浏览器模块。");
+    throw new Error(getString("export-error-hidden-browser"));
   }
   const module = chromeUtils.importESModule("chrome://zotero/content/HiddenBrowser.mjs");
   if (!module?.HiddenBrowser) {
-    throw new Error("当前 Zotero 未提供 HiddenBrowser 打印模块。");
+    throw new Error(getString("export-error-hidden-browser-missing"));
   }
   return module.HiddenBrowser;
 }
@@ -253,7 +251,7 @@ async function printHTMLToPDF(html: string, tempFile: any): Promise<void> {
   const mainWindow = Zotero.getMainWindow() as any;
   const printUtils = mainWindow?.PrintUtils;
   if (!printUtils?.getPrintSettings) {
-    throw new Error("无法取得 Zotero 的 PDF 打印设置。");
+    throw new Error(getString("export-error-print-settings"));
   }
 
   const HiddenBrowser = getHiddenBrowserConstructor();
@@ -261,7 +259,7 @@ async function printHTMLToPDF(html: string, tempFile: any): Promise<void> {
 
   try {
     const loaded = await browser.load(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    if (!loaded) throw new Error("用于导出的中英对照页面加载失败。");
+    if (!loaded) throw new Error(getString("export-error-page-load"));
 
     try {
       await browser.waitForDocument({ allowInteractiveAfter: 1500 });
@@ -272,7 +270,7 @@ async function printHTMLToPDF(html: string, tempFile: any): Promise<void> {
 
     const browsingContext = browser.browsingContext;
     if (!browsingContext?.print) {
-      throw new Error("Zotero 隐藏打印浏览器没有可用的 PDF 打印上下文。");
+      throw new Error(getString("export-error-print-context"));
     }
 
     const settings = printUtils.getPrintSettings("", false);
@@ -308,13 +306,13 @@ async function printHTMLToPDF(html: string, tempFile: any): Promise<void> {
 export async function exportBilingualPDF(reader: any): Promise<void> {
   const doc = getSDTDocument(reader);
   if (!doc?.querySelector("#sdt-content")) {
-    showMessage(reader, "请先在 Zotero 阅读模式中开启中英对照，再导出 PDF。");
+    showMessage(reader, getString("export-error-not-active"));
     return;
   }
 
   const { done, unfinished } = getTranslationStats(doc);
   if (!done) {
-    showMessage(reader, "当前没有已成功完成的译文，暂时无法导出中英对照 PDF。");
+    showMessage(reader, getString("export-error-no-translations"));
     return;
   }
 
@@ -322,36 +320,38 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
     unfinished > 0 &&
     !confirmMessage(
       reader,
-      `当前已有 ${done} 段译文完成，仍有 ${unfinished} 段未成功完成。\n\n是否只导出已经成功的中英对照内容？`,
+      getString("export-confirm-partial", {
+        args: { done: String(done), unfinished: String(unfinished) },
+      }),
     )
   ) {
     return;
   }
 
-  if (
-    !confirmMessage(
-      reader,
-      "将生成一个新的中英对照 PDF，并作为附件加入这篇文献的 Zotero 条目。\n\n继续导出？",
-    )
-  ) {
+  if (!confirmMessage(reader, getString("export-confirm-continue"))) {
     return;
   }
 
   const itemID = Number(reader?.itemID || 0);
   const sourceAttachment = itemID ? Zotero.Items.get(itemID) : null;
   if (!sourceAttachment) {
-    showMessage(reader, "无法取得当前 PDF 的 Zotero 附件条目。");
+    showMessage(reader, getString("export-error-no-attachment"));
     return;
   }
 
   const parentItemID = Number((sourceAttachment as any).parentItemID || 0);
   const parentItem = parentItemID ? Zotero.Items.get(parentItemID) : null;
   const parentTitle = String(
-    parentItem?.getField?.("title") || sourceAttachment.getField?.("title") || "文献",
+    parentItem?.getField?.("title") ||
+      sourceAttachment.getField?.("title") ||
+      getString("export-default-item"),
   );
-  const fileName = sanitizeFileName(`${parentTitle} - 中英对照翻译.pdf`);
+  const attachmentTitle = getString("export-attachment-title", {
+    args: { title: parentTitle },
+  });
+  const fileName = sanitizeFileName(`${attachmentTitle}.pdf`);
   const tempFile = Zotero.getTempDirectory();
-  tempFile.append(`bilingual-reader-${Date.now()}-${fileName}`);
+  tempFile.append(`interlinear-${Date.now()}-${fileName}`);
 
   try {
     if (tempFile.exists()) tempFile.remove(false);
@@ -361,12 +361,17 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
 
   let importedAttachment: any = null;
   try {
-    const html = buildExportHTML(doc, `${parentTitle} - 中英对照翻译`);
+    const html = buildExportHTML(doc, attachmentTitle);
     await printHTMLToPDF(html, tempFile);
     importedAttachment = await importExportedPDF(tempFile, sourceAttachment);
   } catch (error: any) {
     Zotero.logError(error as Error);
-    showMessage(reader, `导出中英对照 PDF 失败：${error?.message || String(error)}`);
+    showMessage(
+      reader,
+      getString("export-error-failed", {
+        args: { detail: String(error?.message || error) },
+      }),
+    );
     return;
   } finally {
     try {
@@ -377,7 +382,7 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
   }
 
   if (importedAttachment) {
-    showMessage(reader, "已生成中英对照 PDF，并保存到当前文献的 Zotero 附件中。");
+    showMessage(reader, getString("export-success"));
   }
 }
 
@@ -385,20 +390,23 @@ export function renderReaderExportButton(event: any): void {
   const { reader, doc, append } = event || {};
   if (!reader || reader.type !== "pdf" || !doc || typeof append !== "function") return;
 
+  registerToolbarHandlers(doc, EXPORT_BUTTON_CLASS, {
+    onClick: (_event, button) => {
+      if (button.disabled) return;
+      button.disabled = true;
+      void exportBilingualPDF(reader).finally(() => {
+        button.disabled = false;
+      });
+    },
+  });
+
   if (!doc.querySelector(`.${EXPORT_BUTTON_CLASS}`)) {
     append(
       createToolbarEmojiButton(
         doc,
         EXPORT_BUTTON_CLASS,
         PRINTER_EMOJI,
-        "将当前中英对照结果导出为 PDF 并添加到文献附件",
-        (button) => {
-          if (button.disabled) return;
-          button.disabled = true;
-          void exportBilingualPDF(reader).finally(() => {
-            button.disabled = false;
-          });
-        },
+        getString("toolbar-export-title"),
       ),
     );
   }

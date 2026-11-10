@@ -74,7 +74,12 @@ function _getString(
 ): string {
   const localStringWithPrefix = `${config.addonRef}-${localeString}`;
   const { branch, args } = options;
-  const pattern = addon.data.locale?.current.formatMessagesSync([
+  // Integration tests import src modules directly, outside the addon bootstrap
+  // where `addon` exists. Degrade to the message id instead of throwing.
+  if (typeof addon === "undefined" || !addon?.data?.locale?.current) {
+    return localStringWithPrefix;
+  }
+  const pattern = addon.data.locale.current.formatMessagesSync([
     { id: localStringWithPrefix, args },
   ])[0] as Pattern;
 

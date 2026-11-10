@@ -1,5 +1,5 @@
-const BASE = "extensions.zotero.bilingualreader";
-const TARGET_LANG = "zh-CN";
+const BASE = "extensions.zotero.interlinear";
+const DEFAULT_TARGET_LANG = "zh-CN";
 const CACHE_PREFIX = `${BASE}.cache.v4.`;
 const LEGACY_CACHE_PREFIX = `${BASE}.cache.v3.`;
 const CACHE_INDEX_KEY = `${CACHE_PREFIX}index`;
@@ -51,14 +51,30 @@ function safeItemKey(itemKey: string): string {
   return itemKey.replace(/[^a-z0-9_-]/giu, "_").slice(0, 64) || "reader";
 }
 
-function cacheKey(itemKey: string, sourceText: string, engineTag: string): string {
-  return `${CACHE_PREFIX}${hash(engineTag)}.${safeItemKey(itemKey)}.${sourceText.length}.${hash(
-    sourceText,
-  )}.${TARGET_LANG}`;
+function safeLanguage(targetLang: string): string {
+  return targetLang.replace(/[^a-z0-9-]/giu, "_").slice(0, 24) || "und";
 }
 
-function legacyCacheKey(itemKey: string, sourceText: string, engineTag: string): string {
-  return `${LEGACY_CACHE_PREFIX}${hash(engineTag)}.${itemKey}.${hash(sourceText)}.${TARGET_LANG}`;
+function cacheKey(
+  itemKey: string,
+  sourceText: string,
+  engineTag: string,
+  targetLang: string,
+): string {
+  return `${CACHE_PREFIX}${hash(engineTag)}.${safeItemKey(itemKey)}.${sourceText.length}.${hash(
+    sourceText,
+  )}.${safeLanguage(targetLang)}`;
+}
+
+function legacyCacheKey(
+  itemKey: string,
+  sourceText: string,
+  engineTag: string,
+  targetLang: string,
+): string {
+  return `${LEGACY_CACHE_PREFIX}${hash(engineTag)}.${itemKey}.${hash(
+    sourceText,
+  )}.${safeLanguage(targetLang)}`;
 }
 
 function getCacheIndex(): CacheIndexEntry[] {
@@ -137,18 +153,26 @@ export function loadCachedTranslation(
   sourceText: string,
   engineTag: string,
   isFailureText: (text: string) => boolean,
+  targetLang = DEFAULT_TARGET_LANG,
 ): string | undefined {
-  const key = cacheKey(itemKey, sourceText, engineTag);
+  const key = cacheKey(itemKey, sourceText, engineTag, targetLang);
   let value = prefGet(key);
 
   // Lazily migrate successful v0.1.3 entries. This avoids a costly rewrite of
   // every old preference at startup while preserving translations in use.
   if (typeof value !== "string" || !value.trim()) {
-    const legacyKey = legacyCacheKey(itemKey, sourceText, engineTag);
+    const legacyKey = legacyCacheKey(itemKey, sourceText, engineTag, targetLang);
     const legacyValue = prefGet(legacyKey);
     if (typeof legacyValue === "string" && legacyValue.trim() && !isFailureText(legacyValue)) {
       value = legacyValue;
-      saveCachedTranslation(itemKey, sourceText, legacyValue, engineTag, isFailureText);
+      saveCachedTranslation(
+        itemKey,
+        sourceText,
+        legacyValue,
+        engineTag,
+        isFailureText,
+        targetLang,
+      );
       prefClear(legacyKey);
     }
   }
@@ -171,10 +195,11 @@ export function saveCachedTranslation(
   translation: string,
   engineTag: string,
   isFailureText: (text: string) => boolean,
+  targetLang = DEFAULT_TARGET_LANG,
 ): void {
   if (isFailureText(translation)) return;
 
-  const key = cacheKey(itemKey, sourceText, engineTag);
+  const key = cacheKey(itemKey, sourceText, engineTag, targetLang);
   prefSet(key, translation);
   touchCacheEntry(key, translation.length);
   pruneCache();

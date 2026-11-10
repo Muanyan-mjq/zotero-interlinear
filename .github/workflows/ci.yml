@@ -77,14 +77,14 @@ jobs:
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
-          XPI=".scaffold/build/bilingual-reader.xpi"
+          XPI=".scaffold/build/interlinear.xpi"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$XPI" --clobber
           else
             gh release create "$TAG" "$XPI" \
               --target "$GITHUB_SHA" \
-              --title "Bilingual Reader ${TAG}" \
-              --notes "Zotero 10 PDF 阅读模式段落中英对照翻译插件。直接调用 Translate for Zotero 的翻译服务，并已通过 macOS 与 Linux 构建检查。"
+              --title "Interlinear ${TAG}" \
+              --notes "Zotero 10 PDF 阅读模式段落中英对照翻译插件。内置 Google / OpenAI 兼容 / Claude / Gemini / Ollama 五种翻译后端，无需安装其他插件，并已通过 macOS 与 Linux 构建检查。"
           fi
       - name: Publish Zotero update metadata
         shell: bash
@@ -97,6 +97,6 @@ jobs:
           else
             gh release create release "$UPDATE_JSON" "$UPDATE_BETA_JSON" \
               --target "$GITHUB_SHA" \
-              --title "Bilingual Reader 更新元数据" \
+              --title "Interlinear 更新元数据" \
               --notes "供 Zotero 自动更新使用的 update.json 与 update-beta.json。"
           fi

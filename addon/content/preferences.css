@@ -1,0 +1,876 @@
+/* Interlinear preferences pane.
+   Everything is scoped to #interlinear-settings-root, which now wraps the whole
+   page, so the card, field, tab and state styles also reach the settings
+   sections (they used to be siblings of the root and were left unstyled). */
+
+#interlinear-settings-root {
+  --interlinear-accent: #c7354a;
+  --interlinear-accent-hover: #ad2b3e;
+  --interlinear-accent-soft: rgba(199, 53, 74, 0.12);
+  --interlinear-border: color-mix(in srgb, CanvasText 16%, Canvas);
+  --interlinear-border-strong: color-mix(in srgb, CanvasText 28%, Canvas);
+  --interlinear-surface: color-mix(in srgb, CanvasText 4%, Canvas);
+  --interlinear-surface-hover: color-mix(in srgb, CanvasText 7%, Canvas);
+  --interlinear-muted: color-mix(in srgb, CanvasText 68%, Canvas);
+  --interlinear-success: #1f8a4c;
+  --interlinear-warning: #b45309;
+  --interlinear-error: #c7354a;
+  --interlinear-radius: 7px;
+  --interlinear-radius-lg: 11px;
+  --interlinear-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --interlinear-motion: 150ms cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: CanvasText;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#interlinear-settings-root .interlinear-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 18px 22px 40px;
+}
+
+/* ---------------------------------------------------------------- hero */
+
+#interlinear-settings-root .interlinear-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 14px;
+}
+
+#interlinear-settings-root .interlinear-brand {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 60px;
+}
+
+#interlinear-settings-root .interlinear-brand img {
+  display: block;
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  border-radius: 13px;
+  box-shadow: var(--interlinear-shadow);
+}
+
+#interlinear-settings-root .interlinear-hero-text {
+  min-width: 0;
+}
+
+#interlinear-settings-root .interlinear-lede {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--interlinear-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+#interlinear-settings-root .interlinear-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: var(--interlinear-radius-lg);
+  background: var(--interlinear-surface);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#interlinear-settings-root .interlinear-callout::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--interlinear-warning);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* --------------------------------------------------------- sticky header */
+
+#interlinear-settings-root .interlinear-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 0 22px;
+  padding: 8px 0 0;
+  background: Canvas;
+}
+
+#interlinear-settings-root .interlinear-actionbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 6px 0 10px;
+}
+
+#interlinear-settings-root .interlinear-tabs {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: -1px;
+  border-bottom: 1px solid var(--interlinear-border);
+}
+
+#interlinear-settings-root .interlinear-tab {
+  appearance: none;
+  -moz-appearance: none;
+  margin: 0 0 -1px;
+  padding: 8px 13px 9px;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--interlinear-radius) var(--interlinear-radius) 0 0;
+  background: transparent;
+  color: var(--interlinear-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--interlinear-motion),
+    color var(--interlinear-motion);
+}
+
+#interlinear-settings-root .interlinear-tab:hover {
+  background: var(--interlinear-surface);
+  color: CanvasText;
+}
+
+#interlinear-settings-root .interlinear-tab[aria-selected="true"] {
+  border-bottom-color: var(--interlinear-accent);
+  background: var(--interlinear-surface);
+  color: CanvasText;
+}
+
+/* ------------------------------------------------------------- sections */
+
+#interlinear-settings-root .interlinear-content {
+  display: block;
+}
+
+#interlinear-settings-root .interlinear-section {
+  margin: 0 0 30px;
+  scroll-margin-top: 112px;
+}
+
+#interlinear-settings-root .interlinear-section[hidden] {
+  display: none !important;
+}
+
+#interlinear-settings-root .interlinear-section-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px;
+}
+
+#interlinear-settings-root .interlinear-section-head::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--interlinear-accent);
+}
+
+#interlinear-settings-root h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+#interlinear-settings-root .interlinear-card {
+  padding: 16px 18px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: var(--interlinear-radius-lg);
+  background: var(--interlinear-surface);
+  box-shadow: var(--interlinear-shadow);
+}
+
+#interlinear-settings-root .interlinear-subtitle {
+  margin: 0 0 12px;
+  color: CanvasText;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+#interlinear-settings-root .interlinear-card > .interlinear-subtitle:not(:first-child) {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--interlinear-border);
+}
+
+/* --------------------------------------------------------------- fields */
+
+#interlinear-settings-root .interlinear-field {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr);
+  column-gap: 18px;
+  row-gap: 5px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+
+#interlinear-settings-root .interlinear-field-label {
+  justify-self: start;
+  color: CanvasText;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+#interlinear-settings-root .interlinear-field-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+#interlinear-settings-root .interlinear-field-stacked {
+  display: block;
+}
+
+#interlinear-settings-root .interlinear-field-stacked .interlinear-field-label {
+  display: block;
+  margin-bottom: 6px;
+  white-space: normal;
+}
+
+#interlinear-settings-root .interlinear-help {
+  max-width: 68ch;
+  margin: 0 0 12px;
+  color: var(--interlinear-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+#interlinear-settings-root .interlinear-field > .interlinear-help {
+  grid-column: 2;
+  margin: 0;
+}
+
+#interlinear-settings-root .interlinear-field > .interlinear-inline-error {
+  grid-column: 2;
+  margin: 0;
+}
+
+#interlinear-settings-root .interlinear-help:last-child {
+  margin-bottom: 0;
+}
+
+#interlinear-settings-root .interlinear-help-inline {
+  margin: 0;
+}
+
+#interlinear-settings-root .interlinear-note {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: var(--interlinear-radius);
+  background: color-mix(in srgb, CanvasText 2%, Canvas);
+  color: var(--interlinear-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#interlinear-settings-root .interlinear-divider {
+  height: 1px;
+  margin: 18px 0;
+  background: var(--interlinear-border);
+}
+
+/* --------------------------------------------------------------- inputs */
+
+#interlinear-settings-root .interlinear-input,
+#interlinear-settings-root .interlinear-select,
+#interlinear-settings-root .interlinear-textarea {
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--interlinear-border-strong);
+  border-radius: var(--interlinear-radius);
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  transition:
+    border-color var(--interlinear-motion),
+    background-color var(--interlinear-motion);
+}
+
+#interlinear-settings-root .interlinear-input {
+  width: 100%;
+  max-width: 440px;
+}
+
+#interlinear-settings-root .interlinear-select {
+  width: 100%;
+  max-width: 280px;
+}
+
+#interlinear-settings-root .interlinear-select-wide {
+  max-width: 440px;
+}
+
+#interlinear-settings-root .interlinear-input-number {
+  width: 112px;
+  max-width: 112px;
+}
+
+#interlinear-settings-root .interlinear-input-shortcut {
+  width: 220px;
+  max-width: 220px;
+  font-variant-numeric: tabular-nums;
+}
+
+#interlinear-settings-root .interlinear-textarea {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  min-height: 92px;
+  resize: vertical;
+}
+
+#interlinear-settings-root .interlinear-textarea-mono {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+#interlinear-settings-root .interlinear-input:hover,
+#interlinear-settings-root .interlinear-select:hover,
+#interlinear-settings-root .interlinear-textarea:hover {
+  border-color: var(--interlinear-accent);
+}
+
+#interlinear-settings-root .interlinear-input::placeholder,
+#interlinear-settings-root .interlinear-textarea::placeholder {
+  color: var(--interlinear-muted);
+  opacity: 1;
+}
+
+#interlinear-settings-root .interlinear-unit {
+  color: var(--interlinear-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* -------------------------------------------------------------- checkbox */
+
+#interlinear-settings-root .interlinear-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+#interlinear-settings-root .interlinear-checkbox {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--interlinear-accent);
+}
+
+#interlinear-settings-root .interlinear-check-label {
+  color: CanvasText;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* --------------------------------------------------------------- buttons */
+
+#interlinear-settings-root .interlinear-button {
+  appearance: none;
+  -moz-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 5px 13px;
+  border: 1px solid var(--interlinear-border-strong);
+  border-radius: var(--interlinear-radius);
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--interlinear-motion),
+    border-color var(--interlinear-motion),
+    transform var(--interlinear-motion);
+}
+
+#interlinear-settings-root .interlinear-button:hover {
+  border-color: var(--interlinear-accent);
+  background: var(--interlinear-surface-hover);
+}
+
+#interlinear-settings-root .interlinear-button:active {
+  transform: translateY(1px);
+}
+
+#interlinear-settings-root .interlinear-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
+#interlinear-settings-root .interlinear-button-primary {
+  padding: 7px 18px;
+  border-color: var(--interlinear-accent);
+  background: var(--interlinear-accent);
+  color: #ffffff;
+  font-weight: 650;
+}
+
+#interlinear-settings-root .interlinear-button-primary:hover {
+  border-color: var(--interlinear-accent-hover);
+  background: var(--interlinear-accent-hover);
+}
+
+#interlinear-settings-root .interlinear-button-small {
+  min-height: 26px;
+  padding: 3px 10px;
+  border-color: var(--interlinear-border);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+#interlinear-settings-root .interlinear-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* ---------------------------------------------------------------- status */
+
+#interlinear-settings-root .interlinear-settings-status,
+#interlinear-settings-root .interlinear-test-status,
+#interlinear-settings-root .interlinear-inline-status {
+  color: CanvasText;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#interlinear-settings-root .interlinear-settings-status:empty,
+#interlinear-settings-root .interlinear-test-status:empty,
+#interlinear-settings-root .interlinear-inline-status:empty {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-settings-status::before,
+#interlinear-settings-root .interlinear-test-status::before,
+#interlinear-settings-root .interlinear-inline-status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--interlinear-success);
+  vertical-align: 1px;
+}
+
+#interlinear-settings-root .interlinear-settings-status[data-state="running"]::before,
+#interlinear-settings-root .interlinear-test-status[data-state="running"]::before {
+  background: var(--interlinear-accent);
+}
+
+#interlinear-settings-root .interlinear-settings-status[data-state="warning"]::before,
+#interlinear-settings-root .interlinear-test-status[data-state="warning"]::before {
+  background: var(--interlinear-warning);
+}
+
+#interlinear-settings-root .interlinear-settings-status[data-state="error"]::before,
+#interlinear-settings-root .interlinear-test-status[data-state="error"]::before {
+  background: var(--interlinear-error);
+}
+
+#interlinear-settings-root .interlinear-settings-status[data-state="success"]::before,
+#interlinear-settings-root .interlinear-test-status[data-state="success"]::before {
+  background: var(--interlinear-success);
+}
+
+#interlinear-settings-root .interlinear-save-hint {
+  margin-left: auto;
+  color: CanvasText;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+#interlinear-settings-root .interlinear-save-hint:empty {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-save-hint::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--interlinear-warning);
+  vertical-align: 1px;
+}
+
+#interlinear-settings-root .interlinear-inline-error {
+  display: block;
+  color: CanvasText;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+#interlinear-settings-root .interlinear-inline-error:empty {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-inline-error::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--interlinear-error);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+}
+
+#interlinear-settings-root .interlinear-warning {
+  margin: 0 0 12px;
+  color: CanvasText;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+#interlinear-settings-root .interlinear-warning:empty {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-warning::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--interlinear-warning);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+}
+
+#interlinear-settings-root .interlinear-stat {
+  margin: 0 0 10px;
+  color: CanvasText;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------- color controls */
+
+#interlinear-settings-root .interlinear-color-control {
+  margin: 0;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--interlinear-border);
+}
+
+#interlinear-settings-root .interlinear-color-control:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+#interlinear-settings-root .interlinear-color-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+#interlinear-settings-root .interlinear-color-label {
+  min-width: 120px;
+  color: CanvasText;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#interlinear-settings-root .interlinear-color-preview {
+  display: inline-block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--interlinear-border-strong);
+  border-radius: var(--interlinear-radius);
+  overflow: hidden;
+}
+
+#interlinear-settings-root .interlinear-color-preview[data-inherit="true"] {
+  background-image: repeating-conic-gradient(#cccccc 0% 25%, #ffffff 0% 50%);
+  background-size: 10px 10px;
+  color: #333333;
+}
+
+#interlinear-settings-root .interlinear-color-input {
+  width: 46px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--interlinear-border-strong);
+  border-radius: var(--interlinear-radius);
+  background: Canvas;
+  cursor: pointer;
+}
+
+#interlinear-settings-root .interlinear-color-input:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#interlinear-settings-root .interlinear-color-hex {
+  box-sizing: border-box;
+  width: 94px;
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 1px solid var(--interlinear-border-strong);
+  border-radius: var(--interlinear-radius);
+  background: Canvas;
+  color: CanvasText;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+#interlinear-settings-root .interlinear-color-hex:disabled {
+  opacity: 0.4;
+}
+
+#interlinear-settings-root .interlinear-color-inherit-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 8px;
+}
+
+#interlinear-settings-root .interlinear-inherit-help {
+  color: var(--interlinear-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+#interlinear-settings-root .interlinear-color-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 8px;
+}
+
+#interlinear-settings-root .interlinear-color-preset {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  border: 1px solid var(--interlinear-border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    transform var(--interlinear-motion),
+    outline-color var(--interlinear-motion);
+}
+
+#interlinear-settings-root .interlinear-color-preset:hover {
+  transform: scale(1.12);
+}
+
+#interlinear-settings-root .interlinear-color-preset[data-active="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+#interlinear-settings-root .interlinear-color-preset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#interlinear-settings-root .interlinear-color-preset:disabled:hover {
+  transform: none;
+}
+
+/* ------------------------------------------------------- appearance preview */
+
+#interlinear-settings-root .interlinear-preview {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: var(--interlinear-radius-lg);
+  background: var(--interlinear-surface);
+}
+
+#interlinear-settings-root .interlinear-preview-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+#interlinear-settings-root .interlinear-preview-label {
+  color: CanvasText;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+#interlinear-settings-root .interlinear-preview-help {
+  color: var(--interlinear-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+#interlinear-settings-root .interlinear-preview-stage {
+  padding: 14px 16px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: var(--interlinear-radius);
+  background: Canvas;
+  color: CanvasText;
+  overflow: hidden;
+}
+
+/* ----------------------------------------------------------------- about */
+
+#interlinear-settings-root .interlinear-about-block + .interlinear-about-block {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--interlinear-border);
+}
+
+#interlinear-settings-root .interlinear-link {
+  color: LinkText;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+#interlinear-settings-root .interlinear-footer {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--interlinear-border);
+}
+
+#interlinear-settings-root .interlinear-footer-note {
+  color: var(--interlinear-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------- focus */
+
+#interlinear-settings-root :is(button, select, input, textarea, a[href]):focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  #interlinear-settings-root .interlinear-page {
+    padding: 14px 14px 32px;
+  }
+
+  #interlinear-settings-root .interlinear-hero {
+    gap: 12px;
+  }
+
+  #interlinear-settings-root .interlinear-brand,
+  #interlinear-settings-root .interlinear-brand img {
+    width: 48px;
+    height: 48px;
+  }
+
+  #interlinear-settings-root .interlinear-field {
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+  }
+
+  #interlinear-settings-root .interlinear-field > .interlinear-help {
+    grid-column: 1;
+  }
+
+  #interlinear-settings-root .interlinear-field-label {
+    white-space: normal;
+  }
+
+  #interlinear-settings-root .interlinear-save-hint {
+    margin-left: 0;
+  }
+
+  #interlinear-settings-root .interlinear-color-label {
+    min-width: 100px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #interlinear-settings-root *,
+  #interlinear-settings-root *::before,
+  #interlinear-settings-root *::after {
+    transition: none !important;
+  }
+}
