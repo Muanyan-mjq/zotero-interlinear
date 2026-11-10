@@ -56,7 +56,7 @@ Open `Settings → Interlinear`:
 
 **Acknowledgements**
 
-Based on [quillamio/bilingual-reader](https://github.com/quillamio/bilingual-reader). The original copyright notices and LICENSE are preserved.
+Based on [quillamio/bilingual-reader](https://github.com/quillamio/bilingual-reader). The original copyright notices and LICENSE are preserved. See [NOTICE.md](NOTICE.md) for adapted upstream contributions and template attribution.
 
 **License**
 
@@ -142,9 +142,9 @@ AGPL-3.0-or-later.
 
 | 文件 | 尺寸 | 用途 |
 | --- | --- | --- |
-| `addon/content/icons/icon16.png` | 16×16 | 小尺寸备用 |
+| `addon/content/icons/icon16.png` | 16×16 | 阅读助手侧栏底部图标 |
 | `addon/content/icons/icon20.png` | 20×20 | 阅读器工具栏对照按钮（界面中显示为 16px） |
-| `addon/content/icons/icon32.png` | 32×32 | 中尺寸备用 |
+| `addon/content/icons/icon32.png` | 32×32 | 工具栏内联 data URL 图标的生成源 |
 | `addon/content/icons/icon48.png` | 48×48 | 插件管理器图标 |
 | `addon/content/icons/icon96.png` | 96×96 | 插件管理器高清图标、设置页顶部 |
 | `addon/content/icons/favicon.png` | 32×32 | ztoolkit 进度窗口默认图标 |
@@ -167,4 +167,4 @@ npm run test:review  # Zotero headless 集成测试（需设置 ZOTERO_PLUGIN_ZO
 ## 许可证
 
 AGPL-3.0-or-later。原项目 [quillamio/bilingual-reader](https://github.com/quillamio/bilingual-reader)
-的版权声明与 LICENSE 全部保留；本仓库由 Muanyan-mjq 维护。
+的版权声明与 LICENSE 全部保留；本仓库由 Muanyan-mjq 维护。上游 PR 改编与模板来源详见 [NOTICE.md](NOTICE.md)。

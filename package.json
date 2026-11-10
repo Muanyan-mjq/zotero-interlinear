@@ -20,6 +20,7 @@
     "url": "https://github.com/Muanyan-mjq/zotero-interlinear.git"
   },
   "homepage": "https://github.com/Muanyan-mjq/zotero-interlinear",
+  "bugs": "https://github.com/Muanyan-mjq/zotero-interlinear/issues",
   "author": "Muanyan-mjq",
   "contributors": [
     "quillamio (original Bilingual Reader)"
@@ -32,7 +33,8 @@
     "lint:fix": "eslint src/index.ts src/addon.ts src/hooks.ts src/bilingualReader.ts src/interlinearIcon.ts src/readerUI.ts src/readerToolbar.ts src/toolbarEvents.ts src/readerMenu.ts src/readerInteractions.ts src/readingLayout.ts src/cancellationToken.ts src/settings.ts src/shortcut.ts src/translationCache.ts src/translationPipeline.ts src/appearance.ts src/displayMode.ts src/glossary.ts src/glossaryFiles.ts src/translationFailure.ts src/chatContext.ts src/chatSession.ts src/chatPane.ts src/providers src/modules/preferenceScript.ts --fix",
     "test": "zotero-plugin test --no-watch",
     "test:unit": "node --test test/translationPipeline.node.test.mjs test/appearance.node.test.mjs test/providers.node.test.mjs test/displayMode.node.test.mjs test/glossary.node.test.mjs test/chat.node.test.mjs test/shortcut.node.test.mjs",
-    "test:review": "node scripts/test-review.mjs"
+    "test:review": "node scripts/test-review.mjs",
+    "release": "zotero-plugin release"
   },
   "dependencies": {
     "zotero-plugin-toolkit": "^5.1.0-beta.13"
