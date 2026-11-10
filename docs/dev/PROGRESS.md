@@ -849,3 +849,44 @@
 6. 键盘 Tab 遍历。预期：按钮/下拉/输入/导航 chip 均有清晰焦点环，Enter/Space 可激活导航 chip 滚动到对应区块。
 7. 切换浅/深主题。预期：粘性栏背景不透明、文字可读、焦点环可见。
 8. 打开/关闭「自定义」后再保存重开。预期：已存字体正确回显到下拉（匹配预设或回落到自定义并展开输入）。
+
+## Step E：全面自查（设置页 / 阅读器状态 / 错误处理 / 本地化）
+
+### 做了什么
+- **修复：表单修改不触发「未保存」提示**。`registerDirtyTracking` 原先把 change/input 委托挂在 `#interlinear-settings-root`，而各功能 section 是它的兄弟节点（Step C 已定位的同一根因），绝大多数字段改动不会点亮保存提示。先写集成用例（清空提示 → 改字号并派发 input → 断言提示非空）看其失败，再把监听改挂 `doc` 后转绿（commit `42d644c`）。
+- **设置模型逐项核对**：`preferences.xhtml` 的 min/max/step 与 `settings.ts` 的读写 clamp 完全一致——请求间隔 0–5000、并发 1–3、最大字符 500–8000、批量段数 1–12、连续错误 1–20、超时 5000–300000、跳过末页 0–50、悬停延迟 200–5000；外观字号 10–32、行高 1–2.5（存储 ×100 → 100–250）、段距 0–3（×100 → 0–300）。越界值在读取与写入两侧都会被夹回，不依赖表单校验。
+- **术语表链路**：`applyGlossaryToTranslation(result.text, getGlossaryEntries())` 在 `bilingualReader.ts:221` 对所有引擎的译文统一做后替换（含 Google）；缓存键通过 `getCacheEngineTag()` 携带目标语言 + 术语表哈希，命中后仍会重放替换，术语改动不会读到过期缓存。缓存标签不含 API key、endpoint 密钥或原文。
+- **「保存后立即应用」核实**：`saveSettings` 末尾调用 `refreshTranslationStyles()` + `refreshDisplayModes()`，对已打开阅读器重刷样式与显示模式；集成用例 “should save appearance settings and re-apply them to open readers” 覆盖。工具栏开关/悬停/快捷键等由 getter 实时读取，下一次交互即生效，无需重开阅读器。
+- **主题与本地化**：en-US / zh-CN Fluent 键 **311 ↔ 311 完全对齐**，`preferenceScript.ts` 里 `getString` 引用的键在 en 全部存在；`src/` 中的中文字面量仅限 LLM 提示词、术语表表头别名、旧译文错误识别正则与分句标点，均非界面文案。语言切换按 Zotero 约定需重启应用，未做运行时热切换。深/浅主题依赖 `Canvas`/`CanvasText`/`Highlight` 系统色与外观主题调色板。
+- **多阅读器隔离与泄漏**：开关状态、交互控制器、错误提示分别用 `WeakMap` 按 reader/doc 键控；交互监听在 `controller.dispose()` 中成对移除（mousemove/mouseleave/mouseup/click/keydown/mousedown/scroll + window blur）；重试定时器均为有界数组并在重新调度/清理时 `clearTimeout`；插件关闭时 `unregisterReaderToolbar()` 清空 reconcile 定时器、注销 `renderToolbar` 监听、清理全部 reader 状态与工具栏节点，`unregisterChatPane()` 同步注销。未发现常驻轮询或跨 reader 共享的可见状态。
+- **错误处理与密钥**：五个连通测试全部 catch 后写入 running/success/warning/error 状态（不会抛未处理 rejection）；译文请求失败走阅读器内非阻塞提示（既有集成用例覆盖）；`src/` 无任何 `console.*`/`Zotero.debug`/`dump`，密钥仅出现在 Authorization / x-api-key / x-goog-api-key 请求头，Gemini 明确不进 URL，错误详情只截取响应体 200 字符；设置页三个密钥输入为 `type="password"`，帮助文案写明「明文存储于 Zotero 偏好，不写入日志或缓存标签」。
+
+### 改动文件
+- 修改：`src/modules/preferenceScript.ts`（`registerDirtyTracking` 改文档级委托）、`test/startup.test.ts`（新增脏标记集成用例）。
+- 仅审查未改：`addon/content/preferences.xhtml`、`settings.ts`、`readerToolbar.ts`、`bilingualReader.ts`、`appearance.ts`、`readerUI.ts`、`chatPane.ts`、`translationCache.ts`、两份 `addon.ftl`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**131 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**48 pass / 0 fail**。新增脏标记用例先红后绿；既有用例覆盖主题预览、颜色控件、字体校验、保存后重应用、单阅读器隔离、多阅读器独立开关、非阻塞错误提示、密钥不泄漏。
+
+### 待我决定
+1. **导出流程仍使用阻塞式 `alert`/`confirm`**（`src/readerUI.ts:38–49` 的 `showMessage`/`confirmMessage`，导出成功、失败与「继续导出？」三类调用）。建议：成功/失败改为阅读器内非阻塞提示（已有 `showErrorNotice` 基建可复用）；「是否继续导出」属于需要用户确认的破坏性操作，可保留 `confirm` 或改成一个内联确认条。**理由**：全文翻译失败已是非阻塞，导出仍弹系统对话框，交互不一致；但改确认语义会改变现有导出流程，故留作决定。
+2. **非法自定义字体保存时静默回落为「继承」**：`setAppearance` 经 `normalizeAppearance` 会把非法字体栈存成空串，保存状态仍显示成功。建议保存前校验并阻止/明确提示；目前输入/blur 已有内联错误，属于低风险润色。
+3. **设置页重复加载的监听器叠加（不确定）**：若同一偏好窗口内多次触发 pane load，`doc` 级 input/change 监听会重复注册（效果为多次刷新预览/重复 markDirty，无功能破坏，窗口关闭即释放）。未加去重守卫，因为去重会导致再次打开面板时不重新回填外部变更的设置。**不确定** Zotero 10 的实际 pane 生命周期，留待真机观察。
+4. **版本号重置**（0.5.1 → 0.1.0/1.0.0）仍待定。
+
+### 无法目视验证
+- 本次没有可用的 Zotero UI 无头截图通道（测试运行器只断言 DOM/CSS 文本，不产出偏好页截图）：控件观感、粘性保存栏、深色主题对比度、原生下拉内字体预览、焦点环与键盘遍历均为**未目视验证**。
+- `WeakMap` 状态在真实 reader 关闭后由 GC 回收的时机、偏好窗口重复加载的监听叠加行为：**未目视验证**（代码审查结论，运行时未观测）。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置，改任意一个数字/下拉但不保存。预期：顶部出现黄色「未保存」提示；点保存后提示消失。
+2. 底部保存按钮与顶部保存按钮各点一次。预期：都显示保存成功，且无需滚动回顶部就能保存。
+3. 打开一篇已翻译的 PDF，再改设置里的译文字号/行高/主题并保存。预期：已打开的阅读器立即变化，无需关闭重开。
+4. 配好 API key 后逐个点「测试连接」。预期：按钮短暂禁用并显示“测试中”，随后显示成功（含示例译文）或失败原因；失败不弹系统对话框。
+5. 在阅读器里制造一次翻译失败（如断网）。预期：阅读器内出现非阻塞错误提示（不弹系统 alert），提示可关闭，重试后恢复。
+6. 打开两个阅读器，分别切换显示/隐藏。预期：两个阅读器状态互不影响；关闭其一后另一个仍可正常翻译。
+7. 切换 Zotero 界面语言（重启后）与浅/深主题。预期：设置页所有标签/帮助/状态文案完整本地化、无英文残留，深色下文字与控件可读。
+8. 用键盘 Tab / Shift+Tab 遍历设置页。预期：焦点环清晰，所有按钮、导航 chip、下拉与输入框均可键盘操作。
