@@ -53,7 +53,6 @@ provider-engine-openai = OpenAI 兼容接口（Ollama / LM Studio / 中转服务
 provider-engine-claude = Anthropic Claude
 provider-engine-gemini = Google Gemini
 provider-engine-ollama = Ollama（原生 API）
-language-title = 语言
 language-source-label = 原文语言
 language-target-label = 译文语言
 language-help = 原文语言选择“自动检测”时由服务商识别；译文语言同时用于区分缓存条目。

@@ -138,7 +138,6 @@ export type FluentMessageId =
   | 'language-name-zh-TW'
   | 'language-source-label'
   | 'language-target-label'
-  | 'language-title'
   | 'ollama-test-failed'
   | 'ollama-test-missing-model'
   | 'ollama-test-no-model-list'

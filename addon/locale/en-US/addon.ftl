@@ -53,7 +53,6 @@ provider-engine-openai = OpenAI-compatible (Ollama / LM Studio / relays)
 provider-engine-claude = Anthropic Claude
 provider-engine-gemini = Google Gemini
 provider-engine-ollama = Ollama (native API)
-language-title = Languages
 language-source-label = Source language
 language-target-label = Target language
 language-help = With "Auto-detect" the service identifies the source language. The target language also separates cache entries.
