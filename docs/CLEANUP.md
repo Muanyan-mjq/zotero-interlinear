@@ -88,15 +88,17 @@
 
 参考示例：已从 `git show ab3eb00^:src/modules/examples.ts` 提取 `registerReaderItemPaneSection` 到 `docs/reference/itempane-section-example.ts`；文件头注明来源提交、上游模板、用途，并确认该文件不在 `tsconfig` 的 `include` 中（只读参考，不参与构建）。该示例可用于将来扩展阅读助手侧栏或 Zotero 条目面板。
 
-## Step 3：删除执行计划（按类别，一类一个 `cleanup:` 提交）
+## Step 3：删除执行结果（按类别，一类一个 `cleanup:` 提交，已完成）
 
-1. 模板文档：删除 `doc/README-zhCN.md`、`doc/README-frFR.md`。
-2. 死工具模块：删除 `src/utils/prefs.ts`、`src/utils/window.ts`，清理 `src/utils/ztoolkit.ts` 的 `MyToolkit` 模板类。
-3. 未使用 locale 键：删除 `language-title`（en-US / zh-CN），构建后更新 `typings/i10n.d.ts`。
-4. 死参数：移除 `prepareAndRun` 的 `refresh` 形参及分支。
-5. 未使用资源/标记：删除 `addon/content/icons/printer.svg` 与 `.release-v0.1.2`、`.release-v0.1.3`、`.release-v0.1.6`。
+| # | 类别 | 提交 | 内容 | 验证 |
+| --- | --- | --- | --- | --- |
+| 1 | 模板文档 | `1ae8400` | 删除 `doc/README-zhCN.md`、`doc/README-frFR.md`（825 行） | build / lint / 76 单测通过 |
+| 2 | 死工具模块 | `4220c09` | 删除 `src/utils/prefs.ts`、`src/utils/window.ts`，移除 `ztoolkit.ts` 的 `MyToolkit` 类与导入（67 行） | build / lint / 76 单测通过 |
+| 3 | 未使用 locale 键 | `bc72739` | 删除两个语言文件的 `language-title`，重新生成 `typings/i10n.d.ts`（3 行） | build / lint / 76 单测通过 |
+| 4 | 死参数 | `987ccb6` | 移除 `prepareAndRun` 的 `refresh` 形参与分支（-7/+3 行） | build / lint / 76 单测 + 38 集成测试通过 |
+| 5 | 未使用资源/标记 | `046da08` | 删除 `addon/content/icons/printer.svg` 与 `.release-v0.1.2/3/6`（35 行） | build / lint / 76 单测通过 |
 
-每类删除后执行 `npm run build`、`npm run lint:check`、`npm run test:unit`；如变红，立即 `git revert` 该提交并记录。medium 项不做自动删除。
+共删除约 937 行；每类均通过 `npm run build`、`npm run lint:check`、`npm run test:unit`，无变红回退。第 4 类触及阅读器主路径，额外跑了 `npm run test:review`（38 pass）。medium 项未做自动删除。
 
 ## Step 4：独立化计划（非功能改动）
 
