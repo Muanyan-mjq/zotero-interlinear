@@ -504,6 +504,17 @@ const COLOR_CONTROLS: readonly ColorControlConfig[] = [
     hasInherit: true,
   },
   {
+    base: "interlinear-appearance-divider-color",
+    role: "divider",
+    labelKey: "appearance-divider-color-label",
+    helpKey: "appearance-divider-color-help",
+    presets: ACCENT_PRESETS,
+    presetTitleKey: "appearance-accent-preset-title",
+    fallback: THEME_PREVIEW_PALETTE.light.text,
+    resetValue: DEFAULT_COLORS.divider,
+    hasInherit: true,
+  },
+  {
     base: "interlinear-appearance-source-color",
     role: "source",
     labelKey: "appearance-source-color-label",
@@ -1712,6 +1723,11 @@ function readAppearanceForm(doc: Document): AppearanceSettings {
     "interlinear-text-direction",
   )?.value;
   const sizeMode = getElement<HTMLSelectElement>(doc, "interlinear-font-size-mode")?.value;
+  const decorations = [
+    readCheckbox(doc, "interlinear-appearance-underline") ? "underline" : "",
+    readCheckbox(doc, "interlinear-decoration-overline") ? "overline" : "",
+    readCheckbox(doc, "interlinear-decoration-line-through") ? "line-through" : "",
+  ].filter(Boolean) as AppearanceSettings["textDecoration"];
   return {
     fontSize: readNumberInput(
       doc,
@@ -1753,8 +1769,113 @@ function readAppearanceForm(doc: Document): AppearanceSettings {
     theme:
       (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
         ?.value as AppearanceTheme) || "auto",
-    underline: readCheckbox(doc, "interlinear-appearance-underline"),
+    underline: decorations.includes("underline"),
     ribbon: readCheckbox(doc, "interlinear-appearance-ribbon"),
+    textDecoration: decorations,
+    textDecorationStyle:
+      (getElement<HTMLSelectElement>(doc, "interlinear-decoration-style")
+        ?.value as AppearanceSettings["textDecorationStyle"]) || "solid",
+    textDecorationThickness: readNumberInput(
+      doc,
+      "interlinear-decoration-thickness",
+      DEFAULT_APPEARANCE.textDecorationThickness,
+    ),
+    textUnderlineOffset: readNumberInput(
+      doc,
+      "interlinear-decoration-offset",
+      DEFAULT_APPEARANCE.textUnderlineOffset,
+    ),
+    textDecorationSkipInk: readCheckbox(doc, "interlinear-decoration-skip-ink")
+      ? "auto"
+      : "none",
+    divider: readCheckbox(doc, "interlinear-divider"),
+    dividerStyle:
+      (getElement<HTMLSelectElement>(doc, "interlinear-divider-style")
+        ?.value as AppearanceSettings["dividerStyle"]) || "solid",
+    dividerWidth: readNumberInput(
+      doc,
+      "interlinear-divider-width",
+      DEFAULT_APPEARANCE.dividerWidth,
+    ),
+    dividerOffset: readNumberInput(
+      doc,
+      "interlinear-divider-offset",
+      DEFAULT_APPEARANCE.dividerOffset,
+    ),
+    ribbonPosition:
+      getElement<HTMLSelectElement>(doc, "interlinear-ribbon-position")?.value === "right"
+        ? "right"
+        : "left",
+    ribbonWidth: readNumberInput(
+      doc,
+      "interlinear-ribbon-width",
+      DEFAULT_APPEARANCE.ribbonWidth,
+    ),
+    ribbonStyle:
+      (getElement<HTMLSelectElement>(doc, "interlinear-ribbon-style")
+        ?.value as AppearanceSettings["ribbonStyle"]) || "solid",
+    ribbonRadius: readNumberInput(
+      doc,
+      "interlinear-ribbon-radius",
+      DEFAULT_APPEARANCE.ribbonRadius,
+    ),
+    ribbonPadding: readNumberInput(
+      doc,
+      "interlinear-ribbon-padding",
+      DEFAULT_APPEARANCE.ribbonPadding,
+    ),
+    blockPaddingY: readNumberInput(
+      doc,
+      "interlinear-block-padding-y",
+      DEFAULT_APPEARANCE.blockPaddingY,
+    ),
+    blockPaddingX: readNumberInput(
+      doc,
+      "interlinear-block-padding-x",
+      DEFAULT_APPEARANCE.blockPaddingX,
+    ),
+    blockRadius: readNumberInput(
+      doc,
+      "interlinear-block-radius",
+      DEFAULT_APPEARANCE.blockRadius,
+    ),
+    blockBorderWidth: readNumberInput(
+      doc,
+      "interlinear-block-border-width",
+      DEFAULT_APPEARANCE.blockBorderWidth,
+    ),
+    blockBorderStyle:
+      (getElement<HTMLSelectElement>(doc, "interlinear-block-border-style")
+        ?.value as AppearanceSettings["blockBorderStyle"]) || "solid",
+    blockIndent: readNumberInput(
+      doc,
+      "interlinear-block-indent",
+      DEFAULT_APPEARANCE.blockIndent,
+    ),
+    firstLineIndent: readNumberInput(
+      doc,
+      "interlinear-first-line-indent",
+      DEFAULT_APPEARANCE.firstLineIndent,
+    ),
+    textAlign:
+      (getElement<HTMLSelectElement>(doc, "interlinear-block-align")
+        ?.value as AppearanceSettings["textAlign"]) || "start",
+    maxWidthCh: readNumberInput(
+      doc,
+      "interlinear-block-max-width",
+      DEFAULT_APPEARANCE.maxWidthCh,
+    ),
+    opacity: readNumberInput(doc, "interlinear-block-opacity", DEFAULT_APPEARANCE.opacity),
+    sourceDim: readNumberInput(
+      doc,
+      "interlinear-source-dim",
+      DEFAULT_APPEARANCE.sourceDim,
+    ),
+    sourceGap: readNumberInput(
+      doc,
+      "interlinear-source-gap",
+      DEFAULT_APPEARANCE.sourceGap,
+    ),
     // Legacy flat colors are derived by normalizeAppearance from `colors`.
     color: "",
     background: "",
@@ -2388,6 +2509,130 @@ function initFontControls(doc: Document): void {
   startFontDetection(doc);
 }
 
+function setFormValue(doc: Document, id: string, value: string): void {
+  const element = getElement<HTMLInputElement | HTMLSelectElement>(doc, id);
+  if (element) element.value = value;
+}
+
+function setFormChecked(doc: Document, id: string, checked: boolean): void {
+  const element = getElement<HTMLInputElement>(doc, id);
+  if (element) element.checked = checked;
+}
+
+function syncStyleControlDisabled(doc: Document): void {
+  const decorate =
+    readCheckbox(doc, "interlinear-appearance-underline") ||
+    readCheckbox(doc, "interlinear-decoration-overline") ||
+    readCheckbox(doc, "interlinear-decoration-line-through");
+  for (const id of [
+    "interlinear-decoration-style",
+    "interlinear-decoration-thickness",
+    "interlinear-decoration-offset",
+    "interlinear-decoration-skip-ink",
+  ]) {
+    const element = getElement<HTMLInputElement | HTMLSelectElement>(doc, id);
+    if (element) element.disabled = !decorate;
+  }
+  const divider = readCheckbox(doc, "interlinear-divider");
+  for (const id of [
+    "interlinear-divider-style",
+    "interlinear-divider-width",
+    "interlinear-divider-offset",
+  ]) {
+    const element = getElement<HTMLInputElement | HTMLSelectElement>(doc, id);
+    if (element) element.disabled = !divider;
+  }
+  const ribbon = readCheckbox(doc, "interlinear-appearance-ribbon");
+  for (const id of [
+    "interlinear-ribbon-position",
+    "interlinear-ribbon-width",
+    "interlinear-ribbon-style",
+    "interlinear-ribbon-radius",
+    "interlinear-ribbon-padding",
+  ]) {
+    const element = getElement<HTMLInputElement | HTMLSelectElement>(doc, id);
+    if (element) element.disabled = !ribbon;
+  }
+}
+
+function initStyleControls(doc: Document): void {
+  const appearance = getAppearance();
+  setFormChecked(
+    doc,
+    "interlinear-appearance-underline",
+    appearance.textDecoration.includes("underline"),
+  );
+  setFormChecked(
+    doc,
+    "interlinear-decoration-overline",
+    appearance.textDecoration.includes("overline"),
+  );
+  setFormChecked(
+    doc,
+    "interlinear-decoration-line-through",
+    appearance.textDecoration.includes("line-through"),
+  );
+  setFormValue(doc, "interlinear-decoration-style", appearance.textDecorationStyle);
+  setFormValue(
+    doc,
+    "interlinear-decoration-thickness",
+    String(appearance.textDecorationThickness),
+  );
+  setFormValue(
+    doc,
+    "interlinear-decoration-offset",
+    String(appearance.textUnderlineOffset),
+  );
+  setFormChecked(
+    doc,
+    "interlinear-decoration-skip-ink",
+    appearance.textDecorationSkipInk !== "none",
+  );
+
+  setFormChecked(doc, "interlinear-divider", appearance.divider);
+  setFormValue(doc, "interlinear-divider-style", appearance.dividerStyle);
+  setFormValue(doc, "interlinear-divider-width", String(appearance.dividerWidth));
+  setFormValue(doc, "interlinear-divider-offset", String(appearance.dividerOffset));
+
+  setFormChecked(doc, "interlinear-appearance-ribbon", appearance.ribbon);
+  setFormValue(doc, "interlinear-ribbon-position", appearance.ribbonPosition);
+  setFormValue(doc, "interlinear-ribbon-width", String(appearance.ribbonWidth));
+  setFormValue(doc, "interlinear-ribbon-style", appearance.ribbonStyle);
+  setFormValue(doc, "interlinear-ribbon-radius", String(appearance.ribbonRadius));
+  setFormValue(doc, "interlinear-ribbon-padding", String(appearance.ribbonPadding));
+
+  setFormValue(doc, "interlinear-block-padding-y", String(appearance.blockPaddingY));
+  setFormValue(doc, "interlinear-block-padding-x", String(appearance.blockPaddingX));
+  setFormValue(doc, "interlinear-block-radius", String(appearance.blockRadius));
+  setFormValue(
+    doc,
+    "interlinear-block-border-width",
+    String(appearance.blockBorderWidth),
+  );
+  setFormValue(doc, "interlinear-block-border-style", appearance.blockBorderStyle);
+  setFormValue(doc, "interlinear-block-indent", String(appearance.blockIndent));
+  setFormValue(doc, "interlinear-first-line-indent", String(appearance.firstLineIndent));
+  setFormValue(doc, "interlinear-block-align", appearance.textAlign);
+  setFormValue(doc, "interlinear-block-max-width", String(appearance.maxWidthCh));
+  setFormValue(doc, "interlinear-block-opacity", String(appearance.opacity));
+  setFormValue(doc, "interlinear-source-dim", String(appearance.sourceDim));
+  setFormValue(doc, "interlinear-source-gap", String(appearance.sourceGap));
+
+  for (const id of [
+    "interlinear-appearance-underline",
+    "interlinear-decoration-overline",
+    "interlinear-decoration-line-through",
+    "interlinear-divider",
+    "interlinear-appearance-ribbon",
+  ]) {
+    getElement<HTMLInputElement>(doc, id)?.addEventListener("change", () => {
+      syncStyleControlDisabled(doc);
+      refreshAppearancePreview(doc);
+    });
+  }
+  syncStyleControlDisabled(doc);
+}
+
 function initializeAppearanceControls(doc: Document): void {
   renderColorControlCards(doc);
   const appearance = getAppearance();
@@ -2409,6 +2654,7 @@ function initializeAppearanceControls(doc: Document): void {
   });
 
   initFontControls(doc);
+  initStyleControls(doc);
   refreshColorUI(doc);
 }
 
@@ -2688,6 +2934,62 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-theme-auto", "appearance-theme-auto"],
     ["interlinear-appearance-theme-light", "appearance-theme-light"],
     ["interlinear-appearance-theme-dark", "appearance-theme-dark"],
+    ["interlinear-decoration-title", "decoration-title"],
+    ["interlinear-decoration-overline-label", "decoration-overline-label"],
+    ["interlinear-decoration-line-through-label", "decoration-line-through-label"],
+    ["interlinear-decoration-style-label", "decoration-style-label"],
+    ["interlinear-decoration-style-solid", "decoration-style-solid"],
+    ["interlinear-decoration-style-double", "decoration-style-double"],
+    ["interlinear-decoration-style-dotted", "decoration-style-dotted"],
+    ["interlinear-decoration-style-dashed", "decoration-style-dashed"],
+    ["interlinear-decoration-style-wavy", "decoration-style-wavy"],
+    ["interlinear-decoration-thickness-label", "decoration-thickness-label"],
+    ["interlinear-decoration-thickness-help", "decoration-thickness-help"],
+    ["interlinear-decoration-offset-label", "decoration-offset-label"],
+    ["interlinear-decoration-offset-help", "decoration-offset-help"],
+    ["interlinear-decoration-skip-ink-label", "decoration-skip-ink-label"],
+    ["interlinear-divider-title", "divider-title"],
+    ["interlinear-divider-label", "divider-label"],
+    ["interlinear-divider-style-label", "divider-style-label"],
+    ["interlinear-divider-style-solid", "border-style-solid"],
+    ["interlinear-divider-style-dashed", "border-style-dashed"],
+    ["interlinear-divider-style-dotted", "border-style-dotted"],
+    ["interlinear-divider-style-double", "border-style-double"],
+    ["interlinear-divider-width-label", "divider-width-label"],
+    ["interlinear-divider-offset-label", "divider-offset-label"],
+    ["interlinear-divider-offset-help", "divider-offset-help"],
+    ["interlinear-ribbon-title", "ribbon-title"],
+    ["interlinear-ribbon-position-label", "ribbon-position-label"],
+    ["interlinear-ribbon-position-left", "ribbon-position-left"],
+    ["interlinear-ribbon-position-right", "ribbon-position-right"],
+    ["interlinear-ribbon-width-label", "ribbon-width-label"],
+    ["interlinear-ribbon-style-label", "ribbon-style-label"],
+    ["interlinear-ribbon-style-solid", "border-style-solid"],
+    ["interlinear-ribbon-style-dashed", "border-style-dashed"],
+    ["interlinear-ribbon-style-dotted", "border-style-dotted"],
+    ["interlinear-ribbon-style-double", "border-style-double"],
+    ["interlinear-ribbon-radius-label", "ribbon-radius-label"],
+    ["interlinear-ribbon-padding-label", "ribbon-padding-label"],
+    ["interlinear-block-title", "block-title"],
+    ["interlinear-block-padding-y-label", "block-padding-y-label"],
+    ["interlinear-block-padding-x-label", "block-padding-x-label"],
+    ["interlinear-block-radius-label", "block-radius-label"],
+    ["interlinear-block-border-width-label", "block-border-width-label"],
+    ["interlinear-block-border-style-label", "block-border-style-label"],
+    ["interlinear-block-border-style-solid", "border-style-solid"],
+    ["interlinear-block-border-style-dashed", "border-style-dashed"],
+    ["interlinear-block-border-style-dotted", "border-style-dotted"],
+    ["interlinear-block-border-style-double", "border-style-double"],
+    ["interlinear-block-indent-label", "block-indent-label"],
+    ["interlinear-first-line-indent-label", "first-line-indent-label"],
+    ["interlinear-block-align-label", "block-align-label"],
+    ["interlinear-block-align-start", "block-align-start"],
+    ["interlinear-block-align-justify", "block-align-justify"],
+    ["interlinear-block-align-center", "block-align-center"],
+    ["interlinear-block-max-width-label", "block-max-width-label"],
+    ["interlinear-block-opacity-label", "block-opacity-label"],
+    ["interlinear-source-dim-label", "source-dim-label"],
+    ["interlinear-source-gap-label", "source-gap-label"],
     ["interlinear-appearance-underline-label", "appearance-underline-label"],
     ["interlinear-appearance-underline-color-label", "appearance-underline-color-label"],
     [

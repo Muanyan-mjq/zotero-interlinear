@@ -10,7 +10,12 @@ import { attachReaderInteractions } from "../src/readerInteractions";
 import { parseShortcut } from "../src/shortcut";
 import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
-import { getCacheEngineTag, getDisplayMode } from "../src/settings";
+import {
+  getAppearance,
+  getCacheEngineTag,
+  getDisplayMode,
+  setAppearance,
+} from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
 import { getString } from "../src/utils/locale";
@@ -861,6 +866,126 @@ describe("startup", function () {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value as any, true);
       }
+    }
+  });
+
+  it("should save decoration, divider, ribbon and block layout controls", async function () {
+    this.timeout(15000);
+    const previousAppearance = getAppearance();
+    const originalReaders = (Zotero.Reader as any)._readers;
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "style-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    doc.body.append(content);
+    const reader = {
+      type: "pdf",
+      itemID: 2147483642,
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: { _iframeDocument: doc, getData: () => ({ structure: null }) },
+      },
+    };
+    (Zotero.Reader as any)._readers = [reader];
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-decoration-style")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const setInput = (id: string, value: string) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.value = value;
+      };
+      const setChecked = (id: string, value: boolean) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.checked = value;
+      };
+
+      setChecked("interlinear-appearance-underline", true);
+      setChecked("interlinear-decoration-overline", true);
+      setChecked("interlinear-decoration-line-through", true);
+      setInput("interlinear-decoration-style", "wavy");
+      setInput("interlinear-decoration-thickness", "2");
+      setInput("interlinear-decoration-offset", "4");
+      setChecked("interlinear-decoration-skip-ink", false);
+
+      setChecked("interlinear-divider", true);
+      setInput("interlinear-divider-style", "dashed");
+      setInput("interlinear-divider-width", "2");
+      setInput("interlinear-divider-offset", "0.5");
+
+      setChecked("interlinear-appearance-ribbon", true);
+      setInput("interlinear-ribbon-position", "right");
+      setInput("interlinear-ribbon-width", "6");
+      setInput("interlinear-ribbon-style", "dotted");
+      setInput("interlinear-ribbon-radius", "4");
+      setInput("interlinear-ribbon-padding", "0.5");
+
+      setInput("interlinear-block-padding-y", "0.6");
+      setInput("interlinear-block-padding-x", "1.2");
+      setInput("interlinear-block-radius", "10");
+      setInput("interlinear-block-border-width", "2");
+      setInput("interlinear-block-border-style", "double");
+      setInput("interlinear-block-indent", "1");
+      setInput("interlinear-first-line-indent", "0.5");
+      setInput("interlinear-block-align", "justify");
+      setInput("interlinear-block-max-width", "72");
+      setInput("interlinear-block-opacity", "80");
+      setInput("interlinear-source-dim", "60");
+      setInput("interlinear-source-gap", "0.3");
+
+      (win?.document.getElementById("interlinear-save") as HTMLButtonElement | null)?.click();
+
+      const saved = getAppearance();
+      assert.deepEqual(saved.textDecoration, ["underline", "overline", "line-through"]);
+      assert.equal(saved.textDecorationStyle, "wavy");
+      assert.equal(saved.textDecorationThickness, 2);
+      assert.equal(saved.textUnderlineOffset, 4);
+      assert.equal(saved.textDecorationSkipInk, "none");
+      assert.equal(saved.divider, true);
+      assert.equal(saved.dividerStyle, "dashed");
+      assert.equal(saved.dividerWidth, 2);
+      assert.equal(saved.dividerOffset, 0.5);
+      assert.equal(saved.ribbonPosition, "right");
+      assert.equal(saved.ribbonWidth, 6);
+      assert.equal(saved.ribbonStyle, "dotted");
+      assert.equal(saved.ribbonRadius, 4);
+      assert.equal(saved.ribbonPadding, 0.5);
+      assert.equal(saved.blockPaddingY, 0.6);
+      assert.equal(saved.blockPaddingX, 1.2);
+      assert.equal(saved.blockRadius, 10);
+      assert.equal(saved.blockBorderWidth, 2);
+      assert.equal(saved.blockBorderStyle, "double");
+      assert.equal(saved.blockIndent, 1);
+      assert.equal(saved.firstLineIndent, 0.5);
+      assert.equal(saved.textAlign, "justify");
+      assert.equal(saved.maxWidthCh, 72);
+      assert.equal(saved.opacity, 80);
+      assert.equal(saved.sourceDim, 60);
+      assert.equal(saved.sourceGap, 0.3);
+
+      const css = doc.getElementById("interlinear-style")?.textContent || "";
+      assert.match(css, /text-decoration: underline overline line-through;/u);
+      assert.match(css, /text-decoration-style: wavy;/u);
+      assert.match(css, /border-right: 6px dotted #2f6fdf;/iu);
+      assert.match(css, /border-bottom: 2px dashed #d9d9d9;/u);
+      assert.match(css, /padding: 0.6em 1.7em 1.1em 1.2em;/u);
+      assert.match(css, /border-radius: 10px;/u);
+      assert.match(css, /text-align: justify;/u);
+      assert.match(css, /opacity: 0\.8;/u);
+      assert.match(css, /\.interlinear-source \{\n  opacity: 0\.6;\n\}/u);
+    } finally {
+      win?.close();
+      setAppearance(previousAppearance);
+      (Zotero.Reader as any)._readers = originalReaders;
     }
   });
 

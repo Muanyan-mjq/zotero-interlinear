@@ -14,9 +14,15 @@ export type ColorRole =
   | "underline"
   | "ribbon"
   | "border"
+  | "divider"
   | "source"
   | "loading"
   | "error";
+export type TextDecoration = "underline" | "overline" | "line-through";
+export type DecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
+export type BorderStyle = "solid" | "dashed" | "dotted" | "double";
+export type RibbonPosition = "left" | "right";
+export type TextAlign = "start" | "justify" | "center";
 
 export interface ThemeColor {
   mode: ColorMode;
@@ -55,6 +61,35 @@ export interface AppearanceSettings {
   underlineColor: string;
   ribbon: boolean;
   ribbonColor: string;
+  textDecoration: TextDecoration[];
+  textDecorationStyle: DecorationStyle;
+  /** 0 means auto; 1–8 px otherwise. */
+  textDecorationThickness: number;
+  /** -1 means auto; 0–12 px otherwise. */
+  textUnderlineOffset: number;
+  textDecorationSkipInk: "auto" | "none";
+  divider: boolean;
+  dividerStyle: BorderStyle;
+  dividerWidth: number;
+  dividerOffset: number;
+  ribbonPosition: RibbonPosition;
+  ribbonWidth: number;
+  ribbonStyle: BorderStyle;
+  ribbonRadius: number;
+  ribbonPadding: number;
+  blockPaddingY: number;
+  blockPaddingX: number;
+  blockRadius: number;
+  blockBorderWidth: number;
+  blockBorderStyle: BorderStyle;
+  blockIndent: number;
+  firstLineIndent: number;
+  textAlign: TextAlign;
+  /** 0 means no maximum; 40–100 ch otherwise. */
+  maxWidthCh: number;
+  opacity: number;
+  sourceDim: number;
+  sourceGap: number;
 }
 
 export const FONT_SIZE_MIN = 10;
@@ -81,6 +116,7 @@ export const COLOR_ROLES: readonly ColorRole[] = [
   "underline",
   "ribbon",
   "border",
+  "divider",
   "source",
   "loading",
   "error",
@@ -95,6 +131,7 @@ export const THEME_ROLE_COLORS: Readonly<
   underline: { light: "", dark: "" },
   ribbon: { light: "#2f6fdf", dark: "#4f8ff0" },
   border: { light: "#d9d9d9", dark: "#4a4a4a" },
+  divider: { light: "#d9d9d9", dark: "#4a4a4a" },
   source: { light: "#666666", dark: "#a8a8a8" },
   loading: { light: "#666666", dark: "#a8a8a8" },
   error: { light: "#c7354a", dark: "#ff8a9a" },
@@ -121,6 +158,7 @@ export const DEFAULT_COLORS: ColorSettings = {
   underline: themeColor("theme", "", ""),
   ribbon: themeColor("single", DEFAULT_RIBBON_COLOR, DEFAULT_RIBBON_COLOR),
   border: themeColor("theme", "", ""),
+  divider: themeColor("theme", "", ""),
   source: themeColor("theme", "", ""),
   loading: themeColor("theme", "", ""),
   error: themeColor("theme", "", ""),
@@ -142,6 +180,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
     underline: themeColor("theme", "", ""),
     ribbon: themeColor("single", DEFAULT_RIBBON_COLOR, DEFAULT_RIBBON_COLOR),
     border: themeColor("theme", "", ""),
+    divider: themeColor("theme", "", ""),
     source: themeColor("theme", "", ""),
     loading: themeColor("theme", "", ""),
     error: themeColor("theme", "", ""),
@@ -163,6 +202,32 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   underlineColor: "",
   ribbon: true,
   ribbonColor: DEFAULT_RIBBON_COLOR,
+  textDecoration: [],
+  textDecorationStyle: "solid",
+  textDecorationThickness: 0,
+  textUnderlineOffset: -1,
+  textDecorationSkipInk: "auto",
+  divider: false,
+  dividerStyle: "solid",
+  dividerWidth: 1,
+  dividerOffset: 0,
+  ribbonPosition: "left",
+  ribbonWidth: 4,
+  ribbonStyle: "solid",
+  ribbonRadius: 0,
+  ribbonPadding: 0,
+  blockPaddingY: 0.45,
+  blockPaddingX: 0.95,
+  blockRadius: 0,
+  blockBorderWidth: 0,
+  blockBorderStyle: "solid",
+  blockIndent: 0,
+  firstLineIndent: 0,
+  textAlign: "start",
+  maxWidthCh: 0,
+  opacity: 100,
+  sourceDim: 100,
+  sourceGap: 0.65,
 };
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/iu;
@@ -735,6 +800,40 @@ function normalizeTextDirection(raw: unknown): TextDirection {
   return raw === "ltr" || raw === "rtl" ? raw : "auto";
 }
 
+const DECORATIONS = new Set<TextDecoration>(["underline", "overline", "line-through"]);
+
+function normalizeTextDecorations(raw: unknown, legacyUnderline: unknown): TextDecoration[] {
+  const list = Array.isArray(raw)
+    ? raw.filter((entry): entry is TextDecoration =>
+        DECORATIONS.has(entry as TextDecoration),
+      )
+    : [];
+  if (list.length === 0 && legacyUnderline === true) return ["underline"];
+  return Array.from(new Set(list));
+}
+
+function normalizeDecorationStyle(raw: unknown): DecorationStyle {
+  return raw === "double" || raw === "dotted" || raw === "dashed" || raw === "wavy"
+    ? raw
+    : "solid";
+}
+
+function normalizeBorderStyle(raw: unknown): BorderStyle {
+  return raw === "dashed" || raw === "dotted" || raw === "double" ? raw : "solid";
+}
+
+function normalizeRibbonPosition(raw: unknown): RibbonPosition {
+  return raw === "right" ? "right" : "left";
+}
+
+function normalizeTextAlign(raw: unknown): TextAlign {
+  return raw === "justify" || raw === "center" ? raw : "start";
+}
+
+function clampRange(raw: unknown, fallback: number, min: number, max: number): number {
+  return clampNumber(raw, fallback, min, max);
+}
+
 export const FONT_CUSTOM_VALUE = "custom";
 
 // Firefox 115 has no reliable local-font enumeration API, so the selector offers
@@ -820,6 +919,11 @@ export function normalizeAppearance(
     ribbon:
       typeof input?.ribbonColor === "string" ? input.ribbonColor.trim() : undefined,
   });
+  const textDecoration = normalizeTextDecorations(input?.textDecoration, input?.underline);
+  const rawMaxWidth = Number(input?.maxWidthCh);
+  const maxWidthCh = Number.isFinite(rawMaxWidth) && rawMaxWidth > 0
+    ? Math.min(100, Math.max(40, Math.round(rawMaxWidth)))
+    : 0;
   return {
     fontSize,
     color: colorToLegacy(colors.text, "text"),
@@ -850,11 +954,92 @@ export function normalizeAppearance(
     ),
     background: colorToLegacy(colors.background, "background"),
     theme: normalizeTheme(input?.theme),
-    underline: typeof input?.underline === "boolean" ? input.underline : false,
+    underline: textDecoration.includes("underline"),
     underlineColor: colorToLegacy(colors.underline, "underline"),
     ribbon: typeof input?.ribbon === "boolean" ? input.ribbon : DEFAULT_APPEARANCE.ribbon,
     ribbonColor:
       colorToLegacy(colors.ribbon, "ribbon") || DEFAULT_APPEARANCE.ribbonColor,
+    textDecoration,
+    textDecorationStyle: normalizeDecorationStyle(input?.textDecorationStyle),
+    textDecorationThickness: clampRange(
+      input?.textDecorationThickness,
+      DEFAULT_APPEARANCE.textDecorationThickness,
+      0,
+      8,
+    ),
+    textUnderlineOffset: clampRange(
+      input?.textUnderlineOffset,
+      DEFAULT_APPEARANCE.textUnderlineOffset,
+      -1,
+      12,
+    ),
+    textDecorationSkipInk: input?.textDecorationSkipInk === "none" ? "none" : "auto",
+    divider: typeof input?.divider === "boolean" ? input.divider : false,
+    dividerStyle: normalizeBorderStyle(input?.dividerStyle),
+    dividerWidth: clampRange(
+      input?.dividerWidth,
+      DEFAULT_APPEARANCE.dividerWidth,
+      1,
+      6,
+    ),
+    dividerOffset: clampRange(
+      input?.dividerOffset,
+      DEFAULT_APPEARANCE.dividerOffset,
+      0,
+      2,
+    ),
+    ribbonPosition: normalizeRibbonPosition(input?.ribbonPosition),
+    ribbonWidth: clampRange(
+      input?.ribbonWidth,
+      DEFAULT_APPEARANCE.ribbonWidth,
+      1,
+      12,
+    ),
+    ribbonStyle: normalizeBorderStyle(input?.ribbonStyle),
+    ribbonRadius: clampRange(
+      input?.ribbonRadius,
+      DEFAULT_APPEARANCE.ribbonRadius,
+      0,
+      8,
+    ),
+    ribbonPadding: clampRange(
+      input?.ribbonPadding,
+      DEFAULT_APPEARANCE.ribbonPadding,
+      0,
+      2,
+    ),
+    blockPaddingY: clampRange(
+      input?.blockPaddingY,
+      DEFAULT_APPEARANCE.blockPaddingY,
+      0,
+      2,
+    ),
+    blockPaddingX: clampRange(
+      input?.blockPaddingX,
+      DEFAULT_APPEARANCE.blockPaddingX,
+      0,
+      2,
+    ),
+    blockRadius: clampRange(input?.blockRadius, DEFAULT_APPEARANCE.blockRadius, 0, 16),
+    blockBorderWidth: clampRange(
+      input?.blockBorderWidth,
+      DEFAULT_APPEARANCE.blockBorderWidth,
+      0,
+      4,
+    ),
+    blockBorderStyle: normalizeBorderStyle(input?.blockBorderStyle),
+    blockIndent: clampRange(input?.blockIndent, DEFAULT_APPEARANCE.blockIndent, 0, 4),
+    firstLineIndent: clampRange(
+      input?.firstLineIndent,
+      DEFAULT_APPEARANCE.firstLineIndent,
+      0,
+      4,
+    ),
+    textAlign: normalizeTextAlign(input?.textAlign),
+    maxWidthCh,
+    opacity: clampRange(input?.opacity, DEFAULT_APPEARANCE.opacity, 40, 100),
+    sourceDim: clampRange(input?.sourceDim, DEFAULT_APPEARANCE.sourceDim, 40, 100),
+    sourceGap: clampRange(input?.sourceGap, DEFAULT_APPEARANCE.sourceGap, 0, 2),
   };
 }
 
@@ -904,6 +1089,43 @@ function explicitTextColor(settings: AppearanceSettings): string {
   return color.light || "#222";
 }
 
+function decorationRules(
+  settings: AppearanceSettings,
+  mode: "reader" | "print",
+  scheme: ColorScheme,
+  explicitScheme: boolean,
+): string {
+  if (!settings.textDecoration.length) return "";
+  const important = mode === "print" ? " !important" : "";
+  let css = `  text-decoration: ${settings.textDecoration.join(" ")}${important};\n`;
+  if (settings.textDecorationStyle !== "solid") {
+    css += `  text-decoration-style: ${settings.textDecorationStyle}${important};\n`;
+  }
+  if (settings.textDecorationThickness > 0) {
+    css += `  text-decoration-thickness: ${settings.textDecorationThickness}px${important};\n`;
+  }
+  if (
+    settings.textDecoration.includes("underline") &&
+    settings.textUnderlineOffset >= 0
+  ) {
+    css += `  text-underline-offset: ${settings.textUnderlineOffset}px${important};\n`;
+  }
+  if (
+    settings.textDecoration.includes("underline") &&
+    settings.textDecorationSkipInk === "none"
+  ) {
+    css += `  text-decoration-skip-ink: none${important};\n`;
+  }
+  if (settings.colors.underline.mode !== "theme") {
+    const color =
+      mode === "print"
+        ? settings.colors.underline.light
+        : cssColorForRole(settings, "underline", scheme, explicitScheme);
+    if (color) css += `  text-decoration-color: ${color}${important};\n`;
+  }
+  return css;
+}
+
 /**
  * Single source of the translation-block stylesheet for both the live reader
  * and the printable export. User-supplied values are normalized first so a
@@ -913,7 +1135,11 @@ export function buildTranslationCSS(
   className: string,
   input: Partial<AppearanceSettings> | null | undefined,
   mode: "reader" | "print",
-  context: { targetLanguage?: string; colorScheme?: ColorScheme } = {},
+  context: {
+    targetLanguage?: string;
+    colorScheme?: ColorScheme;
+    sourceClassName?: string;
+  } = {},
 ): string {
   const settings = normalizeAppearance(input);
   const explicitFont = buildFontStack(settings.fontStack);
@@ -945,63 +1171,166 @@ export function buildTranslationCSS(
       ? settings.fontSize * settings.fontSizeEm
       : settings.fontSize;
 
-  if (mode === "print") {
-    // The export is meant for paper: a dark reader theme must not bleed into it.
-    const underlineColor =
-      settings.underline &&
-      settings.colors.underline.mode !== "theme" &&
-      settings.colors.underline.light
-        ? `  text-decoration-color: ${settings.colors.underline.light} !important;\n`
-        : "";
-    const underline = settings.underline
-      ? `  text-decoration: underline !important;\n${underlineColor}`
-      : "";
-    return `.${className} {
-  margin: 0.18em 0 ${settings.paragraphSpacing}em !important;
-  padding: 0.12em 0 0.12em 0.78em !important;
-  border-left: ${
-    settings.ribbon
-      ? `2.2pt solid ${resolveThemeColor(settings.colors.ribbon, "light", "ribbon")}`
-      : "none"
-  } !important;
-  color: ${explicitTextColor(settings)} !important;
-  background: transparent !important;
-${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directionRule}  font-size: ${points(printFontSizePx)}pt !important;
-  line-height: ${settings.lineHeight} !important;
-${underline}  break-inside: avoid-page;
-  page-break-inside: avoid;
-}`;
-  }
-
   const forcedScheme = context.colorScheme !== undefined;
   const scheme: ColorScheme =
     context.colorScheme || (settings.theme === "dark" ? "dark" : "light");
   const explicitScheme = forcedScheme || settings.theme !== "auto";
   const followReaderScheme = !forcedScheme && settings.theme === "auto";
 
+  if (mode === "print") {
+    const printScheme: ColorScheme = "light";
+    const ribbonColor = resolveThemeColor(settings.colors.ribbon, printScheme, "ribbon");
+    const borderColor = resolveThemeColor(settings.colors.border, printScheme, "border");
+    const dividerColor = resolveThemeColor(settings.colors.divider, printScheme, "divider");
+    const printRibbonWidth =
+      settings.ribbonWidth === DEFAULT_APPEARANCE.ribbonWidth &&
+      settings.ribbonStyle === "solid"
+        ? "2.2pt"
+        : `${points(settings.ribbonWidth)}pt`;
+    const ribbonSide =
+      settings.ribbonPosition === "right" ? "border-right" : "border-left";
+    const borderLines: string[] = [];
+    if (settings.blockBorderWidth > 0) {
+      borderLines.push(
+        `  border: ${settings.blockBorderWidth}px ${settings.blockBorderStyle} ${borderColor} !important;\n`,
+      );
+    }
+    if (settings.ribbon) {
+      borderLines.push(
+        `  ${ribbonSide}: ${printRibbonWidth} ${settings.ribbonStyle} ${ribbonColor} !important;\n`,
+      );
+    } else if (settings.blockBorderWidth === 0) {
+      borderLines.push("  border-left: none !important;\n");
+    }
+    if (settings.divider) {
+      borderLines.push(
+        `  border-bottom: ${settings.dividerWidth}px ${settings.dividerStyle} ${dividerColor} !important;\n`,
+      );
+    }
+    const dividerPadding = settings.divider
+      ? `  padding-bottom: ${(0.12 + settings.dividerOffset).toFixed(2)}em !important;\n`
+      : "";
+    const extras: string[] = [];
+    if (settings.textAlign !== "start") {
+      extras.push(`  text-align: ${settings.textAlign} !important;\n`);
+    }
+    if (settings.firstLineIndent > 0) {
+      extras.push(`  text-indent: ${settings.firstLineIndent}em !important;\n`);
+    }
+    if (settings.maxWidthCh > 0) {
+      extras.push(`  max-width: ${settings.maxWidthCh}ch !important;\n`);
+    }
+    if (settings.blockRadius > 0) {
+      extras.push(`  border-radius: ${settings.blockRadius}px !important;\n`);
+    }
+    return `.${className} {
+  margin: 0.18em 0 ${settings.paragraphSpacing}em !important;
+  padding: 0.12em 0 0.12em 0.78em !important;
+${borderLines.join("")}  color: ${explicitTextColor(settings)} !important;
+  background: transparent !important;
+${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directionRule}  font-size: ${points(printFontSizePx)}pt !important;
+  line-height: ${settings.lineHeight} !important;
+${decorationRules(settings, "print", printScheme, true)}${dividerPadding}${extras.join("")}  break-inside: avoid-page;
+  page-break-inside: avoid;
+}`;
+  }
+
   const color = cssColorForRole(settings, "text", scheme, explicitScheme);
   const background = cssColorForRole(settings, "background", scheme, explicitScheme);
   const ribbonColor = cssColorForRole(settings, "ribbon", scheme, explicitScheme);
-  const underlineColor =
-    settings.underline && settings.colors.underline.mode !== "theme"
-      ? cssColorForRole(settings, "underline", scheme, explicitScheme)
-      : "";
-  const underline = settings.underline
-    ? `  text-decoration: underline;\n${
-        underlineColor ? `  text-decoration-color: ${underlineColor};\n` : ""
-      }`
-    : "";
+  const borderColor = cssColorForRole(settings, "border", scheme, explicitScheme);
+  const dividerColor = cssColorForRole(settings, "divider", scheme, explicitScheme);
+  const ribbonSide =
+    settings.ribbonPosition === "right" ? "border-right" : "border-left";
+
+  const borderLines: string[] = [];
+  if (settings.blockBorderWidth > 0) {
+    borderLines.push(
+      `  border: ${settings.blockBorderWidth}px ${settings.blockBorderStyle} ${borderColor};\n`,
+    );
+  }
+  if (settings.ribbon) {
+    borderLines.push(
+      `  ${ribbonSide}: ${settings.ribbonWidth}px ${settings.ribbonStyle} ${ribbonColor || "#2f6fdf"};\n`,
+    );
+  } else if (settings.blockBorderWidth === 0) {
+    borderLines.push("  border-left: none;\n");
+  }
+  if (settings.divider) {
+    borderLines.push(
+      `  border-bottom: ${settings.dividerWidth}px ${settings.dividerStyle} ${dividerColor};\n`,
+    );
+  }
+
+  const defaultPadding =
+    settings.blockPaddingY === DEFAULT_APPEARANCE.blockPaddingY &&
+    settings.blockPaddingX === DEFAULT_APPEARANCE.blockPaddingX &&
+    settings.ribbonPadding === 0;
+  let paddingLine = "  padding: 0.45em 0.95em;\n";
+  if (!defaultPadding) {
+    const inlineStart =
+      settings.blockPaddingX +
+      (settings.ribbon && settings.ribbonPosition === "left"
+        ? settings.ribbonPadding
+        : 0);
+    const inlineEnd =
+      settings.blockPaddingX +
+      (settings.ribbon && settings.ribbonPosition === "right"
+        ? settings.ribbonPadding
+        : 0);
+    const blockEnd = settings.blockPaddingY + (settings.divider ? settings.dividerOffset : 0);
+    paddingLine = `  padding: ${settings.blockPaddingY}em ${inlineEnd}em ${blockEnd}em ${inlineStart}em;\n`;
+  } else if (settings.divider) {
+    paddingLine += `  padding-bottom: ${(DEFAULT_APPEARANCE.blockPaddingY + settings.dividerOffset).toFixed(2)}em;\n`;
+  }
+
+  const sourceGap =
+    settings.sourceGap === DEFAULT_APPEARANCE.sourceGap
+      ? "0.65em"
+      : `${settings.sourceGap}em`;
+
+  const extras: string[] = [];
+  if (settings.blockRadius > 0) {
+    extras.push(`  border-radius: ${settings.blockRadius}px;\n`);
+  }
+  if (settings.ribbon && settings.ribbonRadius > 0) {
+    extras.push(`  border-top-${settings.ribbonPosition}-radius: ${settings.ribbonRadius}px;\n`);
+    extras.push(`  border-bottom-${settings.ribbonPosition}-radius: ${settings.ribbonRadius}px;\n`);
+  }
+  if (settings.blockIndent > 0) {
+    extras.push(`  margin-inline-start: ${settings.blockIndent}em;\n`);
+  }
+  if (settings.firstLineIndent > 0) {
+    extras.push(`  text-indent: ${settings.firstLineIndent}em;\n`);
+  }
+  if (settings.textAlign !== "start") {
+    extras.push(`  text-align: ${settings.textAlign};\n`);
+  }
+  if (settings.maxWidthCh > 0) {
+    extras.push(`  max-width: ${settings.maxWidthCh}ch;\n`);
+  }
+  if (settings.opacity < 100) {
+    extras.push(`  opacity: ${Number((settings.opacity / 100).toFixed(2))};\n`);
+  }
 
   let css = `.${className} {
   box-sizing: border-box;
-  border-left: ${settings.ribbon ? `4px solid ${ribbonColor || "#2f6fdf"}` : "none"};
-  margin: 0.65em 0 ${settings.paragraphSpacing}em;
-  padding: 0.45em 0.95em;
-${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directionRule}  line-height: ${settings.lineHeight};
+${borderLines.join("")}  margin: ${sourceGap} 0 ${settings.paragraphSpacing}em;
+${paddingLine}${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directionRule}  line-height: ${settings.lineHeight};
   font-size: ${readerFontSize};
-${color ? `  color: ${color};\n` : ""}${background ? `  background: ${background};\n` : ""}${underline}  white-space: pre-wrap;
+${color ? `  color: ${color};\n` : ""}${background ? `  background: ${background};\n` : ""}${decorationRules(
+    settings,
+    "reader",
+    scheme,
+    explicitScheme,
+  )}${extras.join("")}  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }`;
+
+  if (settings.sourceDim < 100) {
+    const sourceClass = context.sourceClassName || "interlinear-source";
+    css += `\n.${sourceClass} {\n  opacity: ${Number((settings.sourceDim / 100).toFixed(2))};\n}`;
+  }
 
   if (followReaderScheme) {
     const darkLines: string[] = [];
@@ -1011,8 +1340,9 @@ ${color ? `  color: ${color};\n` : ""}${background ? `  background: ${background
     };
     push("color", "text");
     push("background", "background");
-    if (settings.underline) push("text-decoration-color", "underline");
-    if (settings.ribbon) push("border-left-color", "ribbon");
+    if (settings.textDecoration.length) push("text-decoration-color", "underline");
+    if (settings.ribbon) push(`${ribbonSide}-color`, "ribbon");
+    if (settings.divider) push("border-bottom-color", "divider");
     if (darkLines.length) {
       css += `\n:root[data-color-scheme="dark"] .${className} {\n${darkLines.join(
         "\n",

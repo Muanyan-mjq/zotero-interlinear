@@ -622,3 +622,118 @@ test("reader CSS rejects malicious split colors and keeps state colors explicit"
   );
   assert.match(states, /color: #ff8888;/u);
 });
+
+test("default reader and print CSS are frozen snapshots", () => {
+  assert.equal(
+    buildTranslationCSS("interlinear-translation", undefined, "reader"),
+    `.interlinear-translation {
+  box-sizing: border-box;
+  border-left: 4px solid #2f6fdf;
+  margin: 0.65em 0 1.25em;
+  padding: 0.45em 0.95em;
+  line-height: 1.75;
+  font-size: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}`,
+  );
+  assert.equal(
+    buildTranslationCSS("interlinear-translation", undefined, "print"),
+    `.interlinear-translation {
+  margin: 0.18em 0 1.25em !important;
+  padding: 0.12em 0 0.12em 0.78em !important;
+  border-left: 2.2pt solid #2f6fdf !important;
+  color: #222 !important;
+  background: transparent !important;
+  font-size: 12pt !important;
+  line-height: 1.75 !important;
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}`,
+  );
+});
+
+test("text decoration supports multiple lines, style, thickness, offset and skip-ink", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      textDecoration: ["underline", "overline", "line-through"],
+      textDecorationStyle: "wavy",
+      textDecorationThickness: 2,
+      textUnderlineOffset: 4,
+      textDecorationSkipInk: "none",
+      underlineColor: "#00ff00",
+    },
+    "reader",
+  );
+  assert.match(css, /text-decoration: underline overline line-through;/u);
+  assert.match(css, /text-decoration-style: wavy;/u);
+  assert.match(css, /text-decoration-thickness: 2px;/u);
+  assert.match(css, /text-underline-offset: 4px;/u);
+  assert.match(css, /text-decoration-skip-ink: none;/u);
+  assert.match(css, /text-decoration-color: #00ff00;/u);
+});
+
+test("divider, right ribbon and block layout are emitted and clamped", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      divider: true,
+      dividerStyle: "dashed",
+      dividerWidth: 2,
+      dividerOffset: 0.5,
+      ribbonPosition: "right",
+      ribbonWidth: 6,
+      ribbonStyle: "dotted",
+      ribbonRadius: 4,
+      ribbonPadding: 0.5,
+      blockPaddingY: 0.6,
+      blockPaddingX: 1.2,
+      blockRadius: 10,
+      blockBorderWidth: 2,
+      blockBorderStyle: "double",
+      blockIndent: 1,
+      firstLineIndent: 0.5,
+      textAlign: "justify",
+      maxWidthCh: 72,
+      opacity: 80,
+      sourceGap: 0.3,
+      sourceDim: 60,
+    },
+    "reader",
+  );
+  assert.match(css, /border-bottom: 2px dashed #d9d9d9;/u);
+  assert.match(css, /border-right: 6px dotted #2f6fdf;/u);
+  assert.match(css, /border-top-right-radius: 4px;/u);
+  assert.match(css, /padding: 0.6em 1.7em 1.1em 1.2em;/u);
+  assert.match(css, /border-radius: 10px;/u);
+  assert.match(css, /border: 2px double #d9d9d9;/u);
+  assert.match(css, /margin-inline-start: 1em;/u);
+  assert.match(css, /text-indent: 0.5em;/u);
+  assert.match(css, /text-align: justify;/u);
+  assert.match(css, /max-width: 72ch;/u);
+  assert.match(css, /opacity: 0.8;/u);
+  assert.match(css, /margin: 0.3em 0 1.25em;/u);
+  assert.match(css, /\.interlinear-source \{\n  opacity: 0.6;\n\}/u);
+
+  const clamped = normalizeAppearance({
+    dividerWidth: 99,
+    ribbonWidth: -2,
+    ribbonRadius: 99,
+    blockPaddingY: -1,
+    maxWidthCh: 10,
+    opacity: 1,
+    sourceDim: 999,
+    textDecoration: ["underline", "bogus"],
+    textDecorationStyle: "bogus",
+  });
+  assert.equal(clamped.dividerWidth, 6);
+  assert.equal(clamped.ribbonWidth, 1);
+  assert.equal(clamped.ribbonRadius, 8);
+  assert.equal(clamped.blockPaddingY, 0);
+  assert.equal(clamped.maxWidthCh, 40);
+  assert.equal(clamped.opacity, 40);
+  assert.equal(clamped.sourceDim, 100);
+  assert.deepEqual(clamped.textDecoration, ["underline"]);
+  assert.equal(clamped.textDecorationStyle, "solid");
+});

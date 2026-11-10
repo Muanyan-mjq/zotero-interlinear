@@ -1125,3 +1125,42 @@
 6. 输入非法值 `red; } body { display:none` 或 `url(evil)`：确认被拒绝、显示行内错误、不写入偏好，页面样式无异常。
 7. 修改颜色后保存，确认已打开的阅读器立即变化且没有重新发起翻译请求；关闭重开仍保持。
 8. 在浅色/深色 Zotero 主题下检查 8 张卡片的文字、边框、状态点对比度，并确认取色器面板不被裁切（滚动到视口内）。
+
+## Step 4：下划线、色带与译文块样式系统（P1）
+
+### 做了什么
+- **文字装饰**：`textDecoration` 支持 underline/overline/line-through 多选（旧 `underline` 布尔继续同步为是否包含 underline）；线型 solid/double/dotted/dashed/wavy；粗细 0=自动、0.5–8px；距文字 -1=自动、0–12px；skip-ink 自动/关闭；颜色复用 `colors.underline`（含浅深分别与透明度）。CSS 输出 `text-decoration`、`text-decoration-style`、`text-decoration-thickness`、`text-underline-offset`、`text-decoration-skip-ink`、`text-decoration-color`。
+- **段落分隔线**：`divider` 开关、线型、粗细 1–6px、与文字距离 0–2em、颜色角色 `divider`；输出 `border-bottom`，距离通过增加 `padding-bottom` 实现。**“随文字”长度未实现**：它需要把整段文本包进 inline 元素或使用 background-image 裁剪，会改变块布局/选择行为；当前只提供整行分隔线，已记入 BACKLOG。
+- **色带**：位置 left/right、宽度 1–12px、线型 solid/dashed/dotted/double、圆角 0–8px（物理左上/左下或右上/右下圆角）、与文字间距 0–2em（加到该侧内边距）；关闭时保留旧的 `border-left: none` 输出。
+- **译文块布局**：垂直/水平内边距 0–2em、圆角 0–16px、边框宽 0–4px + 线型 + `colors.border`、左缩进 0–4em（`margin-inline-start`）、首行缩进 0–4em、对齐 start/justify/center、最大宽度 0=不限 / 40–100ch、整体不透明度 40–100%、原文与译文间距 0–2em、显示译文时原文淡化 40–100%（`sourceDim`，输出独立 `.interlinear-source { opacity }` 规则）。
+- **默认输出冻结**：新增两个精确快照测试，固定默认 reader/print CSS 与改动前逐字节一致；所有新 CSS 声明只在非默认值时追加。默认色带仍是 `border-left: 4px solid #2f6fdf`，默认 padding/margin 保持不变。
+- **单测**：多装饰组合、divider/右色带/块布局输出、越界夹取、恶意/未知枚举回落、`maxWidthCh` 0/40–100、opacity/sourceDim 夹取；新增集成用例修改全部 Step 4 控件并断言 `getAppearance()`、旧偏好与已打开阅读器的 `<style>`。
+- **原生高亮回归**：`test/readingLayout.test.ts` 在真实 Zotero 阅读器 fixture 中，在译文块上追加 padding、四边 border、右色带、圆角、左缩进与首行缩进后，仍断言高亮对齐误差 <2px、存储 PDF 坐标不变。
+- **设置页**：外观页新增“文字装饰 / 段落分隔线 / 色带 / 译文块布局”四张卡片；分隔线与色带关闭时对应输入自动禁用；所有标签/帮助/枚举走 Fluent。
+
+### 改动文件
+`src/appearance.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`、`test/startup.test.ts`、`test/readingLayout.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：165 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：54 pass / 0 fail（新增 Step 4 控件保存用例；readingLayout 对齐回归用例已扩展）。
+
+### 不确定项 / 未目视验证
+- `text-decoration-thickness`、`text-underline-offset`、`text-decoration-skip-ink` 在 Zotero 10 的 Gecko 中按标准支持（Firefox 70+），但未在真实 PDF 上逐项截图。
+- 逻辑圆角（`border-top-*-radius`）与右色带组合在 RTL 文本下的视觉表现未目视；当前使用物理边，色带位置与书写方向无关。
+- “随文字”分隔线未实现，原因见上；已写入 `docs/dev/BACKLOG.md`。
+- `sourceDim` 用 `opacity` 淡化原文，可能同时淡化原文上的原生高亮覆盖层；集成测试只断言几何位置，未目视确认高亮颜色是否变淡。默认 100% 不生效，不影响现有用户。
+- 最大宽度以 `ch` 为单位，实际宽度取决于当前字体；窄屏下 `max-width` 可能小于可用宽度，属预期。
+- 分栏模式下新增的块 padding/border 是否让左右列换行未在真实 PDF 上验证；几何观察器会跟随高度变化。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→外观→文字装饰：同时勾选下划线/上划线/删除线，线型选波浪、粗细 2px、距离 4px、取消 skip-ink；保存后译文块应同时出现三种装饰，线型/粗细/偏移生效。
+2. 打开“段落分隔线”，选虚线、2px、距离 0.5em：译文块下方出现分隔线，文字与线之间多出 0.5em。
+3. 色带改为右侧、6px、点线、圆角 4px、与文字间距 0.5em：译文块右侧出现点线色带，右侧内边距增加，圆角只出现在右侧。
+4. 译文块布局：垂直 padding 0.6、水平 1.2、圆角 10、边框 2px 双线、左缩进 1em、首行缩进 0.5em、两端对齐、最大宽度 72ch、不透明度 80%：保存后逐项观察；窄屏下最大宽度不应导致横向滚动。
+5. 把“显示译文时淡化原文”设为 60%：译文显示时原文变淡；关闭对照后原文恢复；检查 Zotero 原生高亮是否仍可见、位置不偏移。
+6. 在左右双栏模式下重复第 1–4 步：确认两列仍并排、不换行、高亮矩形仍覆盖原文；滚动和缩放后位置不漂移。
+7. 点 🖨️ 导出：确认打印稿保留字重/斜体/字距/装饰/分隔线/色带，深色主题不会印成深色底。
+8. 切换浅/深主题：确认色带、分隔线、边框的默认颜色对比度可读；显式颜色在两种主题下都按设置输出。

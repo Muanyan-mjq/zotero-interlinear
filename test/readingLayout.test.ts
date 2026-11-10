@@ -154,6 +154,21 @@ describe("native Zotero reading-mode highlight layout", function () {
       await Zotero.Promise.delay(100);
       assert.isBelow(alignmentError(), 2, "Later layout changes must remain aligned");
 
+      // Step 4 block styles (padding, border, ribbon side, radius) must not
+      // break the native highlight sync either.
+      block.style.padding = "0.6em 1.2em";
+      block.style.border = "2px double #999";
+      block.style.borderRight = "6px dotted #2f6fdf";
+      block.style.borderRadius = "10px";
+      block.style.marginLeft = "1em";
+      block.style.textIndent = "0.5em";
+      await Zotero.Promise.delay(100);
+      assert.isBelow(
+        alignmentError(),
+        2,
+        "Custom block padding, borders and indentation must stay aligned",
+      );
+
       block.remove();
       cleanupReadingLayout(doc);
       assert.isBelow(

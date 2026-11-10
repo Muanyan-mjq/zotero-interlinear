@@ -1083,7 +1083,13 @@
             id="interlinear-appearance-contrast-warning"
             class="interlinear-warning"
           ></html:p>
+        </html:div>
 
+        <html:div class="interlinear-card">
+          <html:h4
+            id="interlinear-decoration-title"
+            class="interlinear-subtitle"
+          ></html:h4>
           <html:div class="interlinear-check-row">
             <html:input
               id="interlinear-appearance-underline"
@@ -1095,9 +1101,165 @@
               for="interlinear-appearance-underline"
               class="interlinear-check-label"
             ></html:label>
+            <html:input
+              id="interlinear-decoration-overline"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-decoration-overline-label"
+              for="interlinear-decoration-overline"
+              class="interlinear-check-label"
+            ></html:label>
+            <html:input
+              id="interlinear-decoration-line-through"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-decoration-line-through-label"
+              for="interlinear-decoration-line-through"
+              class="interlinear-check-label"
+            ></html:label>
           </html:div>
-          
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-decoration-style-label"
+              for="interlinear-decoration-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-decoration-style" class="interlinear-select">
+                <html:option id="interlinear-decoration-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-decoration-style-double" value="double"></html:option>
+                <html:option id="interlinear-decoration-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-decoration-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-decoration-style-wavy" value="wavy"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-decoration-thickness-label"
+              for="interlinear-decoration-thickness"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-decoration-thickness"
+                type="number"
+                min="0"
+                max="8"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+            <html:p id="interlinear-decoration-thickness-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-decoration-offset-label"
+              for="interlinear-decoration-offset"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-decoration-offset"
+                type="number"
+                min="-1"
+                max="12"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+            <html:p id="interlinear-decoration-offset-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-decoration-skip-ink"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-decoration-skip-ink-label"
+              for="interlinear-decoration-skip-ink"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+        </html:div>
 
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-divider-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-divider"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-divider-label"
+              for="interlinear-divider"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-divider-style-label"
+              for="interlinear-divider-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-divider-style" class="interlinear-select">
+                <html:option id="interlinear-divider-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-divider-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-divider-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-divider-style-double" value="double"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-divider-width-label"
+              for="interlinear-divider-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-divider-width"
+                type="number"
+                min="1"
+                max="6"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-divider-offset-label"
+              for="interlinear-divider-offset"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-divider-offset"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+            <html:p id="interlinear-divider-offset-help" class="interlinear-help"></html:p>
+          </html:div>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-ribbon-title" class="interlinear-subtitle"></html:h4>
           <html:div class="interlinear-check-row">
             <html:input
               id="interlinear-appearance-ribbon"
@@ -1110,7 +1272,301 @@
               class="interlinear-check-label"
             ></html:label>
           </html:div>
-          
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-position-label"
+              for="interlinear-ribbon-position"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-ribbon-position" class="interlinear-select">
+                <html:option id="interlinear-ribbon-position-left" value="left"></html:option>
+                <html:option id="interlinear-ribbon-position-right" value="right"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-width-label"
+              for="interlinear-ribbon-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-ribbon-width"
+                type="number"
+                min="1"
+                max="12"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-style-label"
+              for="interlinear-ribbon-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-ribbon-style" class="interlinear-select">
+                <html:option id="interlinear-ribbon-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-ribbon-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-ribbon-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-ribbon-style-double" value="double"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-radius-label"
+              for="interlinear-ribbon-radius"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-ribbon-radius"
+                type="number"
+                min="0"
+                max="8"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-ribbon-padding-label"
+              for="interlinear-ribbon-padding"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-ribbon-padding"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-block-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-padding-y-label"
+              for="interlinear-block-padding-y"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-padding-y"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-padding-x-label"
+              for="interlinear-block-padding-x"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-padding-x"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-radius-label"
+              for="interlinear-block-radius"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-radius"
+                type="number"
+                min="0"
+                max="16"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-border-width-label"
+              for="interlinear-block-border-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-border-width"
+                type="number"
+                min="0"
+                max="4"
+                step="0.5"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-border-style-label"
+              for="interlinear-block-border-style"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-block-border-style" class="interlinear-select">
+                <html:option id="interlinear-block-border-style-solid" value="solid"></html:option>
+                <html:option id="interlinear-block-border-style-dashed" value="dashed"></html:option>
+                <html:option id="interlinear-block-border-style-dotted" value="dotted"></html:option>
+                <html:option id="interlinear-block-border-style-double" value="double"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-indent-label"
+              for="interlinear-block-indent"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-indent"
+                type="number"
+                min="0"
+                max="4"
+                step="0.1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-first-line-indent-label"
+              for="interlinear-first-line-indent"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-first-line-indent"
+                type="number"
+                min="0"
+                max="4"
+                step="0.1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-align-label"
+              for="interlinear-block-align"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-block-align" class="interlinear-select">
+                <html:option id="interlinear-block-align-start" value="start"></html:option>
+                <html:option id="interlinear-block-align-justify" value="justify"></html:option>
+                <html:option id="interlinear-block-align-center" value="center"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-max-width-label"
+              for="interlinear-block-max-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-max-width"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">ch</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-block-opacity-label"
+              for="interlinear-block-opacity"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-block-opacity"
+                type="number"
+                min="40"
+                max="100"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">%</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-source-dim-label"
+              for="interlinear-source-dim"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-source-dim"
+                type="number"
+                min="40"
+                max="100"
+                step="1"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">%</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-source-gap-label"
+              for="interlinear-source-gap"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-source-gap"
+                type="number"
+                min="0"
+                max="2"
+                step="0.05"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">em</html:span>
+            </html:div>
+          </html:div>
         </html:div>
       </html:div>
 
