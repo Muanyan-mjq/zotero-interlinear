@@ -19,6 +19,10 @@ import {
   meetsContrastAA,
   normalizeAppearance,
   normalizeColorList,
+  normalizeAppearancePresets,
+  parseAppearanceImport,
+  serializeAppearanceExport,
+  APPEARANCE_IMPORT_MAX_BYTES,
   normalizeColorToken,
   normalizeHexInput,
   normalizeThemeColor,
@@ -736,4 +740,76 @@ test("divider, right ribbon and block layout are emitted and clamped", () => {
   assert.equal(clamped.sourceDim, 100);
   assert.deepEqual(clamped.textDecoration, ["underline"]);
   assert.equal(clamped.textDecorationStyle, "solid");
+});
+
+test("appearance presets dedupe, cap and reject invalid entries", () => {
+  const presets = normalizeAppearancePresets(
+    [
+      { name: "Paper", appearance: { fontSize: 20 } },
+      { name: "paper", appearance: { fontSize: 18 } },
+      { name: "   ", appearance: {} },
+      { name: "Academic", appearance: { fontSize: 99, color: "url(x)" } },
+      "nope",
+    ],
+    20,
+  );
+  assert.equal(presets.length, 2);
+  assert.equal(presets[0].name, "Paper");
+  assert.equal(presets[0].appearance.fontSize, 20);
+  assert.equal(presets[1].appearance.fontSize, 32);
+  assert.equal(presets[1].appearance.color, "");
+});
+
+test("appearance import rejects oversized, malformed and unsupported files", () => {
+  assert.equal(parseAppearanceImport("x".repeat(APPEARANCE_IMPORT_MAX_BYTES + 1)).error, "too-large");
+  assert.equal(parseAppearanceImport("{nope").error, "invalid-json");
+  assert.equal(parseAppearanceImport("[]").error, "invalid-format");
+  assert.equal(
+    parseAppearanceImport(JSON.stringify({ format: "other", version: 2 })).error,
+    "invalid-format",
+  );
+  assert.equal(
+    parseAppearanceImport(
+      JSON.stringify({ format: "interlinear-appearance", version: 99 }),
+    ).error,
+    "unsupported-version",
+  );
+});
+
+test("appearance import clamps values, reports unknown keys and never executes content", () => {
+  const result = parseAppearanceImport(
+    JSON.stringify({
+      format: "interlinear-appearance",
+      version: 2,
+      appearance: {
+        fontSize: 999,
+        fontFamily: "Arial; } body { display:none",
+        color: "red; } body { display:none",
+        unknownKey: "value",
+        nested: { evil: true },
+      },
+      presets: [{ name: "Imported", appearance: { fontSize: 12 } }],
+    }),
+  );
+  assert.equal(result.error, null);
+  assert.equal(result.appearance.fontSize, 32);
+  assert.equal(result.appearance.fontFamily, "");
+  assert.equal(result.appearance.color, "");
+  assert.deepEqual(result.ignoredKeys.sort(), ["nested", "unknownKey"]);
+  assert.equal(result.presets.length, 1);
+  assert.equal(result.presets[0].appearance.fontSize, 12);
+});
+
+test("appearance export round-trips and contains no provider keys", () => {
+  const exported = serializeAppearanceExport(
+    normalizeAppearance({ fontSize: 18, color: "#123456", ribbon: false }),
+    [{ name: "Mine", appearance: normalizeAppearance({ fontSize: 14 }) }],
+  );
+  assert.doesNotMatch(exported, /apiKey|endpoint|prompt/iu);
+  const parsed = parseAppearanceImport(exported);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.appearance.fontSize, 18);
+  assert.equal(parsed.appearance.color, "#123456");
+  assert.equal(parsed.presets[0].name, "Mine");
+  assert.equal(parsed.presets[0].appearance.fontSize, 14);
 });

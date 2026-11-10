@@ -729,6 +729,70 @@
         </html:div>
       </html:div>
 
+      <html:div
+        id="interlinear-scope-section"
+        class="interlinear-section"
+        data-tab="display"
+        hidden="true"
+        role="region"
+        aria-labelledby="interlinear-scope-title"
+      >
+        <html:div class="interlinear-section-head">
+          <html:h3 id="interlinear-scope-title"></html:h3>
+        </html:div>
+        <html:div class="interlinear-card">
+          <html:div class="interlinear-check-row">
+            <html:input id="interlinear-scope-body" type="checkbox" class="interlinear-checkbox" />
+            <html:label
+              id="interlinear-scope-body-label"
+              for="interlinear-scope-body"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input id="interlinear-scope-titles" type="checkbox" class="interlinear-checkbox" />
+            <html:label
+              id="interlinear-scope-titles-label"
+              for="interlinear-scope-titles"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-scope-captions"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-scope-captions-label"
+              for="interlinear-scope-captions"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-scope-list-items"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-scope-list-items-label"
+              for="interlinear-scope-list-items"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input id="interlinear-scope-notes" type="checkbox" class="interlinear-checkbox" />
+            <html:label
+              id="interlinear-scope-notes-label"
+              for="interlinear-scope-notes"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:p id="interlinear-scope-help" class="interlinear-help"></html:p>
+        </html:div>
+      </html:div>
+
       <!-- Appearance -->
       <html:div
         id="interlinear-appearance-section"
@@ -740,6 +804,89 @@
       >
         <html:div class="interlinear-section-head">
           <html:h3 id="interlinear-appearance-title"></html:h3>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-appearance-presets-title" class="interlinear-subtitle"></html:h4>
+          <html:div
+            id="interlinear-appearance-builtin-presets"
+            class="interlinear-actions interlinear-preset-chips"
+          ></html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-appearance-my-presets-label"
+              for="interlinear-appearance-my-presets"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select
+                id="interlinear-appearance-my-presets"
+                class="interlinear-select"
+              ></html:select>
+              <html:button
+                id="interlinear-appearance-apply-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+              <html:button
+                id="interlinear-appearance-delete-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-appearance-preset-name-label"
+              for="interlinear-appearance-preset-name"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-appearance-preset-name"
+                type="text"
+                class="interlinear-input"
+              />
+              <html:button
+                id="interlinear-appearance-save-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+              <html:button
+                id="interlinear-appearance-rename-preset"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-actions">
+            <html:button
+              id="interlinear-appearance-import"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:button
+              id="interlinear-appearance-export"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:button
+              id="interlinear-appearance-undo"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:button
+              id="interlinear-appearance-reset"
+              type="button"
+              class="interlinear-button interlinear-button-small"
+            ></html:button>
+            <html:span
+              id="interlinear-appearance-preset-status"
+              class="interlinear-inline-status"
+              role="status"
+              aria-live="polite"
+            ></html:span>
+          </html:div>
         </html:div>
 
         <html:div class="interlinear-preview">
@@ -1568,9 +1715,78 @@
             </html:div>
           </html:div>
         </html:div>
-      </html:div>
 
-      <!-- Glossary -->
+        <html:div class="interlinear-card">
+          <html:h4 id="interlinear-interface-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-ui-follow-appearance"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-ui-follow-appearance-label"
+              for="interlinear-ui-follow-appearance"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-popup-max-width-label"
+              for="interlinear-popup-max-width"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-popup-max-width"
+                type="number"
+                min="280"
+                max="720"
+                step="10"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span class="interlinear-unit">px</html:span>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-export-mode-label"
+              for="interlinear-export-mode"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-export-mode" class="interlinear-select">
+                <html:option id="interlinear-export-mode-reader" value="reader"></html:option>
+                <html:option id="interlinear-export-mode-print" value="print"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-state-animation"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-state-animation-label"
+              for="interlinear-state-animation"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-reduce-motion"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-reduce-motion-label"
+              for="interlinear-reduce-motion"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+        </html:div>
+      </html:div>
       <html:div
         id="interlinear-glossary-section"
         class="interlinear-section"

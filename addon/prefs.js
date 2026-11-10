@@ -43,3 +43,8 @@ pref("appearance.underline", false);
 pref("appearance.underlineColor", "");
 pref("appearance.ribbon", true);
 pref("appearance.ribbonColor", "#2f6fdf");
+pref("scope.titles", true);
+pref("scope.captions", true);
+pref("scope.listItems", true);
+pref("scope.notes", true);
+pref("scope.body", true);

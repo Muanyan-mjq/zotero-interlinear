@@ -12,6 +12,11 @@ import {
   getMaxConsecutiveErrors,
   getRequestGapMs,
   getRequestTimeoutMs,
+  getScopeBody,
+  getScopeCaptions,
+  getScopeListItems,
+  getScopeNotes,
+  getScopeTitles,
   getShortcutEnabled,
   getShortcutSpec,
   getSkipLastPages,
@@ -35,7 +40,11 @@ import { isFailureText } from "./translationFailure";
 import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
-import { buildTranslationCSS, resolveTextDirection } from "./appearance";
+import {
+  buildTranslationCSS,
+  resolveTextDirection,
+  resolveUiFontFamily,
+} from "./appearance";
 import { buildDisplayModeCSS, DISPLAY_MODES, type DisplayMode } from "./displayMode";
 import {
   cleanupReadingLayout,
@@ -478,7 +487,37 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 
 function installStyles(doc: Document): void {
   const appearance = getAppearance();
+  const uiFont = appearance.uiFollowAppearance
+    ? resolveUiFontFamily(appearance, getTargetLanguage())
+    : "";
+  const uiFontPx =
+    appearance.fontSizeMode === "em"
+      ? Math.round(appearance.fontSize * appearance.fontSizeEm)
+      : appearance.fontSize;
+  const uiFontSize = appearance.uiFollowAppearance ? `${uiFontPx}px` : "13px";
+  const animation =
+    appearance.stateAnimation && !appearance.reduceMotion
+      ? `
+    @keyframes interlinear-pulse {
+      0%, 100% { opacity: 0.45; }
+      50% { opacity: 0.85; }
+    }
+    .${TRANSLATION_CLASS}[data-state="loading"] {
+      animation: interlinear-pulse 1.4s ease-in-out infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .${TRANSLATION_CLASS}[data-state="loading"] {
+        animation: none;
+      }
+    }
+    `
+      : "";
   const css = `
+:root {
+  --interlinear-ui-font-family: ${uiFont || "inherit"};
+  --interlinear-ui-font-size: ${uiFontSize};
+  --interlinear-popup-max-width: ${appearance.popupMaxWidth}px;
+}
 ${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader", {
   targetLanguage: getTargetLanguage(),
 })}
@@ -493,6 +532,10 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .${TRANSLATION_CLASS}[data-state="paused"] {
       opacity: 0.78;
     }
+    .${TRANSLATION_CLASS} {
+      user-select: text;
+    }
+${animation}
     .interlinear-source-hover {
       outline: 1px dashed currentColor;
       outline-offset: 2px;
@@ -504,15 +547,16 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .interlinear-selection-popup {
       position: fixed;
       z-index: 2147483000;
-      min-width: 320px;
-      max-width: 420px;
+      min-width: 280px;
+      max-width: var(--interlinear-popup-max-width, 420px);
       padding: 8px;
       border: 1px solid rgba(127, 127, 127, 0.45);
       border-radius: 6px;
       background: Canvas;
       color: CanvasText;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-      font-size: 13px;
+      font-family: var(--interlinear-ui-font-family, inherit);
+      font-size: var(--interlinear-ui-font-size, 13px);
       line-height: 1.5;
     }
     .interlinear-selection-actions {
@@ -754,18 +798,18 @@ function collectParagraphs(
   engineTag: string,
   structure: any,
 ): ReaderParagraph[] {
-  const selector = [
-    "#sdt-content p[data-ref-path]",
-    "#sdt-content h1[data-ref-path]",
-    "#sdt-content h2[data-ref-path]",
-    "#sdt-content h3[data-ref-path]",
-    "#sdt-content h4[data-ref-path]",
-    "#sdt-content h5[data-ref-path]",
-    "#sdt-content h6[data-ref-path]",
-    "#sdt-content figcaption[data-ref-path]",
-    "#sdt-content aside.sdt-note[data-ref-path]",
-    "#sdt-content li[data-ref-path]",
-  ].join(",");
+  const selectors: string[] = [];
+  if (getScopeBody()) selectors.push("#sdt-content p[data-ref-path]");
+  if (getScopeTitles()) {
+    for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
+      selectors.push(`#sdt-content ${tag}[data-ref-path]`);
+    }
+  }
+  if (getScopeCaptions()) selectors.push("#sdt-content figcaption[data-ref-path]");
+  if (getScopeNotes()) selectors.push("#sdt-content aside.sdt-note[data-ref-path]");
+  if (getScopeListItems()) selectors.push("#sdt-content li[data-ref-path]");
+  const selector = selectors.join(",");
+  if (!selector) return [];
 
   const totalPages = Array.isArray(structure?.catalog?.pages) ? structure.catalog.pages.length : 0;
   const elements = Array.from(doc.querySelectorAll(selector)) as HTMLElement[];
@@ -938,6 +982,7 @@ export async function translateSelectedText(reader: any, rawText: string): Promi
 export function translateReaderParagraph(
   reader: any,
   source: HTMLElement,
+  options: { force?: boolean } = {},
 ): Promise<void> {
   const pending = paragraphRequests.get(source);
   if (pending) return pending;
@@ -950,13 +995,22 @@ export function translateReaderParagraph(
   const sourceText = (source.textContent || "").replace(/\s+/g, " ").trim();
   if (!refPath || sourceText.length < 2) return Promise.resolve();
 
-  const existingBlock = source.nextElementSibling as HTMLElement | null;
-  if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
-    const state = existingBlock.dataset.state;
-    if (state === "loading" || state === "done") return Promise.resolve();
+  if (!options.force) {
+    const existingBlock = source.nextElementSibling as HTMLElement | null;
+    if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
+      const state = existingBlock.dataset.state;
+      if (state === "loading" || state === "done") return Promise.resolve();
+    }
   }
 
-  const promise = requestReaderParagraph(reader, source, doc, refPath, sourceText);
+  const promise = requestReaderParagraph(
+    reader,
+    source,
+    doc,
+    refPath,
+    sourceText,
+    Boolean(options.force),
+  );
   paragraphRequests.set(source, promise);
   const release = () => {
     if (paragraphRequests.get(source) === promise) paragraphRequests.delete(source);
@@ -971,6 +1025,7 @@ async function requestReaderParagraph(
   doc: Document,
   refPath: string,
   sourceText: string,
+  force = false,
 ): Promise<void> {
   const { itemID, itemKey } = getReaderItem(reader);
   const engine = getEngine();
@@ -981,13 +1036,15 @@ async function requestReaderParagraph(
     sourceText,
     sourceElement: source,
     pageIndex: getPageIndexForRef(getSDTStructure(reader), refPath),
-    translation: loadCachedTranslation(
-      itemKey,
-      sourceText,
-      engineTag,
-      isFailureText,
-      targetLanguage,
-    ),
+    translation: force
+      ? ""
+      : loadCachedTranslation(
+          itemKey,
+          sourceText,
+          engineTag,
+          isFailureText,
+          targetLanguage,
+        ),
   };
 
   prepareOnDemandReading(reader, doc);
@@ -1059,9 +1116,9 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
     doc,
     {
       translateSelection: (text) => translateSelectedText(reader, text),
-      translateParagraph: (source) => {
+      translateParagraph: (source, options) => {
         dispatchToggle(reader, "shortcut");
-        return translateReaderParagraph(reader, source);
+        return translateReaderParagraph(reader, source, options);
       },
     },
     {
@@ -1074,6 +1131,7 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
         spec: getShortcutSpec(),
       }),
       isTranslationHidden: () => isTranslationHidden(getToggleState(reader)),
+      getPopupWidth: () => getAppearance().popupMaxWidth,
     },
   );
   controllers.push({ doc, controller });

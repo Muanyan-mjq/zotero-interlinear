@@ -6,11 +6,13 @@ import {
   SAVED_COLORS_MAX,
   buildFontStack,
   normalizeAppearance,
+  normalizeAppearancePresets,
   normalizeColorList,
   normalizeColorToken,
   normalizeThemeColor,
   parseFontStack,
   pushColorUnique,
+  type AppearancePreset,
   type AppearanceSettings,
   type ColorRole,
 } from "./appearance";
@@ -156,9 +158,15 @@ const APPEARANCE_UNDERLINE_PREF = `${BASE}.appearance.underline`;
 const APPEARANCE_UNDERLINE_COLOR_PREF = `${BASE}.appearance.underlineColor`;
 const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
 const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
+const SCOPE_TITLES_PREF = `${BASE}.scope.titles`;
+const SCOPE_CAPTIONS_PREF = `${BASE}.scope.captions`;
+const SCOPE_LIST_ITEMS_PREF = `${BASE}.scope.listItems`;
+const SCOPE_NOTES_PREF = `${BASE}.scope.notes`;
+const SCOPE_BODY_PREF = `${BASE}.scope.body`;
 const APPEARANCE_V2_PREF = `${BASE}.appearance.v2`;
 const APPEARANCE_SCHEMA_PREF = `${BASE}.appearance.schema`;
 const APPEARANCE_SCHEMA_VERSION = 3;
+const APPEARANCE_PRESETS_PREF = `${BASE}.appearance.presets`;
 const FONT_FAVORITES_PREF = `${BASE}.appearance.fontFavorites`;
 const FONT_DETECTION_PREF = `${BASE}.appearance.fontDetection`;
 const RECENT_COLORS_PREF = `${BASE}.appearance.recentColors`;
@@ -620,6 +628,23 @@ export function setAppearance(input: Partial<AppearanceSettings>): void {
   setNumberPref(APPEARANCE_SCHEMA_PREF, APPEARANCE_SCHEMA_VERSION, 1, 99);
 }
 
+export function getAppearancePresets(): AppearancePreset[] {
+  const stored = getRawStringPref(APPEARANCE_PRESETS_PREF);
+  if (!stored) return [];
+  try {
+    return normalizeAppearancePresets(JSON.parse(stored));
+  } catch (_) {
+    return [];
+  }
+}
+
+export function setAppearancePresets(presets: AppearancePreset[]): void {
+  setStringPref(
+    APPEARANCE_PRESETS_PREF,
+    JSON.stringify(normalizeAppearancePresets(presets)),
+  );
+}
+
 export function getFontFavorites(): string[] {
   const stored = getRawStringPref(FONT_FAVORITES_PREF);
   if (!stored) return [];
@@ -710,6 +735,37 @@ export function clearCachedFontDetection(): void {
   } catch (_) {
     // The preference may already have been removed.
   }
+}
+
+export function getScopeTitles(): boolean {
+  return getBoolPref(SCOPE_TITLES_PREF, true);
+}
+export function setScopeTitles(value: boolean): void {
+  setBoolPref(SCOPE_TITLES_PREF, value);
+}
+export function getScopeCaptions(): boolean {
+  return getBoolPref(SCOPE_CAPTIONS_PREF, true);
+}
+export function setScopeCaptions(value: boolean): void {
+  setBoolPref(SCOPE_CAPTIONS_PREF, value);
+}
+export function getScopeListItems(): boolean {
+  return getBoolPref(SCOPE_LIST_ITEMS_PREF, true);
+}
+export function setScopeListItems(value: boolean): void {
+  setBoolPref(SCOPE_LIST_ITEMS_PREF, value);
+}
+export function getScopeNotes(): boolean {
+  return getBoolPref(SCOPE_NOTES_PREF, true);
+}
+export function setScopeNotes(value: boolean): void {
+  setBoolPref(SCOPE_NOTES_PREF, value);
+}
+export function getScopeBody(): boolean {
+  return getBoolPref(SCOPE_BODY_PREF, true);
+}
+export function setScopeBody(value: boolean): void {
+  setBoolPref(SCOPE_BODY_PREF, value);
 }
 
 export function getDisplayMode(): DisplayMode {

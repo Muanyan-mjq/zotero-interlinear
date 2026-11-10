@@ -16,7 +16,14 @@ import { getChatProvider } from "./providers";
 import { buildChatContextBlock } from "./providers/chatPrompts";
 import type { ChatTurn } from "./providers/chatProtocol";
 import { exportBilingualPDF } from "./readerUI";
-import { getDisplayMode, getEngine, setDisplayMode } from "./settings";
+import {
+  getAppearance,
+  getDisplayMode,
+  getEngine,
+  getTargetLanguage,
+  setDisplayMode,
+} from "./settings";
+import { resolveUiFontFamily } from "./appearance";
 import { getLocaleID, getString } from "./utils/locale";
 
 const CHAT_PANE_ID = "interlinear-chat";
@@ -384,11 +391,30 @@ function bindBody(body: HTMLElement): void {
   );
 }
 
+function applyChatAppearance(body: HTMLElement): void {
+  const root = getElement<HTMLElement>(body, "#interlinear-chat-root");
+  if (!root) return;
+  const appearance = getAppearance();
+  if (!appearance.uiFollowAppearance) {
+    root.style.fontSize = "13px";
+    root.style.fontFamily = "";
+    return;
+  }
+  const px =
+    appearance.fontSizeMode === "em"
+      ? Math.round(appearance.fontSize * appearance.fontSizeEm)
+      : appearance.fontSize;
+  root.style.fontSize = `${px}px`;
+  root.style.fontFamily =
+    resolveUiFontFamily(appearance, getTargetLanguage()) || "";
+}
+
 function renderChatSection(body: HTMLElement, item: Zotero.Item): void {
   const itemKey = String(item.key || item.id || "");
   body.dataset.interlinearChatItemKey = itemKey;
   body.dataset.interlinearChatItemId = String(item.id || 0);
   applyStaticLabels(body);
+  applyChatAppearance(body);
   bindBody(body);
   setStatus(body, "");
   renderSession(body, itemKey, false);

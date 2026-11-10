@@ -23,6 +23,7 @@ import {
   TARGET_LANGUAGES,
   addSavedColor,
   getAppearance,
+  getAppearancePresets,
   getCachedFontDetection,
   getClaudeApiKey,
   getClaudeEndpoint,
@@ -56,6 +57,11 @@ import {
   getRequestGapMs,
   getRequestTimeoutMs,
   getSavedColors,
+  getScopeBody,
+  getScopeCaptions,
+  getScopeListItems,
+  getScopeNotes,
+  getScopeTitles,
   getShortcut,
   getShortcutEnabled,
   getSkipLastPages,
@@ -70,6 +76,7 @@ import {
   clearCachedFontDetection,
   setEngine,
   setAppearance,
+  setAppearancePresets,
   setDisplayMode,
   setFontFavorites,
   setGeminiApiKey,
@@ -94,6 +101,11 @@ import {
   setOpenAITemperature,
   setRequestGapMs,
   setRequestTimeoutMs,
+  setScopeBody,
+  setScopeCaptions,
+  setScopeListItems,
+  setScopeNotes,
+  setScopeTitles,
   setShortcut,
   pushRecentColor,
   removeSavedColor,
@@ -120,13 +132,18 @@ import {
   isValidFontFamily,
   meetsContrastAA,
   normalizeColorToken,
+  normalizeAppearance,
   normalizeFontStack,
+  normalizePresetName,
+  parseAppearanceImport,
   parseColorToRgba,
   parseFontStack,
   resolveTextDirection,
   resolveThemeColor,
   rgbaToHex,
   rgbaToHsl,
+  serializeAppearanceExport,
+  type AppearancePreset,
   type AppearanceSettings,
   type AppearanceTheme,
   type ColorMode,
@@ -148,6 +165,12 @@ import {
   type FontGroup,
   type FontMeasure,
 } from "../fontCatalog";
+import { BUILT_IN_APPEARANCE_PRESETS } from "../appearancePresets";
+import {
+  pickAppearanceFile,
+  readAppearanceFile,
+  writeAppearanceFile,
+} from "../appearanceFiles";
 import { buildDisplayModeCSS, normalizeDisplayMode } from "../displayMode";
 import { parseGlossary, serializeGlossary } from "../glossary";
 import {
@@ -1876,6 +1899,18 @@ function readAppearanceForm(doc: Document): AppearanceSettings {
       "interlinear-source-gap",
       DEFAULT_APPEARANCE.sourceGap,
     ),
+    uiFollowAppearance: readCheckbox(doc, "interlinear-ui-follow-appearance"),
+    popupMaxWidth: readNumberInput(
+      doc,
+      "interlinear-popup-max-width",
+      DEFAULT_APPEARANCE.popupMaxWidth,
+    ),
+    exportMode:
+      getElement<HTMLSelectElement>(doc, "interlinear-export-mode")?.value === "print"
+        ? "print"
+        : "reader",
+    stateAnimation: readCheckbox(doc, "interlinear-state-animation"),
+    reduceMotion: readCheckbox(doc, "interlinear-reduce-motion"),
     // Legacy flat colors are derived by normalizeAppearance from `colors`.
     color: "",
     background: "",
@@ -2358,35 +2393,42 @@ function syncFontSizeMode(doc: Document): void {
   if (em) em.disabled = mode !== "em";
 }
 
-function initFontControls(doc: Document): void {
-  const appearance = getAppearance();
-  const state: FontUiState = {
-    stack: normalizeFontStack(appearance.fontStack),
-    favorites: getFontFavorites(),
-    detected: null,
-    detectionState: "idle",
-    scanToken: 0,
-    query: "",
-    showAll: false,
-  };
-  fontUiStates.set(doc, state);
-
-  const setValue = (id: string, value: string) => {
-    const element = getElement<HTMLInputElement | HTMLSelectElement>(doc, id);
-    if (element) element.value = value;
-  };
-  setValue("interlinear-font-weight", String(appearance.fontWeight));
-  setValue("interlinear-letter-spacing", String(appearance.letterSpacing));
-  setValue("interlinear-font-size-mode", appearance.fontSizeMode);
-  setValue("interlinear-font-size-em", String(appearance.fontSizeEm));
-  setValue("interlinear-text-direction", appearance.textDirection);
-  const italic = getElement<HTMLInputElement>(doc, "interlinear-font-italic");
-  if (italic) italic.checked = appearance.fontStyle === "italic";
-  const autoLanguage = getElement<HTMLInputElement>(doc, "interlinear-font-auto-language");
-  if (autoLanguage) autoLanguage.checked = appearance.autoFontByLanguage;
+function hydrateFontControls(doc: Document, appearance: AppearanceSettings): void {
+  let state = fontUiStates.get(doc);
+  if (!state) {
+    state = {
+      stack: normalizeFontStack(appearance.fontStack),
+      favorites: getFontFavorites(),
+      detected: null,
+      detectionState: "idle",
+      scanToken: 0,
+      query: "",
+      showAll: false,
+    };
+    fontUiStates.set(doc, state);
+  } else {
+    state.stack = normalizeFontStack(appearance.fontStack);
+  }
+  setFormValue(doc, "interlinear-font-weight", String(appearance.fontWeight));
+  setFormValue(doc, "interlinear-letter-spacing", String(appearance.letterSpacing));
+  setFormValue(doc, "interlinear-font-size-mode", appearance.fontSizeMode);
+  setFormValue(doc, "interlinear-font-size-em", String(appearance.fontSizeEm));
+  setFormValue(doc, "interlinear-text-direction", appearance.textDirection);
+  setFormChecked(doc, "interlinear-font-italic", appearance.fontStyle === "italic");
+  setFormChecked(
+    doc,
+    "interlinear-font-auto-language",
+    appearance.autoFontByLanguage,
+  );
   syncFontSizeMode(doc);
   syncFontStackUi(doc);
   validateFontInput(doc);
+}
+
+function initFontControls(doc: Document): void {
+  const appearance = getAppearance();
+  hydrateFontControls(doc, appearance);
+  const state = fontUiStates.get(doc)!;
 
   const search = getElement<HTMLInputElement>(doc, "interlinear-font-search");
   if (search) {
@@ -2555,8 +2597,7 @@ function syncStyleControlDisabled(doc: Document): void {
   }
 }
 
-function initStyleControls(doc: Document): void {
-  const appearance = getAppearance();
+function hydrateStyleControls(doc: Document, appearance: AppearanceSettings): void {
   setFormChecked(
     doc,
     "interlinear-appearance-underline",
@@ -2617,7 +2658,24 @@ function initStyleControls(doc: Document): void {
   setFormValue(doc, "interlinear-block-opacity", String(appearance.opacity));
   setFormValue(doc, "interlinear-source-dim", String(appearance.sourceDim));
   setFormValue(doc, "interlinear-source-gap", String(appearance.sourceGap));
+  setFormChecked(
+    doc,
+    "interlinear-ui-follow-appearance",
+    appearance.uiFollowAppearance,
+  );
+  setFormValue(
+    doc,
+    "interlinear-popup-max-width",
+    String(appearance.popupMaxWidth),
+  );
+  setFormValue(doc, "interlinear-export-mode", appearance.exportMode);
+  setFormChecked(doc, "interlinear-state-animation", appearance.stateAnimation);
+  setFormChecked(doc, "interlinear-reduce-motion", appearance.reduceMotion);
+  syncStyleControlDisabled(doc);
+}
 
+function initStyleControls(doc: Document): void {
+  hydrateStyleControls(doc, getAppearance());
   for (const id of [
     "interlinear-appearance-underline",
     "interlinear-decoration-overline",
@@ -2631,6 +2689,326 @@ function initStyleControls(doc: Document): void {
     });
   }
   syncStyleControlDisabled(doc);
+}
+
+function applyAppearanceToForm(doc: Document, appearance: AppearanceSettings): void {
+  setFormValue(doc, "interlinear-appearance-font-size", String(appearance.fontSize));
+  setFormValue(doc, "interlinear-appearance-line-height", String(appearance.lineHeight));
+  setFormValue(
+    doc,
+    "interlinear-appearance-paragraph-spacing",
+    String(appearance.paragraphSpacing),
+  );
+  setFormValue(doc, "interlinear-appearance-theme", appearance.theme);
+  hydrateFontControls(doc, appearance);
+  for (const config of COLOR_CONTROLS) {
+    applyThemeColorToControl(doc, config, appearance.colors[config.role]);
+  }
+  hydrateStyleControls(doc, appearance);
+  refreshColorUI(doc);
+  refreshAppearancePreview(doc);
+}
+
+let appearanceUndo: AppearanceSettings | null = null;
+
+function setPresetStatus(
+  doc: Document,
+  message: string,
+  state: StatusState = "success",
+): void {
+  updateStatus(
+    getElement<HTMLElement>(doc, "interlinear-appearance-preset-status"),
+    message,
+    state,
+  );
+}
+
+function applyAppearancePreset(
+  doc: Document,
+  appearance: AppearanceSettings,
+  label: string,
+): void {
+  appearanceUndo = getAppearance();
+  setAppearance(appearance);
+  applyAppearanceToForm(doc, getAppearance());
+  try {
+    refreshTranslationStyles();
+    refreshDisplayModes();
+  } catch (error) {
+    Zotero.logError(error as Error);
+  }
+  const message = getString("appearance-preset-applied", { args: { name: label } });
+  setPresetStatus(doc, message);
+  setSaveState(doc, "success", message, 3000);
+}
+
+function selectedPresetName(doc: Document): string {
+  return getElement<HTMLSelectElement>(doc, "interlinear-appearance-my-presets")?.value || "";
+}
+
+function renderMyPresets(doc: Document, selected?: string): void {
+  const select = getElement<HTMLSelectElement>(doc, "interlinear-appearance-my-presets");
+  if (!select) return;
+  const presets = getAppearancePresets();
+  const options = presets.map((preset) => {
+    const option = doc.createElementNS(HTML_NS, "option") as HTMLOptionElement;
+    option.value = preset.name;
+    option.textContent = preset.name;
+    return option;
+  });
+  select.replaceChildren(...options);
+  if (selected && presets.some((preset) => preset.name === selected)) {
+    select.value = selected;
+  }
+  const disable = presets.length === 0;
+  for (const id of [
+    "interlinear-appearance-my-presets",
+    "interlinear-appearance-apply-preset",
+    "interlinear-appearance-delete-preset",
+    "interlinear-appearance-rename-preset",
+  ]) {
+    const element = getElement<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+      doc,
+      id,
+    );
+    if (element) element.disabled = disable;
+  }
+}
+
+function upsertPreset(presets: AppearancePreset[], preset: AppearancePreset): AppearancePreset[] {
+  const key = preset.name.toLowerCase();
+  const index = presets.findIndex((entry) => entry.name.toLowerCase() === key);
+  if (index >= 0) presets[index] = preset;
+  else presets.push(preset);
+  return presets.slice(0, 20);
+}
+
+function registerAppearancePresets(doc: Document): void {
+  const host = getElement<HTMLElement>(doc, "interlinear-appearance-builtin-presets");
+  if (host) {
+    const buttons = BUILT_IN_APPEARANCE_PRESETS.map((preset) => {
+      const button = createElement(
+        doc,
+        "button",
+        "interlinear-button interlinear-button-small interlinear-preset-chip",
+      );
+      button.type = "button";
+      button.dataset.presetId = preset.id;
+      button.textContent = getString(preset.nameKey as FluentKey);
+      button.addEventListener("click", () => {
+        const appearance = normalizeAppearance({
+          ...DEFAULT_APPEARANCE,
+          ...preset.appearance,
+        });
+        applyAppearancePreset(doc, appearance, button.textContent || "");
+      });
+      return button;
+    });
+    host.replaceChildren(...buttons);
+  }
+
+  renderMyPresets(doc);
+
+  getElement<HTMLButtonElement>(doc, "interlinear-appearance-save-preset")?.addEventListener(
+    "click",
+    () => {
+      const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-preset-name");
+      const name = normalizePresetName(input?.value);
+      if (!name) {
+        setPresetStatus(doc, getString("appearance-preset-name-required"), "warning");
+        return;
+      }
+      const presets = upsertPreset(getAppearancePresets(), {
+        name,
+        appearance: getAppearance(),
+      });
+      setAppearancePresets(presets);
+      renderMyPresets(doc, name);
+      if (input) input.value = name;
+      setPresetStatus(
+        doc,
+        getString("appearance-preset-saved", { args: { name } }),
+        "success",
+      );
+    },
+  );
+
+  getElement<HTMLButtonElement>(
+    doc,
+    "interlinear-appearance-apply-preset",
+  )?.addEventListener("click", () => {
+    const name = selectedPresetName(doc);
+    const preset = getAppearancePresets().find((entry) => entry.name === name);
+    if (!preset) {
+      setPresetStatus(doc, getString("appearance-preset-missing"), "warning");
+      return;
+    }
+    applyAppearancePreset(doc, preset.appearance, preset.name);
+  });
+
+  getElement<HTMLButtonElement>(
+    doc,
+    "interlinear-appearance-rename-preset",
+  )?.addEventListener("click", () => {
+    const current = selectedPresetName(doc);
+    const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-preset-name");
+    const name = normalizePresetName(input?.value);
+    if (!current) {
+      setPresetStatus(doc, getString("appearance-preset-missing"), "warning");
+      return;
+    }
+    if (!name) {
+      setPresetStatus(doc, getString("appearance-preset-name-required"), "warning");
+      return;
+    }
+    const presets = getAppearancePresets();
+    const preset = presets.find((entry) => entry.name === current);
+    if (!preset) return;
+    preset.name = name;
+    setAppearancePresets(presets);
+    renderMyPresets(doc, name);
+    setPresetStatus(
+      doc,
+      getString("appearance-preset-renamed", { args: { name } }),
+      "success",
+    );
+  });
+
+  getElement<HTMLButtonElement>(
+    doc,
+    "interlinear-appearance-delete-preset",
+  )?.addEventListener("click", () => {
+    const name = selectedPresetName(doc);
+    if (!name) {
+      setPresetStatus(doc, getString("appearance-preset-missing"), "warning");
+      return;
+    }
+    setAppearancePresets(
+      getAppearancePresets().filter((entry) => entry.name !== name),
+    );
+    renderMyPresets(doc);
+    setPresetStatus(
+      doc,
+      getString("appearance-preset-deleted", { args: { name } }),
+      "success",
+    );
+  });
+
+  getElement<HTMLButtonElement>(doc, "interlinear-appearance-undo")?.addEventListener(
+    "click",
+    () => {
+      if (!appearanceUndo) {
+        setPresetStatus(doc, getString("appearance-undo-empty"), "warning");
+        return;
+      }
+      const previous = appearanceUndo;
+      appearanceUndo = null;
+      setAppearance(previous);
+      applyAppearanceToForm(doc, getAppearance());
+      try {
+        refreshTranslationStyles();
+        refreshDisplayModes();
+      } catch (error) {
+        Zotero.logError(error as Error);
+      }
+      setPresetStatus(doc, getString("appearance-undo-done"), "success");
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-appearance-reset")?.addEventListener(
+    "click",
+    () => {
+      const win = doc.defaultView;
+      const confirmed = win?.confirm?.(getString("appearance-reset-confirm")) ?? true;
+      if (!confirmed) return;
+      applyAppearancePreset(doc, DEFAULT_APPEARANCE, getString("appearance-preset-default"));
+      setPresetStatus(doc, getString("appearance-reset-done"), "success");
+    },
+  );
+
+  getElement<HTMLButtonElement>(doc, "interlinear-appearance-import")?.addEventListener(
+    "click",
+    () => {
+      void importAppearance(doc);
+    },
+  );
+  getElement<HTMLButtonElement>(doc, "interlinear-appearance-export")?.addEventListener(
+    "click",
+    () => {
+      void exportAppearance(doc);
+    },
+  );
+}
+
+async function importAppearance(doc: Document): Promise<void> {
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-appearance-import");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    const path = await pickAppearanceFile("open", getString("appearance-import-title"));
+    if (!path) return;
+    const result = parseAppearanceImport(await readAppearanceFile(path));
+    if (result.error) {
+      setPresetStatus(
+        doc,
+        getString("appearance-preset-import-error", { args: { reason: result.error } }),
+        "error",
+      );
+      return;
+    }
+    applyAppearancePreset(doc, result.appearance, getString("appearance-import-title"));
+    if (result.presets.length) {
+      let presets = getAppearancePresets();
+      for (const preset of result.presets) presets = upsertPreset(presets, preset);
+      setAppearancePresets(presets);
+      renderMyPresets(doc);
+    }
+    const ignored = result.ignoredKeys.length
+      ? ` ${getString("appearance-preset-imported-ignored", {
+          args: { count: String(result.ignoredKeys.length) },
+        })}`
+      : "";
+    setPresetStatus(
+      doc,
+      getString("appearance-preset-imported", { args: { ignored } }),
+      "success",
+    );
+  } catch (error: any) {
+    setPresetStatus(
+      doc,
+      getString("appearance-preset-import-error", {
+        args: { reason: String(error?.message || error) },
+      }),
+      "error",
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function exportAppearance(doc: Document): Promise<void> {
+  const button = getElement<HTMLButtonElement>(doc, "interlinear-appearance-export");
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    const path = await pickAppearanceFile("save", getString("appearance-export-title"));
+    if (!path) return;
+    await writeAppearanceFile(
+      path,
+      serializeAppearanceExport(getAppearance(), getAppearancePresets()),
+    );
+    setPresetStatus(doc, getString("appearance-preset-exported"), "success");
+  } catch (error: any) {
+    setPresetStatus(
+      doc,
+      getString("appearance-preset-export-error", {
+        args: { reason: String(error?.message || error) },
+      }),
+      "error",
+    );
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function initializeAppearanceControls(doc: Document): void {
@@ -2878,6 +3256,25 @@ function fillLanguageOptions(
 function fillAppearanceLabels(doc: Document): void {
   const entries: Array<[string, Parameters<typeof getString>[0]]> = [
     ["interlinear-appearance-title", "appearance-title"],
+    ["interlinear-appearance-presets-title", "appearance-presets-title"],
+    ["interlinear-appearance-my-presets-label", "appearance-my-presets-label"],
+    ["interlinear-appearance-preset-name-label", "appearance-preset-name-label"],
+    ["interlinear-appearance-apply-preset", "appearance-apply-preset"],
+    ["interlinear-appearance-save-preset", "appearance-save-preset"],
+    ["interlinear-appearance-rename-preset", "appearance-rename-preset"],
+    ["interlinear-appearance-delete-preset", "appearance-delete-preset"],
+    ["interlinear-appearance-import", "appearance-import-preset"],
+    ["interlinear-appearance-export", "appearance-export-preset"],
+    ["interlinear-appearance-undo", "appearance-undo-preset"],
+    ["interlinear-appearance-reset", "appearance-reset-all"],
+    ["interlinear-interface-title", "interface-title"],
+    ["interlinear-ui-follow-appearance-label", "ui-follow-appearance-label"],
+    ["interlinear-popup-max-width-label", "popup-max-width-label"],
+    ["interlinear-export-mode-label", "export-mode-label"],
+    ["interlinear-export-mode-reader", "export-mode-reader"],
+    ["interlinear-export-mode-print", "export-mode-print"],
+    ["interlinear-state-animation-label", "state-animation-label"],
+    ["interlinear-reduce-motion-label", "reduce-motion-label"],
     ["interlinear-appearance-type-title", "appearance-type-title"],
     ["interlinear-appearance-colors-title", "appearance-colors-title"],
     ["interlinear-appearance-preview-label", "appearance-preview-label"],
@@ -3013,6 +3410,13 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-display-mode-target-only", "display-mode-target-only"],
     ["interlinear-display-mode-source-only", "display-mode-source-only"],
     ["interlinear-display-mode-help", "display-mode-help"],
+    ["interlinear-scope-title", "scope-title"],
+    ["interlinear-scope-body-label", "scope-body-label"],
+    ["interlinear-scope-titles-label", "scope-titles-label"],
+    ["interlinear-scope-captions-label", "scope-captions-label"],
+    ["interlinear-scope-list-items-label", "scope-list-items-label"],
+    ["interlinear-scope-notes-label", "scope-notes-label"],
+    ["interlinear-scope-help", "scope-help"],
     ["interlinear-interaction-title", "interaction-title"],
     ["interlinear-hover-translate-label", "interaction-hover-label"],
     ["interlinear-hover-delay-label", "interaction-hover-delay-label"],
@@ -3156,6 +3560,11 @@ function saveSettings(doc: Document): string[] {
   setSkipLastPages(
     readNumberInput(doc, "interlinear-skip-last-pages", DEFAULT_SKIP_LAST_PAGES),
   );
+  setScopeBody(readCheckbox(doc, "interlinear-scope-body"));
+  setScopeTitles(readCheckbox(doc, "interlinear-scope-titles"));
+  setScopeCaptions(readCheckbox(doc, "interlinear-scope-captions"));
+  setScopeListItems(readCheckbox(doc, "interlinear-scope-list-items"));
+  setScopeNotes(readCheckbox(doc, "interlinear-scope-notes"));
   setMaxConcurrent(readNumberInput(doc, "interlinear-max-concurrent", DEFAULT_MAX_CONCURRENT));
   setRequestGapMs(readNumberInput(doc, "interlinear-request-gap", DEFAULT_REQUEST_GAP_MS));
   setMaxCharsPerRequest(
@@ -3645,6 +4054,11 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (shortcutEnabled) shortcutEnabled.checked = getShortcutEnabled();
   if (shortcutInput) shortcutInput.value = getShortcut();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
+  setFormChecked(doc, "interlinear-scope-body", getScopeBody());
+  setFormChecked(doc, "interlinear-scope-titles", getScopeTitles());
+  setFormChecked(doc, "interlinear-scope-captions", getScopeCaptions());
+  setFormChecked(doc, "interlinear-scope-list-items", getScopeListItems());
+  setFormChecked(doc, "interlinear-scope-notes", getScopeNotes());
   if (maxConcurrent) maxConcurrent.value = String(getMaxConcurrent());
   if (gap) gap.value = String(getRequestGapMs());
   if (maxChars) maxChars.value = String(getMaxCharsPerRequest());
@@ -3675,6 +4089,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
   initializeAppearancePreview(doc);
   initializeAppearanceControls(doc);
+  registerAppearancePresets(doc);
   // Delegate on the document: the tab panels all live inside the page, but a
   // document-level listener also survives the pane being rebuilt.
   doc.addEventListener("input", () => refreshAppearancePreview(doc));

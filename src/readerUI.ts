@@ -187,9 +187,14 @@ function buildExportHTML(doc: Document, title: string): string {
     color: inherit;
     text-decoration: none;
   }
-  ${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "print", {
-    targetLanguage: getTargetLanguage(),
-  })}
+  ${(() => {
+    const appearance = getAppearance();
+    const mode = appearance.exportMode === "print" ? "print" : "reader";
+    return buildTranslationCSS(TRANSLATION_CLASS, appearance, mode, {
+      targetLanguage: getTargetLanguage(),
+      colorScheme: appearance.theme === "dark" ? "dark" : "light",
+    });
+  })()}
   .${TRANSLATION_CLASS}[data-state="done"]::before {
     content: "";
   }

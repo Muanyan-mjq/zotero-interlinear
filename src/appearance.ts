@@ -90,6 +90,11 @@ export interface AppearanceSettings {
   opacity: number;
   sourceDim: number;
   sourceGap: number;
+  uiFollowAppearance: boolean;
+  popupMaxWidth: number;
+  exportMode: "reader" | "print";
+  stateAnimation: boolean;
+  reduceMotion: boolean;
 }
 
 export const FONT_SIZE_MIN = 10;
@@ -228,6 +233,11 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   opacity: 100,
   sourceDim: 100,
   sourceGap: 0.65,
+  uiFollowAppearance: true,
+  popupMaxWidth: 380,
+  exportMode: "reader",
+  stateAnimation: false,
+  reduceMotion: false,
 };
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/iu;
@@ -760,6 +770,20 @@ export function resolveAutoFontStack(language?: string): FontStack {
     : { ...DEFAULT_FONT_STACK, fallbacks: [] };
 }
 
+export function resolveUiFontFamily(
+  input: Partial<AppearanceSettings> | null | undefined,
+  targetLanguage?: string,
+): string {
+  const settings = normalizeAppearance(input);
+  const explicit = buildFontStack(settings.fontStack);
+  if (explicit) return explicit;
+  if (settings.autoFontByLanguage) {
+    const auto = buildFontStack(resolveAutoFontStack(targetLanguage));
+    if (auto) return auto;
+  }
+  return settings.fontFamily;
+}
+
 export function isRtlLanguage(language?: string): boolean {
   const code = normalizeLanguageCode(language);
   return RTL_LANGUAGES.has(code) || RTL_LANGUAGES.has(code.split("-")[0]);
@@ -1040,6 +1064,25 @@ export function normalizeAppearance(
     opacity: clampRange(input?.opacity, DEFAULT_APPEARANCE.opacity, 40, 100),
     sourceDim: clampRange(input?.sourceDim, DEFAULT_APPEARANCE.sourceDim, 40, 100),
     sourceGap: clampRange(input?.sourceGap, DEFAULT_APPEARANCE.sourceGap, 0, 2),
+    uiFollowAppearance:
+      typeof input?.uiFollowAppearance === "boolean"
+        ? input.uiFollowAppearance
+        : DEFAULT_APPEARANCE.uiFollowAppearance,
+    popupMaxWidth: clampRange(
+      input?.popupMaxWidth,
+      DEFAULT_APPEARANCE.popupMaxWidth,
+      280,
+      720,
+    ),
+    exportMode: input?.exportMode === "print" ? "print" : "reader",
+    stateAnimation:
+      typeof input?.stateAnimation === "boolean"
+        ? input.stateAnimation
+        : DEFAULT_APPEARANCE.stateAnimation,
+    reduceMotion:
+      typeof input?.reduceMotion === "boolean"
+        ? input.reduceMotion
+        : DEFAULT_APPEARANCE.reduceMotion,
   };
 }
 
@@ -1368,4 +1411,115 @@ ${color ? `  color: ${color};\n` : ""}${background ? `  background: ${background
     }
   }
   return css;
+}
+
+/* ------------------------------------------------------------------ presets */
+
+export interface AppearancePreset {
+  name: string;
+  appearance: AppearanceSettings;
+}
+
+export const APPEARANCE_EXPORT_FORMAT = "interlinear-appearance";
+export const APPEARANCE_EXPORT_VERSION = 2;
+export const APPEARANCE_IMPORT_MAX_BYTES = 256 * 1024;
+export const APPEARANCE_PRESETS_MAX = 20;
+export const APPEARANCE_PRESET_NAME_MAX = 60;
+
+const APPEARANCE_KEYS = new Set(Object.keys(DEFAULT_APPEARANCE));
+
+export function normalizePresetName(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const name = raw.replace(/\p{Cc}/gu, "").trim();
+  return name.slice(0, APPEARANCE_PRESET_NAME_MAX);
+}
+
+export function normalizeAppearancePresets(
+  raw: unknown,
+  max: number = APPEARANCE_PRESETS_MAX,
+): AppearancePreset[] {
+  if (!Array.isArray(raw) || max <= 0) return [];
+  const presets: AppearancePreset[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const name = normalizePresetName((entry as any).name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    presets.push({
+      name,
+      appearance: normalizeAppearance((entry as any).appearance),
+    });
+    if (presets.length >= max) break;
+  }
+  return presets;
+}
+
+export interface AppearanceImportResult {
+  appearance: AppearanceSettings;
+  presets: AppearancePreset[];
+  ignoredKeys: string[];
+  error: string | null;
+}
+
+export function parseAppearanceImport(text: string): AppearanceImportResult {
+  const empty: AppearanceImportResult = {
+    appearance: normalizeAppearance(undefined),
+    presets: [],
+    ignoredKeys: [],
+    error: null,
+  };
+  if (typeof text !== "string" || text.length > APPEARANCE_IMPORT_MAX_BYTES) {
+    return { ...empty, error: "too-large" };
+  }
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch (_) {
+    return { ...empty, error: "invalid-json" };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ...empty, error: "invalid-format" };
+  }
+  if (parsed.format !== APPEARANCE_EXPORT_FORMAT) {
+    return { ...empty, error: "invalid-format" };
+  }
+  const version = Number(parsed.version);
+  if (!Number.isInteger(version) || version < 1 || version > APPEARANCE_EXPORT_VERSION) {
+    return { ...empty, error: "unsupported-version" };
+  }
+  const sourceAppearance =
+    parsed.appearance && typeof parsed.appearance === "object"
+      ? parsed.appearance
+      : parsed;
+  const ignoredKeys = Object.keys(sourceAppearance).filter(
+    (key) => !APPEARANCE_KEYS.has(key),
+  );
+  return {
+    appearance: normalizeAppearance(sourceAppearance as Partial<AppearanceSettings>),
+    presets: normalizeAppearancePresets(parsed.presets),
+    ignoredKeys,
+    error: null,
+  };
+}
+
+export function serializeAppearanceExport(
+  appearance: AppearanceSettings,
+  presets: AppearancePreset[] = [],
+): string {
+  return JSON.stringify(
+    {
+      format: APPEARANCE_EXPORT_FORMAT,
+      version: APPEARANCE_EXPORT_VERSION,
+      appearance: normalizeAppearance(appearance),
+      presets: normalizeAppearancePresets(presets).map((preset) => ({
+        name: preset.name,
+        appearance: preset.appearance,
+      })),
+    },
+    null,
+    2,
+  );
 }

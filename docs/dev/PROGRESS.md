@@ -1164,3 +1164,43 @@
 6. 在左右双栏模式下重复第 1–4 步：确认两列仍并排、不换行、高亮矩形仍覆盖原文；滚动和缩放后位置不漂移。
 7. 点 🖨️ 导出：确认打印稿保留字重/斜体/字距/装饰/分隔线/色带，深色主题不会印成深色底。
 8. 切换浅/深主题：确认色带、分隔线、边框的默认颜色对比度可读；显式颜色在两种主题下都按设置输出。
+
+## Step 6：界面跟随与阅读器内体验（P2）
+
+### 做了什么
+- **划词弹窗 / 阅读助手跟随**：新增 `uiFollowAppearance`（默认开）。开启时，弹窗通过 `--interlinear-ui-font-family`、`--interlinear-ui-font-size` 使用与译文相同的字体/字号；阅读助手根节点在 `onRender` 时同步字体与字号。弹窗宽度新增 `popupMaxWidth`（280–720px，默认 380），`readerInteractions` 在打开时读取并用于定位与宽度；关闭跟随时回退 13px。
+- **导出外观**：新增 `exportMode`（默认 `reader` = 与阅读器一致；`print` = 打印专用浅底黑字）。`readerUI` 按该值选择 `buildTranslationCSS(..., "reader" | "print")`，reader 模式传入当前浅/深 scheme；导出的 JSON 外观方案不包含任何 Provider 配置或密钥。
+- **翻译范围**：新增 `scope.body/titles/captions/listItems/notes`（默认全开）。`collectParagraphs` 动态拼接选择器；全部关闭时返回空列表并沿用既有“未找到可翻译段落”错误。参考文献跳过逻辑不变。
+- **加载/错误状态**：保留 `colors.loading/error`；新增 `stateAnimation`（默认关，保持现状）与 `reduceMotion`。开启动画时注入 `interlinear-pulse`；无论开关如何，`@media (prefers-reduced-motion: reduce)` 都会关闭动画。
+- **译文块操作**：译文块显式 `user-select: text`；右键或双击译文块打开菜单：重新翻译此段 / 复制译文 / 复制原文。重新翻译走 `translateReaderParagraph(..., { force: true })`：跳过缓存命中、复用 `paragraphRequests` 去重，仍通过同一 Provider 与缓存写入；复制使用 Clipboard API，失败回退隐藏 textarea + `execCommand`，并显示 1.6 秒非阻塞提示。
+- **设置页**：外观页新增“界面与导出”卡片（跟随开关、弹窗宽度、导出模式、动画、减少动画）；显示页新增“翻译范围”卡片（正文/标题/图注/列表项/旁注）。全部文案走 Fluent。
+
+### 改动文件
+`src/appearance.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`src/bilingualReader.ts`、`src/readerInteractions.ts`、`src/readerUI.ts`、`src/chatPane.ts`、`addon/prefs.js`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：169 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：57 pass / 0 fail。新增用例：
+  - 翻译范围：仅正文开启时，p/h1/figcaption/li/aside 混合文档只产生 1 个请求与 1 个译文块。
+  - 译文块右键菜单：3 个动作、重新翻译带 `force=true`、双击再次打开。
+- 既有 provider/缓存/快捷键/悬停用例全部保持通过。
+
+### 不确定项 / 未目视验证
+- 划词弹窗跟随后在真实深色阅读器中的字体/宽度观感未目视；固定定位与滚动重定位行为沿用既有实现（滚动后弹窗不跟随）。
+- 阅读助手在 ItemPane 重新挂载时是否总是触发 `onRender` 未实测；若宿主复用 DOM 而不重新渲染，字体需重开侧栏后更新。
+- Clipboard API 在 Zotero reader iframe 中的可用性未实测；失败时回退路径会显示“复制失败”。
+- 导出“与阅读器一致”会把深色主题的译文块带到浅色导出页，这是有意行为；打印模式仍强制浅底黑字。
+- 动画默认关闭；开启后 `prefers-reduced-motion` 的媒体查询在 Zotero 10 中是否按系统设置生效未实测（标准 CSS 行为）。
+- 右键/双击菜单在真实 PDF 阅读器中的定位与遮挡未目视；`readerMenu` 已有外部点击/Esc/滚动关闭逻辑。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→外观→界面与导出：关闭“跟随译文字体和字号”后，划词弹窗与阅读助手回到 13px；重新开启并改字号/字体后，两者同步变化。
+2. 调整“划词弹窗最大宽度”到 280 与 720，选中一段文字：弹窗宽度随之变化，且不超出视口。
+3. 导出模式选“与阅读器一致”：在深色主题下导出，译文块保持深色；切到“打印专用”后重新导出，译文块为浅底黑字。
+4. 显示页→翻译范围：只保留正文，刷新一篇含标题/图注/列表/旁注的论文；确认只翻译正文，参考文献仍跳过。
+5. 打开“加载动画”：刷新时“正在翻译…”有脉冲动画；系统开启“减少动态效果”后动画停止；关闭开关后无动画。
+6. 右键译文块：菜单含重新翻译/复制译文/复制原文；点重新翻译会重新请求该段（其他段不重复请求）；复制成功出现“已复制”提示。
+7. 双击译文块同样打开菜单；拖动选择译文文字可正常复制；错误/暂停块点击重试仍可用。
+8. 浅/深主题下检查菜单、提示、弹窗与阅读助手的对比度。

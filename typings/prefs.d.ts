@@ -52,6 +52,11 @@ declare namespace _ZoteroTypes {
       "appearance.underlineColor": string;
       "appearance.ribbon": boolean;
       "appearance.ribbonColor": string;
+      "scope.titles": boolean;
+      "scope.captions": boolean;
+      "scope.listItems": boolean;
+      "scope.notes": boolean;
+      "scope.body": boolean;
     };
   }
 }

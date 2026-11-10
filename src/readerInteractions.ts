@@ -2,6 +2,7 @@
 // Interlinear — reader selection popup and per-paragraph triggers.
 
 import { getString } from "./utils/locale";
+import { openReaderMenu } from "./readerMenu";
 import { DEFAULT_SHORTCUT, matchesShortcut, parseShortcut, type ShortcutSpec } from "./shortcut";
 
 const SOURCE_SELECTOR = "[data-ref-path]";
@@ -20,7 +21,7 @@ interface SelectionLike {
 
 export interface InteractionHost {
   translateSelection(text: string): Promise<string>;
-  translateParagraph(source: HTMLElement): Promise<void>;
+  translateParagraph(source: HTMLElement, options?: { force?: boolean }): Promise<void>;
 }
 
 export interface InteractionOptions {
@@ -35,6 +36,8 @@ export interface InteractionOptions {
   /** Tests can replace the dwell timer with a manual handle. */
   setHoverTimer?: (callback: () => void, delay: number) => any;
   clearHoverTimer?: (handle: any) => void;
+  /** Width of the selection popup, read when it opens. */
+  getPopupWidth?: () => number;
 }
 
 export interface InteractionController {
@@ -55,7 +58,11 @@ function findSource(target: EventTarget | null): HTMLElement | null {
   return source;
 }
 
-function invokeParagraph(host: InteractionHost, source: HTMLElement): void {
+function invokeParagraph(
+  host: InteractionHost,
+  source: HTMLElement,
+  options?: { force?: boolean },
+): void {
   const report = (error: unknown) => {
     try {
       Zotero.logError(error as Error);
@@ -64,7 +71,7 @@ function invokeParagraph(host: InteractionHost, source: HTMLElement): void {
     }
   };
   try {
-    void Promise.resolve(host.translateParagraph(source)).catch(report);
+    void Promise.resolve(host.translateParagraph(source, options)).catch(report);
   } catch (error) {
     report(error);
   }
@@ -74,6 +81,7 @@ function createPopup(
   doc: Document,
   win: any,
   host: InteractionHost,
+  getWidth: () => number,
 ): {
   root: HTMLDivElement;
   show: (rect: DOMRect, text: string) => void;
@@ -157,9 +165,13 @@ function createPopup(
 
     const viewportWidth = Number(win?.innerWidth) || 800;
     const viewportHeight = Number(win?.innerHeight) || 600;
-    const width = 380;
+    const width = Math.min(
+      Math.max(280, Number(getWidth()) || 380),
+      Math.max(280, viewportWidth - 16),
+    );
     const left = Math.max(8, Math.min(rect.left || 0, viewportWidth - width - 8));
     const top = Math.max(8, Math.min((rect.bottom || 0) + 8, viewportHeight - 140));
+    root.style.width = `${width}px`;
     root.style.left = `${left}px`;
     root.style.top = `${top}px`;
   };
@@ -173,6 +185,47 @@ function createPopup(
     hide,
     contains: (target) => root.contains(target as Node | null),
   };
+}
+
+async function copyText(doc: Document, text: string): Promise<boolean> {
+  const win: any = doc.defaultView;
+  try {
+    const clipboard = win?.navigator?.clipboard;
+    if (clipboard) {
+      await clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {
+    // Fall back to a hidden textarea + execCommand below.
+  }
+  try {
+    const textarea = doc.createElement("textarea");
+    textarea.value = text;
+    textarea.style.cssText = "position:fixed;left:0;top:0;opacity:0;pointer-events:none;";
+    (doc.body || doc.documentElement)?.append(textarea);
+    textarea.select();
+    const ok = Boolean((doc as any).execCommand?.("copy"));
+    textarea.remove();
+    return ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+function showCopyNotice(doc: Document, message: string): void {
+  const host = doc.body || doc.documentElement;
+  if (!host) return;
+  const notice = doc.createElement("div");
+  notice.className = "interlinear-copy-notice";
+  notice.textContent = message;
+  notice.style.cssText =
+    "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483002;" +
+    "padding:6px 12px;border-radius:6px;background:Canvas;color:CanvasText;" +
+    "border:1px solid rgba(127,127,127,0.45);box-shadow:0 4px 14px rgba(0,0,0,0.25);" +
+    "font-size:12px;pointer-events:none;";
+  host.append(notice);
+  const win: any = doc.defaultView;
+  win?.setTimeout?.(() => notice.remove(), 1600);
 }
 
 export function attachReaderInteractions(
@@ -198,6 +251,7 @@ export function attachReaderInteractions(
   const getHoverSettings =
     options.getHoverSettings ||
     (() => ({ enabled: false, delayMs: 800 }));
+  const getPopupWidth = options.getPopupWidth || (() => 380);
   const getShortcutSettings =
     options.getShortcutSettings ||
     (() => ({ enabled: true, spec: parseShortcut(DEFAULT_SHORTCUT) }));
@@ -365,7 +419,7 @@ export function attachReaderInteractions(
         hidePopup();
         return;
       }
-      popup ||= createPopup(doc, win, host);
+      popup ||= createPopup(doc, win, host, getPopupWidth);
       popup.show(range.getBoundingClientRect(), text.slice(0, 8000));
     }, 0);
   };
@@ -391,6 +445,62 @@ export function attachReaderInteractions(
     invokeParagraph(host, retry.source);
     return true;
   };
+
+  const blockContext = (
+    target: EventTarget | null,
+  ): { block: HTMLElement; source: HTMLElement } | null => {
+    const block = elementOf(target as Node | null)?.closest?.(
+      `.${TRANSLATION_CLASS}`,
+    ) as HTMLElement | null;
+    if (!block) return null;
+    const source = block.previousElementSibling as HTMLElement | null;
+    if (!source?.matches?.(SOURCE_SELECTOR)) return null;
+    return { block, source };
+  };
+
+  const showBlockMenu = (event: MouseEvent) => {
+    const target = blockContext(event.target);
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearHover();
+    hidePopup();
+    const { block, source } = target;
+    openReaderMenu(doc, {
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        { action: "retranslate", label: getString("block-menu-retranslate") },
+        {
+          action: "copy-translation",
+          label: getString("block-menu-copy-translation"),
+          disabled: !(block.textContent || "").trim(),
+        },
+        {
+          action: "copy-source",
+          label: getString("block-menu-copy-source"),
+          disabled: !(source.textContent || "").trim(),
+        },
+      ],
+      onSelect: (action) => {
+        if (action === "retranslate") {
+          invokeParagraph(host, source, { force: true });
+          return;
+        }
+        const text =
+          action === "copy-source" ? source.textContent || "" : block.textContent || "";
+        void copyText(doc, text).then((ok) =>
+          showCopyNotice(
+            doc,
+            getString(ok ? "block-menu-copied" : "block-menu-copy-failed"),
+          ),
+        );
+      },
+    });
+  };
+
+  const onContextMenu = (event: MouseEvent) => showBlockMenu(event);
+  const onDoubleClick = (event: MouseEvent) => showBlockMenu(event);
 
   const onClick = (event: MouseEvent) => {
     if (retryIfRequested(event)) return;
@@ -448,6 +558,8 @@ export function attachReaderInteractions(
   doc.addEventListener("keydown", onKeyDown, true);
   doc.addEventListener("mousedown", onMouseDown, true);
   doc.addEventListener("scroll", onScroll, true);
+  doc.addEventListener("contextmenu", onContextMenu, true);
+  doc.addEventListener("dblclick", onDoubleClick, true);
   try {
     win?.addEventListener?.("blur", onWindowBlur);
   } catch (_) {
@@ -471,6 +583,8 @@ export function attachReaderInteractions(
       doc.removeEventListener("keydown", onKeyDown, true);
       doc.removeEventListener("mousedown", onMouseDown, true);
       doc.removeEventListener("scroll", onScroll, true);
+      doc.removeEventListener("contextmenu", onContextMenu, true);
+      doc.removeEventListener("dblclick", onDoubleClick, true);
       try {
         win?.removeEventListener?.("blur", onWindowBlur);
       } catch (_) {

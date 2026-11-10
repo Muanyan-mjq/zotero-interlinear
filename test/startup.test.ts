@@ -12,9 +12,11 @@ import { renderReaderToolbar } from "../src/readerToolbar";
 import { clearTranslationCache } from "../src/translationCache";
 import {
   getAppearance,
+  getAppearancePresets,
   getCacheEngineTag,
   getDisplayMode,
   setAppearance,
+  setAppearancePresets,
 } from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
@@ -989,6 +991,65 @@ describe("startup", function () {
     }
   });
 
+  it("should apply, undo and manage appearance presets", async function () {
+    this.timeout(15000);
+    const previousAppearance = getAppearance();
+    const previousPresets = getAppearancePresets();
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.querySelector("[data-preset-id='academic']")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const academic = win?.document.querySelector(
+        "[data-preset-id='academic']",
+      ) as HTMLButtonElement | null;
+      const undo = byId("interlinear-appearance-undo");
+      const textAlign = byId("interlinear-block-align") as HTMLSelectElement | null;
+      assert.exists(academic);
+      assert.exists(undo);
+      assert.exists(textAlign);
+
+      academic?.click();
+      assert.equal(getAppearance().textAlign, "justify");
+      assert.equal(getAppearance().fontStack.primary, "Georgia");
+      await Zotero.Promise.delay(50);
+      assert.equal(textAlign?.value, "justify");
+
+      undo?.click();
+      assert.equal(getAppearance().textAlign, previousAppearance.textAlign);
+      assert.equal(getAppearance().fontStack.primary, previousAppearance.fontStack.primary);
+
+      const name = byId("interlinear-appearance-preset-name");
+      if (name) name.value = "Integration preset";
+      (byId("interlinear-appearance-save-preset") as HTMLButtonElement | null)?.click();
+      assert.isTrue(
+        getAppearancePresets().some((preset) => preset.name === "Integration preset"),
+      );
+
+      const select = win?.document.getElementById(
+        "interlinear-appearance-my-presets",
+      ) as HTMLSelectElement | null;
+      assert.exists(select);
+      if (select) select.value = "Integration preset";
+      (byId("interlinear-appearance-apply-preset") as HTMLButtonElement | null)?.click();
+      assert.equal(getAppearance().textAlign, previousAppearance.textAlign);
+
+      if (select) select.value = "Integration preset";
+      (byId("interlinear-appearance-delete-preset") as HTMLButtonElement | null)?.click();
+      assert.isFalse(
+        getAppearancePresets().some((preset) => preset.name === "Integration preset"),
+      );
+    } finally {
+      win?.close();
+      setAppearance(previousAppearance);
+      setAppearancePresets(previousPresets);
+    }
+  });
+
   it("should sync hex input, reset, contrast warning and theme preview in color controls", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
@@ -1564,6 +1625,80 @@ describe("startup", function () {
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
       else Zotero.Prefs.set(modePref, previousMode, true);
+    }
+  });
+
+  it("should respect the translation scope toggles", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const batchPref = "extensions.zotero.interlinear.maxBatchParagraphs";
+    const scopePrefs = [
+      "extensions.zotero.interlinear.scope.body",
+      "extensions.zotero.interlinear.scope.titles",
+      "extensions.zotero.interlinear.scope.captions",
+      "extensions.zotero.interlinear.scope.listItems",
+      "extensions.zotero.interlinear.scope.notes",
+    ];
+    const previous = new Map<string, unknown>(
+      [enginePref, batchPref, ...scopePrefs].map((key) => [
+        key,
+        Zotero.Prefs.get(key, true),
+      ]),
+    );
+    const previousRequest = Zotero.HTTP.request;
+    let requests = 0;
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "scope-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const items: Array<[string, string, string]> = [
+      ["p", "0", "Body paragraph for the scope test."],
+      ["h1", "1", "Heading for the scope test"],
+      ["figcaption", "2", "Figure caption for the scope test"],
+      ["li", "3", "List item for the scope test"],
+      ["aside", "4", "Margin note for the scope test"],
+    ];
+    for (const [tag, refPath, text] of items) {
+      const element = doc.createElement(tag);
+      element.dataset.refPath = refPath;
+      if (tag === "aside") element.className = "sdt-note";
+      element.textContent = text;
+      content.append(element);
+    }
+    doc.body.append(content);
+    const reader = {
+      itemID: 2147483641,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: { _iframeDocument: doc, getData: () => ({ structure: null }) },
+      },
+    };
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      Zotero.Prefs.set(batchPref, 1, true);
+      Zotero.Prefs.set(scopePrefs[0], true, true);
+      for (const pref of scopePrefs.slice(1)) Zotero.Prefs.set(pref, false, true);
+      (Zotero.HTTP as any).request = async () => {
+        requests += 1;
+        return { status: 200, response: [[["译文。", "", null, null]]] };
+      };
+
+      await toggleBilingualReading(reader);
+      assert.equal(requests, 1, "only the body paragraph should be requested");
+      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 1);
+      assert.equal(doc.querySelector(".interlinear-translation")?.textContent, "译文。");
+      await toggleBilingualReading(reader);
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
     }
   });
 
@@ -2336,6 +2471,63 @@ describe("startup", function () {
 
     assert.notExists(doc.querySelector(".interlinear-selection-popup"));
     assert.isFalse(first.classList.contains("interlinear-source-hover"));
+  });
+
+  it("should offer block actions from right-click and double-click", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "block-menu-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const source = doc.createElement("p");
+    source.dataset.refPath = "0";
+    source.textContent = "Source paragraph for the block menu.";
+    const block = doc.createElement("div");
+    block.className = "interlinear-translation";
+    block.dataset.state = "done";
+    block.textContent = "译文段落。";
+    content.append(source, block);
+    doc.body.append(content);
+    const calls: Array<{ text: string; force?: boolean }> = [];
+    const controller = attachReaderInteractions(doc, {
+      translateSelection: async () => "",
+      translateParagraph: async (element, options) => {
+        calls.push({ text: element.textContent || "", force: options?.force });
+      },
+    });
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      block.dispatchEvent(
+        new win.MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 40,
+          clientY: 50,
+        }),
+      );
+      const menu = doc.querySelector(".interlinear-reader-menu") as HTMLElement | null;
+      assert.exists(menu);
+      assert.equal(menu?.querySelectorAll(".interlinear-reader-menu-item").length, 3);
+      (menu?.querySelector('[data-action="retranslate"]') as HTMLButtonElement | null)?.click();
+      assert.equal(calls.length, 1);
+      assert.isTrue(calls[0].force);
+      assert.include(calls[0].text, "Source paragraph");
+
+      block.dispatchEvent(
+        new win.MouseEvent("dblclick", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 44,
+          clientY: 54,
+        }),
+      );
+      assert.exists(doc.querySelector(".interlinear-reader-menu"));
+    } finally {
+      controller.dispose();
+      (doc.querySelector(".interlinear-reader-menu") as HTMLElement | null)?.remove();
+    }
   });
 
   it("should translate on hover dwell and respect configurable shortcut settings", async function () {
