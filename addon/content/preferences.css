@@ -245,6 +245,35 @@
   display: none;
 }
 
+#interlinear-settings-root .interlinear-appearance-preview-card {
+  margin: 0 0 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: 8px;
+}
+
+#interlinear-settings-root .interlinear-appearance-preview-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+#interlinear-settings-root .interlinear-appearance-preview {
+  padding: 12px 14px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: 7px;
+  background: Canvas;
+  color: CanvasText;
+  overflow: hidden;
+}
+
+#interlinear-settings-root .interlinear-appearance-preview-help {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
 #interlinear-settings-root .interlinear-font-presets {
   display: inline-flex;
   align-items: center;

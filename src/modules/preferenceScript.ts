@@ -95,6 +95,7 @@ import {
 } from "../settings";
 import {
   DEFAULT_APPEARANCE,
+  buildTranslationCSS,
   contrastRatio,
   meetsContrastAA,
   normalizeHexInput,
@@ -102,6 +103,7 @@ import {
   type AppearanceSettings,
   type AppearanceTheme,
 } from "../appearance";
+import { buildDisplayModeCSS, normalizeDisplayMode } from "../displayMode";
 import { parseGlossary, serializeGlossary } from "../glossary";
 import {
   pickGlossaryFile,
@@ -592,6 +594,102 @@ function refreshColorUI(doc: Document): void {
     }
   }
   refreshContrastWarning(doc);
+  refreshAppearancePreview(doc);
+}
+
+function readAppearanceForm(doc: Document): AppearanceSettings {
+  return {
+    fontSize: readNumberInput(
+      doc,
+      "interlinear-appearance-font-size",
+      DEFAULT_APPEARANCE.fontSize,
+    ),
+    color: readColorControl(
+      doc,
+      "interlinear-appearance-color",
+      "interlinear-appearance-color-inherit",
+      "#333333",
+    ),
+    fontFamily: readInputText(doc, "interlinear-appearance-font-family"),
+    lineHeight: readNumberInput(
+      doc,
+      "interlinear-appearance-line-height",
+      DEFAULT_APPEARANCE.lineHeight,
+    ),
+    paragraphSpacing: readNumberInput(
+      doc,
+      "interlinear-appearance-paragraph-spacing",
+      DEFAULT_APPEARANCE.paragraphSpacing,
+    ),
+    background: readColorControl(
+      doc,
+      "interlinear-appearance-background",
+      "interlinear-appearance-background-inherit",
+      "#f6f6f6",
+    ),
+    theme:
+      (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
+        ?.value as AppearanceTheme) || "auto",
+    underline: readCheckbox(doc, "interlinear-appearance-underline"),
+    underlineColor: readColorControl(
+      doc,
+      "interlinear-appearance-underline-color",
+      "interlinear-appearance-underline-color-inherit",
+      "#333333",
+    ),
+    ribbon: readCheckbox(doc, "interlinear-appearance-ribbon"),
+    ribbonColor: readColorControl(
+      doc,
+      "interlinear-appearance-ribbon-color",
+      null,
+      DEFAULT_APPEARANCE.ribbonColor,
+    ),
+  };
+}
+
+// Shadow DOM keeps the reader stylesheet from leaking into the preferences pane
+// while system colors (Canvas/CanvasText) still inherit Zotero's theme.
+function initializeAppearancePreview(doc: Document): void {
+  const host = getElement<HTMLElement>(doc, "interlinear-appearance-preview");
+  if (!host || host.shadowRoot) return;
+  const shadow = host.attachShadow({ mode: "open" });
+  const style = doc.createElementNS(HTML_NS, "style");
+  const content = doc.createElementNS(HTML_NS, "div");
+  content.id = "sdt-content";
+  const source = doc.createElementNS(HTML_NS, "p");
+  source.className = "interlinear-source";
+  source.textContent = getString("appearance-preview-source");
+  const block = doc.createElementNS(HTML_NS, "div") as HTMLElement;
+  block.className = "interlinear-translation";
+  block.dataset.state = "done";
+  block.textContent = getString("appearance-preview-target");
+  content.append(source, block);
+  shadow.append(style, content);
+}
+
+function refreshAppearancePreview(doc: Document): void {
+  const host = getElement<HTMLElement>(doc, "interlinear-appearance-preview");
+  const shadow = host?.shadowRoot;
+  if (!shadow) return;
+  const style = shadow.querySelector("style");
+  const content = shadow.getElementById("sdt-content");
+  if (!style || !content) return;
+  const appearance = readAppearanceForm(doc);
+  const mode = normalizeDisplayMode(
+    getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value,
+  );
+  style.textContent = `${buildTranslationCSS(
+    "interlinear-translation",
+    appearance,
+    "reader",
+  )}\n${buildDisplayModeCSS(
+    "interlinear-translation",
+    "interlinear-source",
+    appearance.paragraphSpacing,
+  )}`;
+  content.setAttribute("data-interlinear-display", mode);
+  const block = shadow.querySelector<HTMLElement>(".interlinear-translation");
+  if (block) block.lang = getTargetLanguage();
 }
 
 function fontPresetKey(value: string): string {
@@ -785,6 +883,8 @@ function fillLanguageOptions(
 function fillAppearanceLabels(doc: Document): void {
   const entries: Array<[string, Parameters<typeof getString>[0]]> = [
     ["interlinear-appearance-title", "appearance-title"],
+    ["interlinear-appearance-preview-label", "appearance-preview-label"],
+    ["interlinear-appearance-preview-help", "appearance-preview-help"],
     ["interlinear-appearance-font-size-label", "appearance-font-size-label"],
     ["interlinear-appearance-font-size-help", "appearance-font-size-help"],
     ["interlinear-appearance-color-label", "appearance-color-label"],
@@ -984,53 +1084,7 @@ function saveSettings(doc: Document): void {
     readNumberInput(doc, "interlinear-request-timeout", DEFAULT_REQUEST_TIMEOUT_MS),
   );
 
-  setAppearance({
-    fontSize: readNumberInput(
-      doc,
-      "interlinear-appearance-font-size",
-      DEFAULT_APPEARANCE.fontSize,
-    ),
-    color: readColorControl(
-      doc,
-      "interlinear-appearance-color",
-      "interlinear-appearance-color-inherit",
-      "#333333",
-    ),
-    fontFamily: readInputText(doc, "interlinear-appearance-font-family"),
-    lineHeight: readNumberInput(
-      doc,
-      "interlinear-appearance-line-height",
-      DEFAULT_APPEARANCE.lineHeight,
-    ),
-    paragraphSpacing: readNumberInput(
-      doc,
-      "interlinear-appearance-paragraph-spacing",
-      DEFAULT_APPEARANCE.paragraphSpacing,
-    ),
-    background: readColorControl(
-      doc,
-      "interlinear-appearance-background",
-      "interlinear-appearance-background-inherit",
-      "#f6f6f6",
-    ),
-    theme:
-      (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
-        ?.value as AppearanceSettings["theme"]) || "auto",
-    underline: readCheckbox(doc, "interlinear-appearance-underline"),
-    underlineColor: readColorControl(
-      doc,
-      "interlinear-appearance-underline-color",
-      "interlinear-appearance-underline-color-inherit",
-      "#333333",
-    ),
-    ribbon: readCheckbox(doc, "interlinear-appearance-ribbon"),
-    ribbonColor: readColorControl(
-      doc,
-      "interlinear-appearance-ribbon-color",
-      null,
-      DEFAULT_APPEARANCE.ribbonColor,
-    ),
-  });
+  setAppearance(readAppearanceForm(doc));
   setDisplayMode(
     getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
       getDisplayMode(),
@@ -1522,6 +1576,12 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   fillLanguageOptions(doc, "interlinear-source-language", SOURCE_LANGUAGES, getSourceLanguage());
   fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
   initializeAppearanceControls(doc);
+  initializeAppearancePreview(doc);
+  // The form sections are siblings of #interlinear-settings-root, so delegate on
+  // the document to catch input/change from every appearance field.
+  doc.addEventListener("input", () => refreshAppearancePreview(doc));
+  doc.addEventListener("change", () => refreshAppearancePreview(doc));
+  refreshAppearancePreview(doc);
   updateBackendVisibility(doc);
   updateCacheStatus(doc);
   registerProjectLink(doc);

@@ -1,5 +1,9 @@
 
 appearance-title = 译文外观
+appearance-preview-label = 实时预览
+appearance-preview-help = 用阅读器相同的样式呈现尚未保存的改动；背景跟随 Zotero 主题。
+appearance-preview-source = Interlinear shows the source text and a translation paragraph by paragraph.
+appearance-preview-target = 对照翻译按段落显示原文与译文。
 appearance-font-size-label = 字号
 appearance-font-size-help = 10–32 像素。作用于译文块；保存后立即应用到已打开的阅读器。
 appearance-color-label = 文字颜色

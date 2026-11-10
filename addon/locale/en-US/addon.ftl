@@ -1,5 +1,9 @@
 
 appearance-title = Translation appearance
+appearance-preview-label = Live preview
+appearance-preview-help = Shows your unsaved changes with the same styles the reader uses; the background follows Zotero's theme.
+appearance-preview-source = Interlinear shows the source text and a translation paragraph by paragraph.
+appearance-preview-target = 对照翻译按段落显示原文与译文。
 appearance-font-size-label = Font size
 appearance-font-size-help = 10–32 px. Applies to the translation block; saved changes apply to open readers immediately.
 appearance-color-label = Text color

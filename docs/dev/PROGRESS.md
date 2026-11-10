@@ -780,3 +780,38 @@
 6. 点预设圆点。预期：取色器与十六进制同步、继承解除、选中环标记当前色；悬停有放大、title 显示「颜色名 (hex)」。
 7. 保存后重开设置。预期：显示值 = 存储值 = 有效色一致；切主题再切回，继承预览正确解析。
 8. 切换 Zotero 浅/深主题与中英文语言。预期：卡片、棋盘格、警告、预设名案均正确本地化且对比度可读。
+
+## Step C：译文外观实时预览卡片
+
+### 做了什么
+- **预览卡片**：`preferences.xhtml` 在「译文外观」groupbox 顶部（标题之后）新增 `html:div.interlinear-appearance-preview-card`，含本地化标题 `…-preview-label`、预览宿主 `html:div#interlinear-appearance-preview`、帮助文案 `…-preview-help`。卡片用既有 CSS 变量描边内边距，预览区 `background: Canvas; color: CanvasText`。
+- **样式隔离（Shadow DOM）**：`initializeAppearancePreview` 对宿主 `attachShadow({ mode: "open" })`，在 shadow 内放一个 `<style>` 与一个 `id="sdt-content"` 的内容容器（一段 `.interlinear-source` 原文 + 一段 `.interlinear-translation` 译文，演示文案取自 Fluent）。**选 Shadow DOM 而非 iframe 或全局作用域**的原因：阅读器样式表会注入 `#sdt-content` 等全局选择器，若预览直接写在偏好页 light DOM，`buildDisplayModeCSS` 的 `#sdt-content[…]` 规则会泄漏并影响偏好页其它元素；Shadow DOM 把这套选择器封闭在预览内部，零泄漏，同时 `Canvas`/`CanvasText` 系统色仍透过宿主继承 Zotero 主题（与划词弹窗同一保守做法），无需 iframe 的额外文档与加载开销。
+- **复用真实样式构建器（不抄样式）**：`refreshAppearancePreview` 用当前表单值调用 `buildTranslationCSS("interlinear-translation", appearance, "reader")` + `buildDisplayModeCSS("interlinear-translation", "interlinear-source", appearance.paragraphSpacing)` 写入 shadow 的 `<style>`，并把 `normalizeDisplayMode` 结果写到内容容器的 `data-interlinear-display`。因此预览与阅读器/导出用的是**同一份纯函数 CSS**，左右分栏等模式即时反映；译文块 `lang` 跟随 `getTargetLanguage()`。
+- **表单读取单一来源**：新增 `readAppearanceForm(doc)` 汇总全部外观字段；`saveSettings` 重构为 `setAppearance(readAppearanceForm(doc))`，预览与保存读同一函数，保证「所见即所存」。
+- **即时刷新 wiring**：`registerPrefsScripts` 在 `initializeAppearancePreview` 后刷新一次；`refreshColorUI` 末尾调 `refreshAppearancePreview`（覆盖预设圆点点击——它不冒泡 input/change）。其余字段靠**文档级** `input`/`change` 委托刷新。
+- **调试中定位的根因（重要）**：最初把委托监听挂在 `#interlinear-settings-root` 上，预览不随字号等字段更新。逐步诊断（在 CSS 里临时打 DIAG 标记观察 refresh 是否触发及读到的值）发现：**`interlinear-settings-root` groupbox 在第 65 行就闭合，只包含标题/简介/操作栏/导航；各功能 section（含外观第 542 行）是它的兄弟节点而非后代**，所以 root 级监听收不到表单事件。颜色控件之所以正常，是因为它们把监听直接绑在各自元素上。修复：预览委托改挂 `doc`（Document 是所有 section 的祖先），input/change 冒泡到文档即刷新。集成用例由红转绿。
+
+### 改动文件
+- 修改：`src/modules/preferenceScript.ts`（`readAppearanceForm`/`initializeAppearancePreview`/`refreshAppearancePreview`、`refreshColorUI` 调用、`saveSettings` 重构、文档级委托 wiring、`fillAppearanceLabels` 预览文案映射）、`addon/content/preferences.xhtml`（预览卡片）、`addon/content/preferences.css`（预览卡片/宿主/帮助样式）、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`（`appearance-preview-label/help/source/target`）、`test/startup.test.ts`（新增 1 个实时预览集成用例，先写看其失败）、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过（修复 `createElementNS` 返回 `Element` 无 `dataset` 的 TS 报错，将译文块 cast 为 `HTMLElement`）。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**126 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**45 pass / 0 fail**。新增用例在真实偏好窗口验证：宿主存在 open shadow root，内含 `<style>`/`#sdt-content`/`.interlinear-source`/`.interlinear-translation`；字号改 24 触发 input 后样式含 `font-size: 24px;`；显示模式切 side-by-side 触发 change 后样式含对应 `#sdt-content[data-interlinear-display="side-by-side"]` 规则且容器属性同步；文字勾选继承 + 主题切 dark 后样式含 `color: #e8e8e8;`。该用例先写并看其失败（root 委托不触发），修复后转绿。
+
+### 不确定项 / 未目视验证
+- 预览卡片在真实浅/深主题下的观感、`Canvas`/`CanvasText` 是否如预期跟随 Zotero 主题、shadow 内演示段落间距与左右分栏比例：**未目视验证**（headless 只断言 shadow 结构与生成的 CSS 文本）。
+- Shadow DOM `mode: "open"` 在 Firefox 115 内核可用（长期标准 API），`Canvas`/`CanvasText` 系统色透过 shadow 宿主继承亦为标准行为；保守选用，但**未目视验证**深色实际渲染。
+- 预览演示文案为固定中英示例（en/zh 两 locale 同值），不随界面语言切换示例文本本身——属预期（示例展示排版，非翻译结果）。
+- **留给 Step E 的候选 bug**：`registerDirtyTracking(doc, root)` 同样把 change/input 挂在 `#interlinear-settings-root`，因 section 是兄弟节点，表单字段改动可能不会触发「未保存」脏标记（部分 handler 如 engine change 显式调 `markDirty` 除外）。本步未改它以免扩大范围；Step E 审计时确认并改为文档级委托。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置→译文外观。预期：顶部出现「实时预览」卡片，内有一段原文 + 一段译文，样式与阅读器一致（色带、字号、行距）。
+2. 改字号/行距/段距。预期：预览即时变化，无需保存；预览区背景跟随 Zotero 浅/深主题。
+3. 把显示模式切到「左右分栏」。预期：预览立即变成原文左、译文右两栏；切回上下对照恢复。
+4. 文字勾选继承并把主题切深色。预期：预览译文文字变浅灰（`#e8e8e8`）、背景变深；取消继承选实色后预览用该色。
+5. 点颜色预设圆点。预期：预览即时更新（预设点击不冒泡 input，靠 `refreshColorUI` 驱动）。
+6. 保存后重开设置。预期：预览呈现的值 = 刚保存的值（预览与保存共用 `readAppearanceForm`）。
+7. 确认预览样式没有泄漏到偏好页其它区域（导航/其它 section 排版不受 `#sdt-content` 规则影响）。
+8. 切换 Zotero 中英文与浅/深主题。预期：预览标题/帮助本地化，演示段落与系统色对比度可读。

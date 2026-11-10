@@ -770,6 +770,62 @@ describe("startup", function () {
     }
   });
 
+  it("should live-preview appearance changes in an isolated shadow root using the real CSS", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    const fire = (el: HTMLElement | null, type: string) =>
+      el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-preview")) break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const host = win?.document.getElementById(
+        "interlinear-appearance-preview",
+      ) as HTMLElement | null;
+      assert.exists(host);
+      const shadow = host?.shadowRoot;
+      assert.exists(shadow);
+      const style = shadow?.querySelector("style");
+      const content = shadow?.getElementById("sdt-content");
+      assert.exists(style);
+      assert.exists(content);
+      assert.exists(shadow?.querySelector(".interlinear-source"));
+      assert.exists(shadow?.querySelector(".interlinear-translation"));
+      assert.match(style?.textContent || "", /\.interlinear-translation \{/u);
+
+      const fontSize = byId("interlinear-appearance-font-size");
+      if (fontSize) fontSize.value = "24";
+      fire(fontSize, "input");
+      assert.match(style?.textContent || "", /font-size: 24px;/u);
+
+      const mode = win?.document.getElementById(
+        "interlinear-display-mode",
+      ) as HTMLSelectElement | null;
+      if (mode) mode.value = "side-by-side";
+      fire(mode, "change");
+      assert.match(style?.textContent || "", /data-interlinear-display="side-by-side"/u);
+      assert.equal(content?.getAttribute("data-interlinear-display"), "side-by-side");
+
+      const colorInherit = byId("interlinear-appearance-color-inherit");
+      if (colorInherit) colorInherit.checked = true;
+      fire(colorInherit, "change");
+      const theme = win?.document.getElementById(
+        "interlinear-appearance-theme",
+      ) as HTMLSelectElement | null;
+      if (theme) theme.value = "dark";
+      fire(theme, "change");
+      assert.match(style?.textContent || "", /color: #e8e8e8;/u);
+    } finally {
+      win?.close();
+    }
+  });
+
   it("should switch display modes without moving source nodes", async function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
