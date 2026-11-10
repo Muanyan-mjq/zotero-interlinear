@@ -5,10 +5,12 @@ import {
   DEFAULT_SHORTCUT,
   formatShortcut,
   isValidShortcut,
+  isReservedShortcut,
   matchesShortcut,
   normalizeShortcut,
   parseShortcut,
   shortcutFromEvent,
+  shortcutsEqual,
 } from "../src/shortcut.ts";
 
 test("parseShortcut accepts modifiers, letters, digits and function keys", () => {
@@ -94,4 +96,20 @@ test("shortcutFromEvent records only safe combinations", () => {
   assert.equal(shortcutFromEvent({ key: "t" }), null);
   assert.equal(shortcutFromEvent({ key: "Escape" }), null);
   assert.equal(shortcutFromEvent({ key: "Control", ctrlKey: true }), null);
+});
+
+test("shortcutsEqual compares modifiers exactly", () => {
+  assert.equal(shortcutsEqual("Alt+Shift+T", "Alt+Shift+T"), true);
+  assert.equal(shortcutsEqual("Alt+Shift+T", "Alt+T"), false);
+  assert.equal(shortcutsEqual("Ctrl+Enter", "Ctrl+Shift+Enter"), false);
+  assert.equal(shortcutsEqual("nope", "Ctrl+Enter"), false);
+});
+
+test("isReservedShortcut only flags common primary-modifier shortcuts", () => {
+  for (const value of ["Ctrl+C", "Cmd+V", "Ctrl+Shift+T", "Meta+S"]) {
+    assert.equal(isReservedShortcut(value), true, value);
+  }
+  for (const value of ["Alt+Shift+T", "Ctrl+Alt+Enter", "F8", "Alt+Enter"]) {
+    assert.equal(isReservedShortcut(value), false, value);
+  }
 });

@@ -1204,3 +1204,79 @@
 6. 右键译文块：菜单含重新翻译/复制译文/复制原文；点重新翻译会重新请求该段（其他段不重复请求）；复制成功出现“已复制”提示。
 7. 双击译文块同样打开菜单；拖动选择译文文字可正常复制；错误/暂停块点击重试仍可用。
 8. 浅/深主题下检查菜单、提示、弹窗与阅读助手的对比度。
+
+## Step 5：外观方案（P2）
+
+> 说明：Step 5 的代码与 Step 6 在同一个提交（`cbde85d`）中落地。会话中断导致两步未分开提交；功能与测试记录按 Step 分开写在本文档中。
+
+### 做了什么
+- **内置方案 6 套**：默认、护眼纸张、学术衬线、高对比、暗色优化、极简。每套是 `DEFAULT_APPEARANCE` 上的完整覆盖，应用时先保存当前外观为撤销快照，再写入偏好并同步整张表单（字体栈/字重/颜色/装饰/块布局/预览）。顶部状态显示“已应用 X”，可点“撤销上次应用”恢复。
+- **我的方案**：名称输入 + 保存当前 / 应用 / 重命名 / 删除；存 `appearance.presets` JSON，最多 20 个，名称 60 字符、控制字符剔除、大小写不敏感去重；同名保存视为覆盖。
+- **导入/导出**：`src/appearanceFiles.ts` 复用 ztoolkit.FilePicker + Zotero.File；JSON 格式 `{format:"interlinear-appearance", version:2, appearance, presets}`，导出只含外观与我的方案，不含任何 Provider/API Key。导入限制 256KB，校验 format/version，未知键忽略并在状态行报告数量，所有值经 `normalizeAppearance` 夹取/拒绝；不执行任何内容。
+- **重置全部外观**：带 `confirm` 确认，应用默认方案；可撤销。
+- **schema 版本**：`appearance.schema` 当前为 3（颜色角色/字体/装饰字段增加时递增）；`appearance.v2` 保存完整结构，旧逐字段偏好继续同步写入。导入接受 version 1–2（1 视为旧结构，经 normalize 迁移）。
+- **单测**：`normalizeAppearancePresets` 去重/截断/拒绝非法项；导入拒绝超大/坏 JSON/错误 format/未来版本；未知键报告；恶意字体/颜色不进入结果；导出往返且不含 provider 字段。
+- **集成测试**：应用“学术衬线”后 `getAppearance().textAlign === "justify"`、字体主项为 Georgia，表单下拉同步；撤销恢复；保存/应用/删除“我的方案”。
+
+### 改动文件
+`src/appearance.ts`、`src/settings.ts`、`src/appearancePresets.ts`（新）、`src/appearanceFiles.ts`（新）、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：169 pass / 0 fail（Step 5 时点）。
+- `npm run test:review`：55 pass / 0 fail（Step 5 时点；含预设应用/撤销/我的方案用例）。
+
+### 不确定项
+- 文件选择器与真实文件读写未在设置窗口中手工点击验证；集成测试只覆盖纯函数与表单。
+- 应用方案会立即写入偏好并刷新阅读器；如果用户在其它标签还有未保存设置，全局“未保存”状态仍保留，这是有意的（不能替用户丢掉别的改动）。
+- “撤销上次应用”只在当前设置窗口生命周期内有效，关闭窗口后丢失。
+- 内置方案是固定数据；以后改默认值需要同步更新方案，未做版本迁移。
+- 导入时同名“我的方案”会被导入文件覆盖；没有逐项确认。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 外观页顶部六个方案按钮：逐个点击，确认预览与已打开阅读器立即变化；点“撤销上次应用”恢复点击前的外观。
+2. 输入名称保存当前为“我的方案”，关闭再打开设置页确认仍在；应用/重命名/删除各一次。
+3. 导出一个 JSON，检查不含 apiKey/endpoint/prompt；改几项外观后导入，确认值恢复且状态行报告未知键数量。
+4. 导入一个 300KB 文件或损坏 JSON：确认状态行显示错误且外观不被改写。
+5. 点“重置全部外观”：确认弹窗出现；确认后恢复默认，取消则不变；随后可撤销。
+6. 在浅/深主题下检查方案按钮、状态行与撤销按钮的可读性。
+
+## Step 7：快捷键与触发（P2）
+
+### 做了什么
+- **新增两个可配置快捷键**：显示/隐藏译文（默认 `Alt+Shift+T`，默认关闭）、循环切换排版（默认 `Alt+Shift+D`，默认关闭）。复用现有录制控件：点击输入框按键录制，Backspace/Delete 恢复默认；`readerInteractions` 在 `keydown` 中先于单段翻译快捷键匹配。
+- **冲突检测**：`shortcutsEqual` 精确比较修饰键与按键；`isReservedShortcut` 保守列出 Ctrl/Cmd + A/C/F/L/N/O/P/Q/R/S/T/V/W/X/Y/Z 等 Zotero/浏览器常见快捷键。三者任意重复或命中保留组合时，设置页显示非阻塞黄色警告；保存时把该警告并入 warning 状态，但不阻止保存。
+- **悬停修饰键**：`hoverModifier` 可选 none/alt/ctrl（默认 none，保持现状）。Alt 模式下按住 Alt 悬停仍显示虚线高亮，同时按停留时间触发自动翻译；Ctrl 模式下未按 Ctrl 不启动计时。同段移动 >6px 才重新计时，滚动/移出/按下鼠标/选区/弹窗仍会取消。
+- **打开论文时自动翻译**：`autoTranslateOnOpen` 可选 off（默认）/ cached / always。
+  - cached：`showCachedTranslations` 只收集已有缓存的段落，插入译文块并直接置 done，不发任何请求；若没有缓存段落则不做任何事。
+  - always：等同自动点一次工具栏开关，启动全文翻译；设置页在选择 always 时显示“可能产生 API 费用”的警告。
+  - 每个 reader 只尝试一次（WeakSet），已有非 empty 开关状态时跳过。
+- **测试**：快捷键纯函数单测（精确比较、保留组合）；集成用例保存三项新设置、断言偏好与冲突提示；既有 57 个集成用例保持通过。
+
+### 改动文件
+`src/shortcut.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`src/readerInteractions.ts`、`src/bilingualReader.ts`、`addon/prefs.js`、`addon/content/preferences.xhtml`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/shortcut.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`（生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：171 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：58 pass / 0 fail。
+
+### 不确定项
+- `isReservedShortcut` 的保留键列表是保守启发式，不代表 Zotero 全部快捷键；只警告不阻止。
+- 新快捷键默认关闭，避免与用户现有 Zotero 快捷键冲突；需要用户主动开启。
+- Alt 悬停修饰键与原有“Alt 悬停高亮”共用 Alt；同时按住 Alt 时两者都会表现，已在代码中复用同一计时器，但真实鼠标路径未目视。
+- `always` 自动翻译在真实 PDF 打开时是否早于阅读模式就绪、是否会与服务商限流冲突未实测；`prepareAndRun` 会等待阅读模式，失败会走非阻塞错误提示。
+- cached 模式只显示缓存段落，不会翻译未缓存段落；用户看到的是混合状态（部分段落有译文），这是“仅此前翻译过的论文”的预期。
+- 新快捷键只在交互控制器附加后生效；未开启过对照的阅读器仍需先触发一次工具栏/悬停/快捷键以附加控制器（既有行为）。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→显示与交互：开启“显示/隐藏快捷键”，录制 `Ctrl+Alt+T`；在阅读器按该组合键，译文显示/隐藏切换；再按一次恢复。
+2. 开启“排版循环快捷键”，录制 `Ctrl+Alt+D`；连按四次，四种布局依次切换，工具栏 `◫` 标题同步。
+3. 把显示/隐藏快捷键改成与单段翻译相同的 `Alt+Enter`：设置页出现冲突警告；保存后仍可保存但状态为 warning。
+4. 悬停修饰键选“按住 Ctrl”：不按 Ctrl 悬停不翻译；按住 Ctrl 停留到时间后翻译；Alt 悬停高亮仍正常。
+5. 选“按住 Alt”：按住 Alt 悬停出现虚线高亮并自动翻译；松开 Alt 移动不触发。
+6. 自动翻译选“仅缓存”：打开一篇之前翻译过的论文，译文块直接出现且不发请求；打开没翻译过的论文不出现译文。
+7. 自动翻译选“总是”：打开新论文自动开始全文翻译；设置页能看到费用警告；再次打开同一阅读器不重复启动。
+8. 关闭自动翻译，确认打开论文不再自动显示/翻译；切换浅/深主题检查新增下拉与警告的可读性。

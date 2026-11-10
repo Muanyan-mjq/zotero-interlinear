@@ -38,6 +38,11 @@ export interface InteractionOptions {
   clearHoverTimer?: (handle: any) => void;
   /** Width of the selection popup, read when it opens. */
   getPopupWidth?: () => number;
+  getHoverModifier?: () => "none" | "alt" | "ctrl";
+  getToggleShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
+  getDisplayShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
+  onToggleShortcut?: () => void;
+  onCycleDisplayShortcut?: () => void;
 }
 
 export interface InteractionController {
@@ -316,6 +321,9 @@ export function attachReaderInteractions(
 
   const armAutoHover = (source: HTMLElement, event: MouseEvent) => {
     const settings = getHoverSettings();
+    const modifier = options.getHoverModifier?.() || "none";
+    if (modifier === "alt" && !event.altKey) return;
+    if (modifier === "ctrl" && !event.ctrlKey) return;
     if (!settings.enabled || options.isTranslationHidden?.() || shouldSkipAutoTranslate(source)) return;
 
     clearHoverTimer();
@@ -368,6 +376,21 @@ export function attachReaderInteractions(
 
   const onMouseMove = (event: MouseEvent) => {
     const source = findSource(event.target);
+    if (event.altKey && options.getHoverModifier?.() === "alt") {
+      if (hoverMode === "auto" && source === hovered) {
+        hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
+        if (!movedEnoughToRearm(event)) return;
+      }
+      clearHover();
+      if (source) {
+        hovered = source;
+        hoverMode = "alt";
+        source.classList.add(HOVER_CLASS);
+        armAutoHover(source, event);
+      }
+      return;
+    }
+
     if (event.altKey) {
       if (hoverMode === "alt" && source === hovered) return;
       clearHover();
@@ -380,6 +403,10 @@ export function attachReaderInteractions(
     }
 
     if (!getHoverSettings().enabled) {
+      clearHover();
+      return;
+    }
+    if (options.getHoverModifier?.() === "ctrl" && !event.ctrlKey) {
       clearHover();
       return;
     }
@@ -521,6 +548,29 @@ export function attachReaderInteractions(
     }
 
     if ((event.key === "Enter" || event.key === " ") && retryIfRequested(event)) {
+      return;
+    }
+
+    const toggleShortcut = options.getToggleShortcutSettings?.();
+    if (
+      toggleShortcut?.enabled &&
+      toggleShortcut.spec &&
+      matchesShortcut(event, toggleShortcut.spec)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      options.onToggleShortcut?.();
+      return;
+    }
+    const displayShortcut = options.getDisplayShortcutSettings?.();
+    if (
+      displayShortcut?.enabled &&
+      displayShortcut.spec &&
+      matchesShortcut(event, displayShortcut.spec)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      options.onCycleDisplayShortcut?.();
       return;
     }
 

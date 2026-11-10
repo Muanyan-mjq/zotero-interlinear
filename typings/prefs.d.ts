@@ -57,6 +57,12 @@ declare namespace _ZoteroTypes {
       "scope.listItems": boolean;
       "scope.notes": boolean;
       "scope.body": boolean;
+      "interaction.toggleShortcutEnabled": boolean;
+      "interaction.toggleShortcut": string;
+      "interaction.displayShortcutEnabled": boolean;
+      "interaction.displayShortcut": string;
+      "interaction.hoverModifier": string;
+      "interaction.autoTranslateOnOpen": string;
     };
   }
 }

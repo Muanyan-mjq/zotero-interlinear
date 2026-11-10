@@ -48,6 +48,7 @@ import {
 } from "./glossary";
 import {
   DEFAULT_SHORTCUT,
+  isValidShortcut,
   normalizeShortcut,
   parseShortcut,
   type ShortcutSpec,
@@ -163,6 +164,12 @@ const SCOPE_CAPTIONS_PREF = `${BASE}.scope.captions`;
 const SCOPE_LIST_ITEMS_PREF = `${BASE}.scope.listItems`;
 const SCOPE_NOTES_PREF = `${BASE}.scope.notes`;
 const SCOPE_BODY_PREF = `${BASE}.scope.body`;
+const TOGGLE_SHORTCUT_ENABLED_PREF = `${BASE}.interaction.toggleShortcutEnabled`;
+const TOGGLE_SHORTCUT_PREF = `${BASE}.interaction.toggleShortcut`;
+const DISPLAY_SHORTCUT_ENABLED_PREF = `${BASE}.interaction.displayShortcutEnabled`;
+const DISPLAY_SHORTCUT_PREF = `${BASE}.interaction.displayShortcut`;
+const HOVER_MODIFIER_PREF = `${BASE}.interaction.hoverModifier`;
+const AUTO_TRANSLATE_ON_OPEN_PREF = `${BASE}.interaction.autoTranslateOnOpen`;
 const APPEARANCE_V2_PREF = `${BASE}.appearance.v2`;
 const APPEARANCE_SCHEMA_PREF = `${BASE}.appearance.schema`;
 const APPEARANCE_SCHEMA_VERSION = 3;
@@ -531,6 +538,73 @@ export function getHoverDelayMs(): number {
 
 export function setHoverDelayMs(value: number): void {
   setNumberPref(HOVER_DELAY_PREF, value, HOVER_DELAY_MIN_MS, HOVER_DELAY_MAX_MS);
+}
+
+export const DEFAULT_TOGGLE_SHORTCUT = "Alt+Shift+T";
+export const DEFAULT_DISPLAY_SHORTCUT = "Alt+Shift+D";
+export type HoverModifier = "none" | "alt" | "ctrl";
+export type AutoTranslateOnOpen = "off" | "cached" | "always";
+
+function normalizeShortcutOrDefault(raw: string, fallback: string): string {
+  const normalized = normalizeShortcut(raw);
+  return isValidShortcut(normalized) ? normalized : fallback;
+}
+
+export function getToggleShortcutEnabled(): boolean {
+  return getBoolPref(TOGGLE_SHORTCUT_ENABLED_PREF, false);
+}
+export function setToggleShortcutEnabled(value: boolean): void {
+  setBoolPref(TOGGLE_SHORTCUT_ENABLED_PREF, value);
+}
+export function getToggleShortcut(): string {
+  return normalizeShortcutOrDefault(
+    getRawStringPref(TOGGLE_SHORTCUT_PREF),
+    DEFAULT_TOGGLE_SHORTCUT,
+  );
+}
+export function setToggleShortcut(value: string): void {
+  setStringPref(
+    TOGGLE_SHORTCUT_PREF,
+    normalizeShortcutOrDefault(value, DEFAULT_TOGGLE_SHORTCUT),
+  );
+}
+export function getDisplayShortcutEnabled(): boolean {
+  return getBoolPref(DISPLAY_SHORTCUT_ENABLED_PREF, false);
+}
+export function setDisplayShortcutEnabled(value: boolean): void {
+  setBoolPref(DISPLAY_SHORTCUT_ENABLED_PREF, value);
+}
+export function getDisplayShortcut(): string {
+  return normalizeShortcutOrDefault(
+    getRawStringPref(DISPLAY_SHORTCUT_PREF),
+    DEFAULT_DISPLAY_SHORTCUT,
+  );
+}
+export function setDisplayShortcut(value: string): void {
+  setStringPref(
+    DISPLAY_SHORTCUT_PREF,
+    normalizeShortcutOrDefault(value, DEFAULT_DISPLAY_SHORTCUT),
+  );
+}
+export function getHoverModifier(): HoverModifier {
+  const value = getRawStringPref(HOVER_MODIFIER_PREF);
+  return value === "alt" || value === "ctrl" ? value : "none";
+}
+export function setHoverModifier(value: string): void {
+  setStringPref(
+    HOVER_MODIFIER_PREF,
+    value === "alt" || value === "ctrl" ? value : "none",
+  );
+}
+export function getAutoTranslateOnOpen(): AutoTranslateOnOpen {
+  const value = getRawStringPref(AUTO_TRANSLATE_ON_OPEN_PREF);
+  return value === "cached" || value === "always" ? value : "off";
+}
+export function setAutoTranslateOnOpen(value: string): void {
+  setStringPref(
+    AUTO_TRANSLATE_ON_OPEN_PREF,
+    value === "cached" || value === "always" ? value : "off",
+  );
 }
 
 export function getShortcutEnabled(): boolean {

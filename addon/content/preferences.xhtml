@@ -694,6 +694,20 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-hover-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-hover-modifier-label"
+              for="interlinear-hover-modifier"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-hover-modifier" class="interlinear-select">
+                <html:option id="interlinear-hover-modifier-none" value="none"></html:option>
+                <html:option id="interlinear-hover-modifier-alt" value="alt"></html:option>
+                <html:option id="interlinear-hover-modifier-ctrl" value="ctrl"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
 
           <html:div class="interlinear-divider"></html:div>
 
@@ -725,6 +739,79 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-shortcut-help" class="interlinear-help"></html:p>
+          <html:p id="interlinear-shortcut-conflict" class="interlinear-warning"></html:p>
+
+          <html:div class="interlinear-divider"></html:div>
+          <html:h4 id="interlinear-extra-shortcuts-title" class="interlinear-subtitle"></html:h4>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-toggle-shortcut-enabled"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-toggle-shortcut-enabled-label"
+              for="interlinear-toggle-shortcut-enabled"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-toggle-shortcut-label"
+              for="interlinear-toggle-shortcut"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-toggle-shortcut"
+                type="text"
+                class="interlinear-input interlinear-input-shortcut"
+              />
+            </html:div>
+          </html:div>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-display-shortcut-enabled"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-display-shortcut-enabled-label"
+              for="interlinear-display-shortcut-enabled"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-display-shortcut-label"
+              for="interlinear-display-shortcut"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-display-shortcut"
+                type="text"
+                class="interlinear-input interlinear-input-shortcut"
+              />
+            </html:div>
+          </html:div>
+
+          <html:div class="interlinear-divider"></html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-auto-translate-label"
+              for="interlinear-auto-translate"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-auto-translate" class="interlinear-select">
+                <html:option id="interlinear-auto-translate-off" value="off"></html:option>
+                <html:option id="interlinear-auto-translate-cached" value="cached"></html:option>
+                <html:option id="interlinear-auto-translate-always" value="always"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-auto-translate-warning" class="interlinear-warning"></html:p>
           <html:p id="interlinear-interaction-help" class="interlinear-note"></html:p>
         </html:div>
       </html:div>

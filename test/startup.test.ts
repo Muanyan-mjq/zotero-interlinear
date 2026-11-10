@@ -1050,6 +1050,71 @@ describe("startup", function () {
     }
   });
 
+  it("should save extra shortcuts, hover modifier and auto-translate mode", async function () {
+    this.timeout(10000);
+    const keys = [
+      "extensions.zotero.interlinear.interaction.toggleShortcutEnabled",
+      "extensions.zotero.interlinear.interaction.toggleShortcut",
+      "extensions.zotero.interlinear.interaction.displayShortcutEnabled",
+      "extensions.zotero.interlinear.interaction.displayShortcut",
+      "extensions.zotero.interlinear.interaction.hoverModifier",
+      "extensions.zotero.interlinear.interaction.autoTranslateOnOpen",
+      "extensions.zotero.interlinear.interaction.shortcut",
+    ];
+    const previous = new Map<string, unknown>(
+      keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
+    );
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-toggle-shortcut")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const setChecked = (id: string, value: boolean) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.checked = value;
+      };
+      const setValue = (id: string, value: string) => {
+        const element = byId(id);
+        assert.exists(element, id);
+        if (element) element.value = value;
+      };
+      setChecked("interlinear-toggle-shortcut-enabled", true);
+      setValue("interlinear-toggle-shortcut", "Ctrl+Alt+T");
+      setChecked("interlinear-display-shortcut-enabled", true);
+      setValue("interlinear-display-shortcut", "Ctrl+Alt+D");
+      setValue("interlinear-hover-modifier", "ctrl");
+      setValue("interlinear-auto-translate", "cached");
+      (win?.document.getElementById("interlinear-save") as HTMLButtonElement | null)?.click();
+
+      assert.equal(Zotero.Prefs.get(keys[0], true), true);
+      assert.equal(Zotero.Prefs.get(keys[1], true), "Ctrl+Alt+T");
+      assert.equal(Zotero.Prefs.get(keys[2], true), true);
+      assert.equal(Zotero.Prefs.get(keys[3], true), "Ctrl+Alt+D");
+      assert.equal(Zotero.Prefs.get(keys[4], true), "ctrl");
+      assert.equal(Zotero.Prefs.get(keys[5], true), "cached");
+
+      setValue("interlinear-toggle-shortcut", "Alt+Enter");
+      byId("interlinear-toggle-shortcut")?.dispatchEvent(
+        new (win as any).Event("input", { bubbles: true }),
+      );
+      const conflict = win?.document.getElementById(
+        "interlinear-shortcut-conflict",
+      ) as HTMLElement | null;
+      assert.isNotEmpty((conflict?.textContent || "").trim());
+    } finally {
+      win?.close();
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
+    }
+  });
+
   it("should sync hex input, reset, contrast warning and theme preview in color controls", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");

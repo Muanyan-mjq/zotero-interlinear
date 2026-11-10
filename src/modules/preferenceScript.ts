@@ -16,6 +16,8 @@ import {
   DEFAULT_REQUEST_GAP_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   DEFAULT_SHORTCUT,
+  DEFAULT_TOGGLE_SHORTCUT,
+  DEFAULT_DISPLAY_SHORTCUT,
   DEFAULT_SKIP_LAST_PAGES,
   DEFAULT_SOURCE_LANGUAGE,
   DEFAULT_TARGET_LANGUAGE,
@@ -41,6 +43,12 @@ import {
   getGlossaryText,
   getGoogleBaseURL,
   getHoverDelayMs,
+  getHoverModifier,
+  getToggleShortcut,
+  getToggleShortcutEnabled,
+  getDisplayShortcut,
+  getDisplayShortcutEnabled,
+  getAutoTranslateOnOpen,
   getHoverTranslateEnabled,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
@@ -87,6 +95,12 @@ import {
   setGlossaryText,
   setGoogleBaseURL,
   setHoverDelayMs,
+  setHoverModifier,
+  setToggleShortcut,
+  setToggleShortcutEnabled,
+  setDisplayShortcut,
+  setDisplayShortcutEnabled,
+  setAutoTranslateOnOpen,
   setHoverTranslateEnabled,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
@@ -183,9 +197,11 @@ import { refreshDisplayModes, refreshTranslationStyles } from "../bilingualReade
 import { clearTranslationCache, getTranslationCacheStats } from "../translationCache";
 import {
   formatShortcut,
+  isReservedShortcut,
   isValidShortcut,
   normalizeShortcut,
   shortcutFromEvent,
+  shortcutsEqual,
 } from "../shortcut";
 import {
   testClaudeConnection,
@@ -3422,6 +3438,20 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-hover-delay-label", "interaction-hover-delay-label"],
     ["interlinear-hover-delay-unit", "interaction-hover-delay-unit"],
     ["interlinear-hover-help", "interaction-hover-help"],
+    ["interlinear-hover-modifier-label", "interaction-hover-modifier-label"],
+    ["interlinear-hover-modifier-none", "interaction-hover-modifier-none"],
+    ["interlinear-hover-modifier-alt", "interaction-hover-modifier-alt"],
+    ["interlinear-hover-modifier-ctrl", "interaction-hover-modifier-ctrl"],
+    ["interlinear-extra-shortcuts-title", "interaction-extra-shortcuts-title"],
+    ["interlinear-toggle-shortcut-enabled-label", "interaction-toggle-shortcut-enabled-label"],
+    ["interlinear-toggle-shortcut-label", "interaction-toggle-shortcut-label"],
+    ["interlinear-display-shortcut-enabled-label", "interaction-display-shortcut-enabled-label"],
+    ["interlinear-display-shortcut-label", "interaction-display-shortcut-label"],
+    ["interlinear-auto-translate-label", "interaction-auto-translate-label"],
+    ["interlinear-auto-translate-off", "interaction-auto-translate-off"],
+    ["interlinear-auto-translate-cached", "interaction-auto-translate-cached"],
+    ["interlinear-auto-translate-always", "interaction-auto-translate-always"],
+    ["interlinear-auto-translate-warning", "interaction-auto-translate-warning"],
     ["interlinear-shortcut-enabled-label", "interaction-shortcut-enabled-label"],
     ["interlinear-shortcut-label", "interaction-shortcut-label"],
     ["interlinear-shortcut-help", "interaction-shortcut-help"],
@@ -3608,6 +3638,30 @@ function saveSettings(doc: Document): string[] {
   setShortcut(normalizedShortcut);
   if (shortcutInput) shortcutInput.value = normalizedShortcut;
   if (!shortcutValid) warnings.push(getString("interaction-shortcut-invalid"));
+  setToggleShortcutEnabled(readCheckbox(doc, "interlinear-toggle-shortcut-enabled"));
+  const toggleInput = getElement<HTMLInputElement>(doc, "interlinear-toggle-shortcut");
+  const rawToggle = toggleInput?.value.trim() || DEFAULT_TOGGLE_SHORTCUT;
+  const normalizedToggle = normalizeShortcut(rawToggle);
+  setToggleShortcut(normalizedToggle);
+  if (toggleInput) toggleInput.value = normalizedToggle;
+  setDisplayShortcutEnabled(readCheckbox(doc, "interlinear-display-shortcut-enabled"));
+  const displayInput = getElement<HTMLInputElement>(doc, "interlinear-display-shortcut");
+  const rawDisplay = displayInput?.value.trim() || DEFAULT_DISPLAY_SHORTCUT;
+  const normalizedDisplay = normalizeShortcut(rawDisplay);
+  setDisplayShortcut(normalizedDisplay);
+  if (displayInput) displayInput.value = normalizedDisplay;
+  setHoverModifier(
+    getElement<HTMLSelectElement>(doc, "interlinear-hover-modifier")?.value || "none",
+  );
+  setAutoTranslateOnOpen(
+    getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.value || "off",
+  );
+  updateShortcutConflict(doc);
+  const conflict = getElement<HTMLElement>(
+    doc,
+    "interlinear-shortcut-conflict",
+  )?.textContent;
+  if (conflict) warnings.push(conflict);
   refreshTranslationStyles();
   refreshDisplayModes();
   refreshAppearancePreview(doc);
@@ -3928,8 +3982,12 @@ function registerProjectLink(doc: Document): void {
   );
 }
 
-function registerShortcutRecorder(doc: Document): void {
-  const input = getElement<HTMLInputElement>(doc, "interlinear-shortcut");
+function registerShortcutRecorder(
+  doc: Document,
+  inputId: string,
+  defaultShortcut: string,
+): void {
+  const input = getElement<HTMLInputElement>(doc, inputId);
   if (!input) return;
 
   input.addEventListener("keydown", (event) => {
@@ -3938,7 +3996,7 @@ function registerShortcutRecorder(doc: Document): void {
     keyEvent.preventDefault();
 
     if (keyEvent.key === "Backspace" || keyEvent.key === "Delete") {
-      input.value = DEFAULT_SHORTCUT;
+      input.value = defaultShortcut;
       return;
     }
 
@@ -3947,6 +4005,28 @@ function registerShortcutRecorder(doc: Document): void {
   });
 
   input.addEventListener("focus", () => input.select());
+}
+
+function updateShortcutConflict(doc: Document): void {
+  const warning = getElement<HTMLElement>(doc, "interlinear-shortcut-conflict");
+  if (!warning) return;
+  const values = [
+    readInputText(doc, "interlinear-shortcut"),
+    readInputText(doc, "interlinear-toggle-shortcut"),
+    readInputText(doc, "interlinear-display-shortcut"),
+  ].filter(isValidShortcut);
+  let conflict = false;
+  for (let i = 0; i < values.length; i += 1) {
+    for (let j = i + 1; j < values.length; j += 1) {
+      if (shortcutsEqual(values[i], values[j])) conflict = true;
+    }
+    if (isReservedShortcut(values[i])) conflict = true;
+  }
+  updateStatus(
+    warning,
+    conflict ? getString("interaction-shortcut-conflict") : "",
+    "warning",
+  );
 }
 
 export async function registerPrefsScripts(window: Window): Promise<void> {
@@ -4053,6 +4133,35 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   }
   if (shortcutEnabled) shortcutEnabled.checked = getShortcutEnabled();
   if (shortcutInput) shortcutInput.value = getShortcut();
+  setFormChecked(
+    doc,
+    "interlinear-toggle-shortcut-enabled",
+    getToggleShortcutEnabled(),
+  );
+  setFormValue(doc, "interlinear-toggle-shortcut", getToggleShortcut());
+  setFormChecked(
+    doc,
+    "interlinear-display-shortcut-enabled",
+    getDisplayShortcutEnabled(),
+  );
+  setFormValue(doc, "interlinear-display-shortcut", getDisplayShortcut());
+  setFormValue(doc, "interlinear-hover-modifier", getHoverModifier());
+  setFormValue(doc, "interlinear-auto-translate", getAutoTranslateOnOpen());
+  const syncAutoTranslateWarning = () => {
+    const always =
+      getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.value ===
+      "always";
+    updateStatus(
+      getElement<HTMLElement>(doc, "interlinear-auto-translate-warning"),
+      always ? getString("interaction-auto-translate-warning") : "",
+      "warning",
+    );
+  };
+  getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.addEventListener(
+    "change",
+    syncAutoTranslateWarning,
+  );
+  syncAutoTranslateWarning();
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   setFormChecked(doc, "interlinear-scope-body", getScopeBody());
   setFormChecked(doc, "interlinear-scope-titles", getScopeTitles());
@@ -4097,7 +4206,27 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   refreshAppearancePreview(doc);
   updateCacheStatus(doc);
   registerProjectLink(doc);
-  registerShortcutRecorder(doc);
+  registerShortcutRecorder(doc, "interlinear-shortcut", DEFAULT_SHORTCUT);
+  registerShortcutRecorder(
+    doc,
+    "interlinear-toggle-shortcut",
+    DEFAULT_TOGGLE_SHORTCUT,
+  );
+  registerShortcutRecorder(
+    doc,
+    "interlinear-display-shortcut",
+    DEFAULT_DISPLAY_SHORTCUT,
+  );
+  for (const id of [
+    "interlinear-shortcut",
+    "interlinear-toggle-shortcut",
+    "interlinear-display-shortcut",
+  ]) {
+    getElement<HTMLInputElement>(doc, id)?.addEventListener("input", () => {
+      updateShortcutConflict(doc);
+    });
+  }
+  updateShortcutConflict(doc);
   registerSettingsTabs(doc);
   registerSecretToggles(doc);
   registerDirtyTracking(doc);

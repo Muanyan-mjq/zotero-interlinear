@@ -5,7 +5,13 @@ import {
   getEngine,
   getGlossaryEntries,
   getHoverDelayMs,
+  getHoverModifier,
   getHoverTranslateEnabled,
+  getToggleShortcut,
+  getToggleShortcutEnabled,
+  getDisplayShortcut,
+  getDisplayShortcutEnabled,
+  getAutoTranslateOnOpen,
   getMaxBatchParagraphs,
   getMaxCharsPerRequest,
   getMaxConcurrent,
@@ -40,6 +46,7 @@ import { isFailureText } from "./translationFailure";
 import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
+import { parseShortcut } from "./shortcut";
 import {
   buildTranslationCSS,
   resolveTextDirection,
@@ -320,6 +327,7 @@ function cancelRun(reader: any): void {
   current.cancellation = undefined;
   runStates.set(reader, current);
   updateToolbarProgress(reader);
+  maybeAutoTranslate(reader);
 }
 
 export function cancelBilingualReading(reader: any): void {
@@ -672,8 +680,14 @@ function getDisplayModeLabel(mode: DisplayMode): string {
   }
 }
 
-function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {
-  if (!toolbarDoc) {
+function cycleDisplayMode(reader: any, toolbarDoc?: Document): void {
+  const index = DISPLAY_MODES.indexOf(getDisplayMode());
+  setDisplayMode(DISPLAY_MODES[(index + 1) % DISPLAY_MODES.length]);
+  refreshDisplayModes();
+  updateDisplayButtonState(reader, toolbarDoc);
+}
+
+function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {  if (!toolbarDoc) {
     try {
       toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
     } catch (_) {
@@ -1130,6 +1144,19 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
         enabled: getShortcutEnabled(),
         spec: getShortcutSpec(),
       }),
+      getHoverModifier: () => getHoverModifier(),
+      getToggleShortcutSettings: () => ({
+        enabled: getToggleShortcutEnabled(),
+        spec: parseShortcut(getToggleShortcut()),
+      }),
+      getDisplayShortcutSettings: () => ({
+        enabled: getDisplayShortcutEnabled(),
+        spec: parseShortcut(getDisplayShortcut()),
+      }),
+      onToggleShortcut: () => {
+        void toggleBilingualReading(reader);
+      },
+      onCycleDisplayShortcut: () => cycleDisplayMode(reader),
       isTranslationHidden: () => isTranslationHidden(getToggleState(reader)),
       getPopupWidth: () => getAppearance().popupMaxWidth,
     },
@@ -1837,6 +1864,52 @@ function openBilingualToolbarMenu(
   });
 }
 
+const autoTranslateAttempted = new WeakSet<object>();
+
+async function showCachedTranslations(reader: any): Promise<void> {
+  const doc = await ensureReadingMode(reader);
+  const root = getDocumentRoot(doc);
+  if (!root) return;
+  installStyles(doc);
+  applyDisplayMode(doc);
+  ensureReaderInteractions(reader, doc);
+
+  const itemID = Number(reader?.itemID || 0);
+  if (!itemID) return;
+  const item = Zotero.Items.get(itemID);
+  const itemKey = String(item?.key || reader?.itemKey || itemID || "reader");
+  const engineTag = getCacheEngineTag();
+  const structure = getSDTStructure(reader);
+  const paragraphs = collectParagraphs(doc, itemKey, engineTag, structure).filter(
+    (paragraph) => Boolean(paragraph.translation),
+  );
+  if (!paragraphs.length) return;
+
+  observeReadingLayout(getActiveSDTView(reader), doc);
+  for (const paragraph of paragraphs) {
+    const block = ensureTranslationBlock(doc, paragraph);
+    if (block && paragraph.translation) {
+      setBlockState(block, "done", paragraph.translation);
+    }
+  }
+  if (getToggleState(reader) === "empty") {
+    dispatchToggle(reader, "shortcut");
+  }
+  refreshReadingLayout(doc);
+}
+
+function maybeAutoTranslate(reader: any): void {
+  const mode = getAutoTranslateOnOpen();
+  if (mode === "off" || autoTranslateAttempted.has(reader)) return;
+  autoTranslateAttempted.add(reader);
+  if (getToggleState(reader) !== "empty") return;
+  if (mode === "always") {
+    void toggleBilingualReading(reader);
+    return;
+  }
+  void showCachedTranslations(reader).catch((error) => Zotero.logError(error as Error));
+}
+
 export function renderBilingualToolbarButtons(event: any): void {
   const { reader, doc, append } = event || {};
   if (!reader || reader.type !== "pdf" || !doc) return;
@@ -1870,12 +1943,7 @@ export function renderBilingualToolbarButtons(event: any): void {
   }
 
   registerToolbarHandlers(doc, DISPLAY_BUTTON_CLASS, {
-    onClick: () => {
-      const index = DISPLAY_MODES.indexOf(getDisplayMode());
-      setDisplayMode(DISPLAY_MODES[(index + 1) % DISPLAY_MODES.length]);
-      refreshDisplayModes();
-      updateDisplayButtonState(reader, doc);
-    },
+    onClick: () => cycleDisplayMode(reader, doc),
     onContextMenu: (contextEvent) =>
       openBilingualToolbarMenu(reader, doc, contextEvent.clientX, contextEvent.clientY),
   });
