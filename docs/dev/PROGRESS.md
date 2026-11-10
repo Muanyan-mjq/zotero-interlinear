@@ -1295,10 +1295,17 @@
   - 动态颜色卡片与旧静态卡片的重复 ID：已删除旧静态 DOM，改为宿主 + 表驱动渲染。
   - 显示模式快捷键/按钮共用 `cycleDisplayMode`；修复传 `toolbarDoc` 以保证测试/即时按钮状态。
   - Step 5 与 Step 6 因会话中断落在同一提交（`cbde85d`），已在 PROGRESS 标注，不再拆分历史。
+  - 字体检测列表把“已检测到”的字体也标成 `?`：`state.detected` 保留原大小写，而 `filterFontCandidates` 内部转小写，导致 `undetected` 判断大小写不匹配；已在渲染前构造小写集合，并补集成断言。
+  - 自动翻译“总是”的警告在切回非 always 后不消失：警告同步函数只在初始化时调用；改为切换回显示页时也同步。
+  - “翻译范围”在显示页与高级页重名：显示页改为“内容范围”，高级页改为“页面范围”。
+  - 聊天上下文不读取翻译范围：`collectChatContext` 增加 `paragraphSelector` 选项，`chatPane` 按 `scope.*` 构造选择器。
+  - 版本号提升到 **0.6.0**（外观 v2、字体/颜色/装饰/方案/触发方式均为新功能）。
 
 ### 截图自检
-- 尝试在 Zotero headless 中用 `canvas.drawWindow(win, ...)` + `OS.File.writeAtomic` 逐个标签截图。测试可进入截图路径，但最终失败，scaffold 只报告 `undefined`（原生错误字段被吞掉）；临时测试已删除，未生成 `docs/dev/screenshots/`。
-- **结论：无法目视验证**。没有在真实 Zotero GUI 中确认最终外观；所有“观感”相关结论均未声称完成。建议后续用真实 GUI 手动截图，或接远程调试后再用 Playwright/截图工具验证。
+- `canvas.drawWindow` 直截 Zotero 窗口在 headless 下失败（scaffold 只报 `undefined`），临时截图测试已删除。
+- 改用更可靠的近似方案：临时集成测试打开真实偏好页、切到每个标签，等待字体检测完成，把 `#interlinear-settings-root` 的**初始化后真实 DOM**（含动态颜色卡片、字体列表、表单值、展开的 preview shadow 内容）序列化到 `.scaffold/preview-{tab}.html`，再用 Playwright/Chromium 加载同一份 `preferences.css` 截图。为了全页截图，临时把 sticky 改为 static、把 `file://` 图标换成本地相对路径；这些只是截图预览处理，不进入产品代码。
+- 产物：`docs/dev/screenshots/service.png`、`display.png`、`appearance.png`、`appearance-dark.png`、`service-dark.png`、`glossary.png`、`advanced.png`。已据此检查顶部工具栏、标签、方案区、字体列表、颜色卡、折叠组与深浅主题；并修复了下述问题。
+- **限制**：这不是真实 Zotero GUI 截图，XUL/平台主题的原生差异、真实滚动容器与字体光栅化未覆盖；真实 GUI 仍建议人工过一遍。
 
 ### 测试结果（最终）
 - `npm run build`：通过。
@@ -1308,13 +1315,11 @@
 - `npm test`：未运行（本机无 `.env`；`test:review` 是独立 profile 的安全等价入口）。
 
 ### 仍待决定 / 未完成
-1. **真实 Zotero GUI 目视验证**：未完成（截图失败）。
-2. **版本号**：仍 0.5.1，未决定是否重置为 1.0.0。
-3. **导出流程阻塞式 alert/confirm**：未改，见 BACKLOG。
-4. **阅读器工具栏右键菜单历史问题**：未在用户机器复测；侧边栏面板仍兜底。
-5. **聊天上下文不读取翻译范围**：`chatContext.ts` 仍有自己的选择器。
-6. **P3 全部项**：见 `docs/dev/BACKLOG.md`，未实现。
-7. **Step 5/6 同提交**：历史已形成，按“不改写历史”约束保留。
+1. **真实 Zotero GUI 目视验证**：只完成了“真实 DOM + 同一 CSS”的 Chromium 近似截图；真实 Zotero 窗口仍建议人工过一遍。
+2. **导出流程阻塞式 alert/confirm**：未改，见 BACKLOG。
+3. **阅读器工具栏右键菜单历史问题**：未在用户机器复测；侧边栏面板仍兜底。
+4. **P3 全部项**：见 `docs/dev/BACKLOG.md`，未实现。
+5. **Step 5/6 同提交**：历史已形成，按“不改写历史”约束保留。
 
 ### 我需要手动在 Zotero 里验证的清单（最终）
 1. 打开设置→五个标签：顶部工具栏、保存状态四态、标签切换保留滚动/表单值；600px 与宽屏都不溢出。

@@ -17,8 +17,8 @@
 - **“随文字”长度的段落分隔线**：需要把整段文本包进 inline 元素或使用 background-image 裁剪，会改变块布局、选择与原生高亮行为；当前只提供整行分隔线。若要实现，建议先做真实 PDF 的选择/高亮回归。
 - **真正枚举本机字体**：Gecko 无本地字体枚举 API；已用 `canvas.measureText` 检测 232 个候选并缓存。开启 `privacy.resistFingerprinting` 时测量可能被抹平，已提供“显示全部候选字体”兜底。
 - **原文淡化颜色**：为避免影响 Zotero 原生高亮，当前只用 `opacity` 淡化原文；颜色角色 `source` 已在模型中但主要用于状态/未来扩展。
-- **设置页自动截图**：尝试用 `canvas.drawWindow` 在 headless Zotero 中截图，测试未通过（error 被 scaffold 吞掉，只有 `undefined`）；已删除临时测试，未声称完成目视验证。后续可用真实 GUI 手动截图或远程调试。
+- **真实 Zotero GUI 截图**：`canvas.drawWindow` 在 headless 下失败；已改用“真实 DOM + 同一 CSS”的 Chromium 近似截图（`docs/dev/screenshots/`），但真实 XUL 布局、滚动容器与字体光栅化仍未覆盖，建议人工在 GUI 中过一遍。
 - **阅读器右键菜单历史问题**：Step 14 记录“用户机器上右键工具栏图标无响应”，后续 Step A 精简菜单并用 document 委托，但未在用户机器复测；侧边栏“功能与设置”仍是兜底入口。
 - **导出流程阻塞式 `alert`/`confirm`**：`readerUI.ts` 仍在成功/失败/继续导出时使用系统对话框；与阅读器内非阻塞提示不一致，留待统一交互时处理。
-- **版本号策略**：仍为 0.5.1；发布前需决定是否重置为 1.0.0 或保持 0.x。
-- **聊天上下文与翻译范围**：`chatContext.ts` 仍按自己的选择器收集所有段落类型，不读取 `scope.*`；若希望聊天上下文跟随翻译范围，需要把选择器抽成共享函数。
+- **版本号策略**：本任务已提升到 0.6.0；是否在正式发布时改为 1.0.0 仍待决定。
+- **聊天上下文与翻译范围**：已实现 `paragraphSelector` 跟随 `scope.*`；若后续新增段落类型，需要同时更新 `collectParagraphs` 与 `chatPane` 的选择器构造。

@@ -1,7 +1,7 @@
 {
   "name": "zotero-interlinear",
   "type": "module",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Interlinear：Zotero 10 阅读模式 PDF 段落中英对照翻译",
   "keywords": [
     "translation",

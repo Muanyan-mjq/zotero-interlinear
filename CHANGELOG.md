@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-10
 
 ### Added
 
@@ -72,6 +72,11 @@ reproduced here.
 
 ### Fixed
 
+- Detected fonts no longer carry the "not detected" badge because of a
+  case-sensitivity mismatch between the detected set and the filter.
+- The auto-translate "always" warning now clears when the mode changes back.
+- Renamed the two "scope" sections to Content scope and Page range.
+- Chat context now follows the translation scope toggles.
 - Settings CSS now reaches every section. All sections are wrapped inside the
   `#interlinear-settings-root` scope again, so cards, fields, color controls,
   status indicators, focus rings, and the sticky bar are actually styled.
