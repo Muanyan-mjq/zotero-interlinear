@@ -12,10 +12,67 @@
     style="margin: 0 0 12px 0; line-height: 1.6; max-width: 760px; font-weight: 600"
   ></html:p>
 
-  <hbox align="center" style="margin-bottom: 10px">
-    <html:label id="interlinear-engine-label" for="interlinear-engine" style="min-width: 130px"
+  <html:div id="interlinear-settings-actionbar" class="interlinear-actionbar">
+    <html:button id="interlinear-save" type="button" class="interlinear-save-button"></html:button>
+    <html:span
+      id="interlinear-settings-status"
+      class="interlinear-settings-status"
+      role="status"
+      aria-live="polite"
+    ></html:span>
+    <html:span id="interlinear-save-hint" class="interlinear-save-hint"></html:span>
+  </html:div>
+
+  <html:div id="interlinear-settings-nav" class="interlinear-nav">
+    <html:span id="interlinear-nav-title" class="interlinear-nav-title"></html:span>
+    <html:button
+      id="interlinear-nav-service"
+      type="button"
+      class="interlinear-nav-button"
+      data-target="interlinear-service-section"
+    ></html:button>
+    <html:button
+      id="interlinear-nav-display"
+      type="button"
+      class="interlinear-nav-button"
+      data-target="interlinear-display-mode-section"
+    ></html:button>
+    <html:button
+      id="interlinear-nav-appearance"
+      type="button"
+      class="interlinear-nav-button"
+      data-target="interlinear-appearance-section"
+    ></html:button>
+    <html:button
+      id="interlinear-nav-scope"
+      type="button"
+      class="interlinear-nav-button"
+      data-target="interlinear-page-section"
+    ></html:button>
+    <html:button
+      id="interlinear-nav-glossary"
+      type="button"
+      class="interlinear-nav-button"
+      data-target="interlinear-glossary-section"
+    ></html:button>
+    <html:button
+      id="interlinear-nav-maintenance"
+      type="button"
+      class="interlinear-nav-button"
+      data-target="interlinear-cache-section"
+    ></html:button>
+  </html:div>
+</groupbox>
+
+<groupbox id="interlinear-service-section">
+  <label><html:h3 id="interlinear-service-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-engine-label"
+      for="interlinear-engine"
+      style="min-width: 180px"
     ></html:label>
-    <html:select id="interlinear-engine" style="min-width: 320px; padding: 4px 8px">
+    <html:select id="interlinear-engine" style="min-width: 360px; padding: 4px 8px">
       <html:option id="interlinear-engine-google" value="google"></html:option>
       <html:option id="interlinear-engine-openai" value="openai"></html:option>
       <html:option id="interlinear-engine-claude" value="claude"></html:option>
@@ -23,10 +80,6 @@
       <html:option id="interlinear-engine-ollama" value="ollama"></html:option>
     </html:select>
   </hbox>
-</groupbox>
-
-<groupbox id="interlinear-language-section">
-  <label><html:h3 id="interlinear-language-title"></html:h3></label>
   <hbox align="center" style="margin-bottom: 8px">
     <html:label
       id="interlinear-source-language-label"
@@ -46,88 +99,6 @@
     ></html:select>
   </hbox>
   <html:p id="interlinear-language-help" style="line-height: 1.6; margin: 0; max-width: 760px"
-  ></html:p>
-</groupbox>
-
-<groupbox id="interlinear-display-mode-section">
-  <label><html:h3 id="interlinear-display-mode-title"></html:h3></label>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:label
-      id="interlinear-display-mode-label"
-      for="interlinear-display-mode"
-      style="min-width: 180px"
-    ></html:label>
-    <html:select id="interlinear-display-mode" style="width: 260px; padding: 4px 8px">
-      <html:option id="interlinear-display-mode-top-bottom" value="top-bottom"></html:option>
-      <html:option id="interlinear-display-mode-side-by-side" value="side-by-side"></html:option>
-      <html:option id="interlinear-display-mode-target-only" value="target-only"></html:option>
-      <html:option id="interlinear-display-mode-source-only" value="source-only"></html:option>
-    </html:select>
-  </hbox>
-  <html:p
-    id="interlinear-display-mode-help"
-    style="line-height: 1.6; margin: 0; max-width: 760px"
-  ></html:p>
-</groupbox>
-
-<groupbox id="interlinear-interaction-section">
-  <label><html:h3 id="interlinear-interaction-title"></html:h3></label>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:input id="interlinear-hover-translate" type="checkbox" />
-    <html:label
-      id="interlinear-hover-translate-label"
-      for="interlinear-hover-translate"
-      style="margin-left: 6px"
-    ></html:label>
-  </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:label
-      id="interlinear-hover-delay-label"
-      for="interlinear-hover-delay"
-      style="min-width: 180px"
-    ></html:label>
-    <html:input
-      id="interlinear-hover-delay"
-      type="number"
-      min="200"
-      max="5000"
-      step="100"
-      style="width: 120px; padding: 4px 6px"
-    />
-    <html:label id="interlinear-hover-delay-unit" style="margin-left: 6px"></html:label>
-  </hbox>
-  <html:p
-    id="interlinear-hover-help"
-    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
-  ></html:p>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:input id="interlinear-shortcut-enabled" type="checkbox" />
-    <html:label
-      id="interlinear-shortcut-enabled-label"
-      for="interlinear-shortcut-enabled"
-      style="margin-left: 6px"
-    ></html:label>
-  </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:label
-      id="interlinear-shortcut-label"
-      for="interlinear-shortcut"
-      style="min-width: 180px"
-    ></html:label>
-    <html:input
-      id="interlinear-shortcut"
-      type="text"
-      style="width: 220px; padding: 4px 6px"
-      placeholder="Alt+Enter"
-    />
-  </hbox>
-  <html:p
-    id="interlinear-shortcut-help"
-    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
-  ></html:p>
-  <html:p
-    id="interlinear-interaction-help"
-    style="line-height: 1.6; margin: 0; max-width: 760px"
   ></html:p>
 </groupbox>
 
@@ -157,6 +128,12 @@
   <hbox align="center">
     <html:button id="interlinear-test-google" type="button" style="padding: 5px 12px"
     ></html:button>
+    <html:span
+      id="interlinear-test-google-status"
+      class="interlinear-test-status"
+      role="status"
+      aria-live="polite"
+    ></html:span>
   </hbox>
 </groupbox>
 
@@ -243,6 +220,12 @@
   <hbox align="center">
     <html:button id="interlinear-test-openai" type="button" style="padding: 5px 12px"
     ></html:button>
+    <html:span
+      id="interlinear-test-openai-status"
+      class="interlinear-test-status"
+      role="status"
+      aria-live="polite"
+    ></html:span>
   </hbox>
 </groupbox>
 
@@ -329,6 +312,12 @@
   <hbox align="center">
     <html:button id="interlinear-test-claude" type="button" style="padding: 5px 12px"
     ></html:button>
+    <html:span
+      id="interlinear-test-claude-status"
+      class="interlinear-test-status"
+      role="status"
+      aria-live="polite"
+    ></html:span>
   </hbox>
 </groupbox>
 
@@ -415,33 +404,139 @@
   <hbox align="center">
     <html:button id="interlinear-test-gemini" type="button" style="padding: 5px 12px"
     ></html:button>
+    <html:span
+      id="interlinear-test-gemini-status"
+      class="interlinear-test-status"
+      role="status"
+      aria-live="polite"
+    ></html:span>
   </hbox>
 </groupbox>
 
-<groupbox id="interlinear-glossary-section">
-  <label><html:h3 id="interlinear-glossary-title"></html:h3></label>
-  <html:p
-    id="interlinear-glossary-help"
-    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
-  ></html:p>
-  <html:textarea
-    id="interlinear-glossary"
-    rows="6"
-    style="width: 760px; max-width: 100%; padding: 4px 6px; font-family: monospace"
-  ></html:textarea>
-  <hbox align="center" style="margin-top: 8px">
-    <html:button id="interlinear-glossary-import" type="button" style="padding: 5px 12px"
-    ></html:button>
+<groupbox id="interlinear-ollama-section">
+  <label><html:h3 id="interlinear-ollama-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-ollama-url-label"
+      for="interlinear-ollama-url"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-ollama-url"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="http://127.0.0.1:11434"
+    />
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-ollama-model-label"
+      for="interlinear-ollama-model"
+      style="min-width: 130px"
+    ></html:label>
+    <html:input
+      id="interlinear-ollama-model"
+      type="text"
+      style="width: 430px; padding: 4px 6px"
+      placeholder="gpt-oss:20b"
+    />
+  </hbox>
+  <hbox align="center">
+    <spacer width="130" />
     <html:button
-      id="interlinear-glossary-export"
+      id="interlinear-test-ollama"
       type="button"
-      style="padding: 5px 12px; margin-left: 8px"
+      style="padding: 5px 12px"
     ></html:button>
     <html:span
-      id="interlinear-glossary-status"
-      style="margin-left: 12px; max-width: 520px"
+      id="interlinear-test-ollama-status"
+      class="interlinear-test-status"
+      role="status"
+      aria-live="polite"
     ></html:span>
   </hbox>
+</groupbox>
+
+<groupbox id="interlinear-display-mode-section">
+  <label><html:h3 id="interlinear-display-mode-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-display-mode-label"
+      for="interlinear-display-mode"
+      style="min-width: 180px"
+    ></html:label>
+    <html:select id="interlinear-display-mode" style="width: 260px; padding: 4px 8px">
+      <html:option id="interlinear-display-mode-top-bottom" value="top-bottom"></html:option>
+      <html:option id="interlinear-display-mode-side-by-side" value="side-by-side"></html:option>
+      <html:option id="interlinear-display-mode-target-only" value="target-only"></html:option>
+      <html:option id="interlinear-display-mode-source-only" value="source-only"></html:option>
+    </html:select>
+  </hbox>
+  <html:p
+    id="interlinear-display-mode-help"
+    style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
+</groupbox>
+
+<groupbox id="interlinear-interaction-section">
+  <label><html:h3 id="interlinear-interaction-title"></html:h3></label>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:input id="interlinear-hover-translate" type="checkbox" />
+    <html:label
+      id="interlinear-hover-translate-label"
+      for="interlinear-hover-translate"
+      style="margin-left: 6px"
+    ></html:label>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-hover-delay-label"
+      for="interlinear-hover-delay"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-hover-delay"
+      type="number"
+      min="200"
+      max="5000"
+      step="100"
+      style="width: 120px; padding: 4px 6px"
+    />
+    <html:label id="interlinear-hover-delay-unit" style="margin-left: 6px"></html:label>
+  </hbox>
+  <html:p
+    id="interlinear-hover-help"
+    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:input id="interlinear-shortcut-enabled" type="checkbox" />
+    <html:label
+      id="interlinear-shortcut-enabled-label"
+      for="interlinear-shortcut-enabled"
+      style="margin-left: 6px"
+    ></html:label>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 8px">
+    <html:label
+      id="interlinear-shortcut-label"
+      for="interlinear-shortcut"
+      style="min-width: 180px"
+    ></html:label>
+    <html:input
+      id="interlinear-shortcut"
+      type="text"
+      style="width: 220px; padding: 4px 6px"
+      placeholder="Alt+Enter"
+    />
+  </hbox>
+  <html:p
+    id="interlinear-shortcut-help"
+    style="line-height: 1.6; margin: 0 0 10px 0; max-width: 760px"
+  ></html:p>
+  <html:p
+    id="interlinear-interaction-help"
+    style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
 </groupbox>
 
 <groupbox id="interlinear-appearance-section">
@@ -465,7 +560,7 @@
       style="margin-left: 10px; max-width: 520px"
     ></html:span>
   </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
+  <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-color-label"
       for="interlinear-appearance-color"
@@ -473,15 +568,29 @@
     ></html:label>
     <html:input
       id="interlinear-appearance-color"
-      type="text"
-      style="width: 160px; padding: 4px 6px"
+      type="color"
+      class="interlinear-color-input"
     />
+    <html:input
+      id="interlinear-appearance-color-inherit"
+      type="checkbox"
+      style="margin-left: 10px"
+    />
+    <html:label
+      id="interlinear-appearance-color-inherit-label"
+      for="interlinear-appearance-color-inherit"
+      style="margin-left: 6px"
+    ></html:label>
     <html:span
-      id="interlinear-appearance-color-help"
-      style="margin-left: 10px; max-width: 520px"
+      id="interlinear-appearance-color-presets"
+      class="interlinear-color-presets"
     ></html:span>
   </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
+  <html:p
+    id="interlinear-appearance-color-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-font-family-label"
       for="interlinear-appearance-font-family"
@@ -493,10 +602,14 @@
       style="width: 240px; padding: 4px 6px"
     />
     <html:span
-      id="interlinear-appearance-font-family-help"
-      style="margin-left: 10px; max-width: 520px"
+      id="interlinear-appearance-font-family-presets"
+      class="interlinear-font-presets"
     ></html:span>
   </hbox>
+  <html:p
+    id="interlinear-appearance-font-family-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
   <hbox align="center" style="margin-bottom: 8px">
     <html:label
       id="interlinear-appearance-line-height-label"
@@ -535,7 +648,7 @@
       style="margin-left: 10px; max-width: 520px"
     ></html:span>
   </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
+  <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-background-label"
       for="interlinear-appearance-background"
@@ -543,14 +656,28 @@
     ></html:label>
     <html:input
       id="interlinear-appearance-background"
-      type="text"
-      style="width: 160px; padding: 4px 6px"
+      type="color"
+      class="interlinear-color-input"
     />
+    <html:input
+      id="interlinear-appearance-background-inherit"
+      type="checkbox"
+      style="margin-left: 10px"
+    />
+    <html:label
+      id="interlinear-appearance-background-inherit-label"
+      for="interlinear-appearance-background-inherit"
+      style="margin-left: 6px"
+    ></html:label>
     <html:span
-      id="interlinear-appearance-background-help"
-      style="margin-left: 10px; max-width: 520px"
+      id="interlinear-appearance-background-presets"
+      class="interlinear-color-presets"
     ></html:span>
   </hbox>
+  <html:p
+    id="interlinear-appearance-background-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
   <hbox align="center" style="margin-bottom: 8px">
     <html:label
       id="interlinear-appearance-theme-label"
@@ -567,48 +694,101 @@
       style="margin-left: 10px; max-width: 520px"
     ></html:span>
   </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
+  <hbox align="center" style="margin-bottom: 4px">
     <html:input id="interlinear-appearance-underline" type="checkbox" />
     <html:label
       id="interlinear-appearance-underline-label"
       for="interlinear-appearance-underline"
       style="margin-left: 6px"
     ></html:label>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-underline-color-label"
       for="interlinear-appearance-underline-color"
-      style="margin-left: 24px"
+      style="min-width: 180px"
     ></html:label>
     <html:input
       id="interlinear-appearance-underline-color"
-      type="text"
-      style="width: 140px; padding: 4px 6px; margin-left: 6px"
+      type="color"
+      class="interlinear-color-input"
     />
+    <html:input
+      id="interlinear-appearance-underline-color-inherit"
+      type="checkbox"
+      style="margin-left: 10px"
+    />
+    <html:label
+      id="interlinear-appearance-underline-color-inherit-label"
+      for="interlinear-appearance-underline-color-inherit"
+      style="margin-left: 6px"
+    ></html:label>
     <html:span
-      id="interlinear-appearance-underline-color-help"
-      style="margin-left: 10px; max-width: 420px"
+      id="interlinear-appearance-underline-color-presets"
+      class="interlinear-color-presets"
     ></html:span>
   </hbox>
-  <hbox align="center">
+  <html:p
+    id="interlinear-appearance-underline-color-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <hbox align="center" style="margin-bottom: 4px">
     <html:input id="interlinear-appearance-ribbon" type="checkbox" />
     <html:label
       id="interlinear-appearance-ribbon-label"
       for="interlinear-appearance-ribbon"
       style="margin-left: 6px"
     ></html:label>
+  </hbox>
+  <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-ribbon-color-label"
       for="interlinear-appearance-ribbon-color"
-      style="margin-left: 24px"
+      style="min-width: 180px"
     ></html:label>
     <html:input
       id="interlinear-appearance-ribbon-color"
-      type="text"
-      style="width: 140px; padding: 4px 6px; margin-left: 6px"
+      type="color"
+      class="interlinear-color-input"
     />
+    <html:button
+      id="interlinear-appearance-ribbon-color-reset"
+      type="button"
+      style="margin-left: 10px; padding: 3px 10px"
+    ></html:button>
     <html:span
-      id="interlinear-appearance-ribbon-color-help"
-      style="margin-left: 10px; max-width: 420px"
+      id="interlinear-appearance-ribbon-color-presets"
+      class="interlinear-color-presets"
+    ></html:span>
+  </hbox>
+  <html:p
+    id="interlinear-appearance-ribbon-color-help"
+    style="line-height: 1.6; margin: 0; max-width: 760px"
+  ></html:p>
+</groupbox>
+
+<groupbox id="interlinear-glossary-section">
+  <label><html:h3 id="interlinear-glossary-title"></html:h3></label>
+  <html:p
+    id="interlinear-glossary-help"
+    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+  ></html:p>
+  <html:textarea
+    id="interlinear-glossary"
+    rows="6"
+    style="width: 760px; max-width: 100%; padding: 4px 6px; font-family: monospace"
+  ></html:textarea>
+  <hbox align="center" style="margin-top: 8px">
+    <html:button id="interlinear-glossary-import" type="button" style="padding: 5px 12px"
+    ></html:button>
+    <html:button
+      id="interlinear-glossary-export"
+      type="button"
+      style="padding: 5px 12px; margin-left: 8px"
+    ></html:button>
+    <html:span
+      id="interlinear-glossary-status"
+      style="margin-left: 12px; max-width: 520px"
     ></html:span>
   </hbox>
 </groupbox>
@@ -761,11 +941,9 @@
   </hbox>
 
   <hbox align="center">
-    <html:button id="interlinear-save" type="button" style="padding: 6px 16px"></html:button>
-    <html:span
-      id="interlinear-settings-status"
-      style="margin-left: 12px; line-height: 1.5"
-    ></html:span>
+    <html:button id="interlinear-save-bottom" type="button" style="padding: 6px 16px"
+    ></html:button>
+    <html:span class="interlinear-settings-status" style="margin-left: 12px"></html:span>
   </hbox>
 </groupbox>
 
@@ -779,44 +957,6 @@
       style="padding: 5px 12px"
     ></html:button>
     <html:span id="interlinear-cache-help" style="margin-left: 10px; max-width: 560px"></html:span>
-  </hbox>
-</groupbox>
-
-<groupbox id="interlinear-ollama-section">
-  <label><html:h3 id="interlinear-ollama-title"></html:h3></label>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:label
-      id="interlinear-ollama-url-label"
-      for="interlinear-ollama-url"
-      style="min-width: 130px"
-    ></html:label>
-    <html:input
-      id="interlinear-ollama-url"
-      type="text"
-      style="width: 430px; padding: 4px 6px"
-      placeholder="http://127.0.0.1:11434"
-    />
-  </hbox>
-  <hbox align="center" style="margin-bottom: 8px">
-    <html:label
-      id="interlinear-ollama-model-label"
-      for="interlinear-ollama-model"
-      style="min-width: 130px"
-    ></html:label>
-    <html:input
-      id="interlinear-ollama-model"
-      type="text"
-      style="width: 430px; padding: 4px 6px"
-      placeholder="gpt-oss:20b"
-    />
-  </hbox>
-  <hbox align="center">
-    <spacer width="130" />
-    <html:button
-      id="interlinear-test-ollama"
-      type="button"
-      style="padding: 5px 12px"
-    ></html:button>
   </hbox>
 </groupbox>
 

@@ -118,13 +118,325 @@ import {
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+
+type StatusState = "info" | "success" | "warning" | "error" | "running";
+type FluentKey = Parameters<typeof getString>[0];
+
+const COLOR_PRESETS = [
+  "#c7354a",
+  "#2f6fdf",
+  "#1f8a4c",
+  "#d97706",
+  "#7c3aed",
+  "#333333",
+  "#f6f6f6",
+  "#ffffff",
+] as const;
+
+const FONT_PRESETS: Array<{ labelKey: FluentKey; value: string }> = [
+  { labelKey: "appearance-font-preset-inherit", value: "" },
+  { labelKey: "appearance-font-preset-georgia", value: "Georgia, serif" },
+  { labelKey: "appearance-font-preset-times", value: "Times New Roman, serif" },
+  { labelKey: "appearance-font-preset-arial", value: "Arial, sans-serif" },
+  { labelKey: "appearance-font-preset-yahei", value: "Microsoft YaHei, sans-serif" },
+  { labelKey: "appearance-font-preset-simsun", value: "SimSun, serif" },
+];
+
 function getElement<T extends HTMLElement>(doc: Document, id: string): T | null {
   return doc.getElementById(id) as T | null;
 }
 
-function setStatus(doc: Document, message: string): void {
-  const status = getElement<HTMLElement>(doc, "interlinear-settings-status");
-  if (status) status.textContent = message;
+function updateStatus(
+  element: HTMLElement | null,
+  message: string,
+  state: StatusState,
+): void {
+  if (!element) return;
+  element.textContent = message;
+  if (message) element.dataset.state = state;
+  else element.removeAttribute("data-state");
+}
+
+function setStatus(doc: Document, message: string, state: StatusState = "info"): void {
+  const statuses = Array.from(
+    doc.querySelectorAll(".interlinear-settings-status"),
+  ) as HTMLElement[];
+  for (const status of statuses) updateStatus(status, message, state);
+}
+
+function setTestStatus(
+  doc: Document,
+  provider: string,
+  state: StatusState,
+  message: string,
+): void {
+  updateStatus(
+    getElement<HTMLElement>(doc, `interlinear-test-${provider}-status`),
+    message,
+    state,
+  );
+}
+
+function setSaveHint(doc: Document, message: string): void {
+  updateStatus(
+    getElement<HTMLElement>(doc, "interlinear-save-hint"),
+    message,
+    "warning",
+  );
+}
+
+function markDirty(doc: Document): void {
+  setSaveHint(doc, getString("settings-unsaved"));
+}
+
+function parseRgbColor(value: string): string | null {
+  const match = value.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/iu);
+  if (!match) return null;
+  const channels = match.slice(1, 4).map((channel) =>
+    Math.min(255, Number(channel)).toString(16).padStart(2, "0"),
+  );
+  return `#${channels.join("")}`;
+}
+
+function expandHexColor(value: string): string | null {
+  const match = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/iu);
+  if (!match) return null;
+  const hex = match[1];
+  const expanded =
+    hex.length === 3 ? hex.split("").map((part) => part + part).join("") : hex;
+  return `#${expanded.slice(0, 6)}`;
+}
+
+/** Native color inputs only accept #rrggbb, while stored values may be any CSS color. */
+function resolveColorForPicker(doc: Document, value: string, fallback: string): string {
+  const direct = expandHexColor(value) || parseRgbColor(value);
+  if (direct) return direct;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  const root = doc.documentElement;
+  if (!root) return fallback;
+  try {
+    const probe = doc.createElementNS(HTML_NS, "span") as HTMLElement;
+    probe.style.color = trimmed;
+    probe.style.display = "none";
+    root.append(probe);
+    const computed = doc.defaultView?.getComputedStyle(probe)?.color || "";
+    probe.remove();
+    return expandHexColor(computed) || parseRgbColor(computed) || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function setColorControl(
+  doc: Document,
+  inputId: string,
+  inheritId: string | null,
+  raw: string,
+  fallback: string,
+): void {
+  const input = getElement<HTMLInputElement>(doc, inputId);
+  const inherit = inheritId ? getElement<HTMLInputElement>(doc, inheritId) : null;
+  const hasValue = !!raw.trim();
+  if (inherit) inherit.checked = !hasValue;
+  if (input) {
+    input.value = resolveColorForPicker(doc, raw, fallback);
+    input.disabled = !!inherit && !hasValue;
+  }
+}
+
+function readColorControl(
+  doc: Document,
+  inputId: string,
+  inheritId: string | null,
+  fallback: string,
+): string {
+  const inherit = inheritId ? getElement<HTMLInputElement>(doc, inheritId) : null;
+  if (inherit?.checked) return "";
+  const value = getElement<HTMLInputElement>(doc, inputId)?.value.trim() || "";
+  if (value) return value;
+  return inheritId ? "" : fallback;
+}
+
+function bindInheritToggle(doc: Document, inputId: string, inheritId: string): void {
+  const inherit = getElement<HTMLInputElement>(doc, inheritId);
+  const input = getElement<HTMLInputElement>(doc, inputId);
+  inherit?.addEventListener("change", () => {
+    if (input) input.disabled = !!inherit.checked;
+  });
+}
+
+function renderColorPresets(
+  doc: Document,
+  containerId: string,
+  inputId: string,
+  inheritId: string | null,
+): void {
+  const container = getElement<HTMLElement>(doc, containerId);
+  if (!container) return;
+  const label = getString("appearance-color-preset-title");
+  container.title = label;
+  container.setAttribute("aria-label", label);
+  const buttons = COLOR_PRESETS.map((color) => {
+    const button = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+    button.type = "button";
+    button.className = "interlinear-color-preset";
+    button.style.backgroundColor = color;
+    button.title = color;
+    button.setAttribute("aria-label", color);
+    button.addEventListener("click", () => {
+      const input = getElement<HTMLInputElement>(doc, inputId);
+      if (input) {
+        input.value = color;
+        input.disabled = false;
+      }
+      const inherit = inheritId ? getElement<HTMLInputElement>(doc, inheritId) : null;
+      if (inherit) inherit.checked = false;
+      markDirty(doc);
+    });
+    return button;
+  });
+  container.replaceChildren(...buttons);
+}
+
+function fontPresetKey(value: string): string {
+  return value.toLowerCase().replace(/\s+/gu, "");
+}
+
+function syncFontPresetState(doc: Document): void {
+  const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
+  const container = getElement<HTMLElement>(
+    doc,
+    "interlinear-appearance-font-family-presets",
+  );
+  if (!container) return;
+  const current = fontPresetKey((input?.value || "").trim());
+  const buttons = Array.from(
+    container.querySelectorAll(".interlinear-font-preset"),
+  ) as HTMLElement[];
+  for (const button of buttons) {
+    button.dataset.active = String(fontPresetKey(button.dataset.value || "") === current);
+  }
+}
+
+function renderFontPresets(doc: Document): void {
+  const container = getElement<HTMLElement>(
+    doc,
+    "interlinear-appearance-font-family-presets",
+  );
+  const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
+  if (!container || !input) return;
+  const label = getString("appearance-font-preset-title");
+  container.title = label;
+  container.setAttribute("aria-label", label);
+  const buttons = FONT_PRESETS.map(({ labelKey, value }) => {
+    const button = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+    button.type = "button";
+    button.className = "interlinear-font-preset";
+    button.dataset.value = value;
+    button.textContent = getString(labelKey);
+    button.addEventListener("click", () => {
+      input.value = value;
+      syncFontPresetState(doc);
+      markDirty(doc);
+    });
+    return button;
+  });
+  container.replaceChildren(...buttons);
+  input.addEventListener("input", () => syncFontPresetState(doc));
+  input.addEventListener("change", () => syncFontPresetState(doc));
+  syncFontPresetState(doc);
+}
+
+function initializeAppearanceControls(doc: Document): void {
+  const appearance = getAppearance();
+  const colorControls: Array<{
+    inputId: string;
+    inheritId: string | null;
+    presetsId: string;
+    raw: string;
+    fallback: string;
+  }> = [
+    {
+      inputId: "interlinear-appearance-color",
+      inheritId: "interlinear-appearance-color-inherit",
+      presetsId: "interlinear-appearance-color-presets",
+      raw: appearance.color,
+      fallback: "#333333",
+    },
+    {
+      inputId: "interlinear-appearance-background",
+      inheritId: "interlinear-appearance-background-inherit",
+      presetsId: "interlinear-appearance-background-presets",
+      raw: appearance.background,
+      fallback: "#f6f6f6",
+    },
+    {
+      inputId: "interlinear-appearance-underline-color",
+      inheritId: "interlinear-appearance-underline-color-inherit",
+      presetsId: "interlinear-appearance-underline-color-presets",
+      raw: appearance.underlineColor,
+      fallback: "#333333",
+    },
+    {
+      inputId: "interlinear-appearance-ribbon-color",
+      inheritId: null,
+      presetsId: "interlinear-appearance-ribbon-color-presets",
+      raw: appearance.ribbonColor,
+      fallback: DEFAULT_APPEARANCE.ribbonColor,
+    },
+  ];
+  for (const control of colorControls) {
+    setColorControl(
+      doc,
+      control.inputId,
+      control.inheritId,
+      control.raw,
+      control.fallback,
+    );
+    if (control.inheritId) {
+      bindInheritToggle(doc, control.inputId, control.inheritId);
+    }
+    renderColorPresets(doc, control.presetsId, control.inputId, control.inheritId);
+  }
+
+  getElement<HTMLButtonElement>(
+    doc,
+    "interlinear-appearance-ribbon-color-reset",
+  )?.addEventListener("click", () => {
+    const input = getElement<HTMLInputElement>(
+      doc,
+      "interlinear-appearance-ribbon-color",
+    );
+    if (input) input.value = DEFAULT_APPEARANCE.ribbonColor;
+    markDirty(doc);
+  });
+
+  renderFontPresets(doc);
+}
+
+function registerSettingsNav(doc: Document): void {
+  const buttons = Array.from(
+    doc.querySelectorAll(".interlinear-nav-button"),
+  ) as HTMLElement[];
+  for (const button of buttons) {
+    button.addEventListener("click", () => {
+      const target = getElement<HTMLElement>(doc, button.dataset.target || "");
+      if (!target) return;
+      try {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (_) {
+        target.scrollIntoView();
+      }
+    });
+  }
+}
+
+function registerDirtyTracking(doc: Document, root: HTMLElement): void {
+  const mark = () => markDirty(doc);
+  root.addEventListener("change", mark);
+  root.addEventListener("input", mark);
 }
 
 function updateBackendVisibility(doc: Document): void {
@@ -141,8 +453,6 @@ function updateBackendVisibility(doc: Document): void {
   if (geminiSection) geminiSection.hidden = engine !== "gemini";
 }
 
-type FluentKey = Parameters<typeof getString>[0];
-
 function fillProviderLabels(doc: Document): void {
   const entries: Array<[string, FluentKey]> = [
     ["interlinear-introduction", "settings-intro"],
@@ -153,7 +463,6 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-engine-claude", "provider-engine-claude"],
     ["interlinear-engine-gemini", "provider-engine-gemini"],
     ["interlinear-engine-ollama", "provider-engine-ollama"],
-    ["interlinear-language-title", "language-title"],
     ["interlinear-source-language-label", "language-source-label"],
     ["interlinear-target-language-label", "language-target-label"],
     ["interlinear-language-help", "language-help"],
@@ -237,6 +546,7 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-font-size-label", "appearance-font-size-label"],
     ["interlinear-appearance-font-size-help", "appearance-font-size-help"],
     ["interlinear-appearance-color-label", "appearance-color-label"],
+    ["interlinear-appearance-color-inherit-label", "appearance-color-inherit-label"],
     ["interlinear-appearance-color-help", "appearance-color-help"],
     ["interlinear-appearance-font-family-label", "appearance-font-family-label"],
     ["interlinear-appearance-font-family-help", "appearance-font-family-help"],
@@ -245,6 +555,7 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-paragraph-spacing-label", "appearance-paragraph-spacing-label"],
     ["interlinear-appearance-paragraph-spacing-help", "appearance-paragraph-spacing-help"],
     ["interlinear-appearance-background-label", "appearance-background-label"],
+    ["interlinear-appearance-background-inherit-label", "appearance-background-inherit-label"],
     ["interlinear-appearance-background-help", "appearance-background-help"],
     ["interlinear-appearance-theme-label", "appearance-theme-label"],
     ["interlinear-appearance-theme-help", "appearance-theme-help"],
@@ -253,9 +564,14 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-theme-dark", "appearance-theme-dark"],
     ["interlinear-appearance-underline-label", "appearance-underline-label"],
     ["interlinear-appearance-underline-color-label", "appearance-underline-color-label"],
+    [
+      "interlinear-appearance-underline-color-inherit-label",
+      "appearance-underline-color-inherit-label",
+    ],
     ["interlinear-appearance-underline-color-help", "appearance-underline-color-help"],
     ["interlinear-appearance-ribbon-label", "appearance-ribbon-label"],
     ["interlinear-appearance-ribbon-color-label", "appearance-ribbon-color-label"],
+    ["interlinear-appearance-ribbon-color-reset", "appearance-ribbon-color-reset"],
     ["interlinear-appearance-ribbon-color-help", "appearance-ribbon-color-help"],
     ["interlinear-display-mode-title", "display-mode-title"],
     ["interlinear-display-mode-label", "display-mode-label"],
@@ -282,6 +598,14 @@ function fillAppearanceLabels(doc: Document): void {
 
 function fillStaticLabels(doc: Document): void {
   const entries: Array<[string, Parameters<typeof getString>[0]]> = [
+    ["interlinear-service-title", "settings-service-title"],
+    ["interlinear-nav-title", "settings-nav-title"],
+    ["interlinear-nav-service", "settings-nav-service"],
+    ["interlinear-nav-display", "settings-nav-display"],
+    ["interlinear-nav-appearance", "settings-nav-appearance"],
+    ["interlinear-nav-scope", "settings-nav-scope"],
+    ["interlinear-nav-glossary", "settings-nav-glossary"],
+    ["interlinear-nav-maintenance", "settings-nav-maintenance"],
     ["interlinear-page-title", "settings-page-title"],
     ["interlinear-skip-last-label", "settings-skip-last-label"],
     ["interlinear-skip-last-help", "settings-skip-last-help"],
@@ -300,6 +624,7 @@ function fillStaticLabels(doc: Document): void {
     ["interlinear-max-errors-label", "settings-max-errors-label"],
     ["interlinear-max-errors-help", "settings-max-errors-help"],
     ["interlinear-save", "settings-save"],
+    ["interlinear-save-bottom", "settings-save"],
     ["interlinear-cache-title", "settings-cache-title"],
     ["interlinear-clear-cache", "settings-clear-cache"],
     ["interlinear-cache-help", "settings-cache-help"],
@@ -414,7 +739,12 @@ function saveSettings(doc: Document): void {
       "interlinear-appearance-font-size",
       DEFAULT_APPEARANCE.fontSize,
     ),
-    color: readInputText(doc, "interlinear-appearance-color"),
+    color: readColorControl(
+      doc,
+      "interlinear-appearance-color",
+      "interlinear-appearance-color-inherit",
+      "#333333",
+    ),
     fontFamily: readInputText(doc, "interlinear-appearance-font-family"),
     lineHeight: readNumberInput(
       doc,
@@ -426,16 +756,29 @@ function saveSettings(doc: Document): void {
       "interlinear-appearance-paragraph-spacing",
       DEFAULT_APPEARANCE.paragraphSpacing,
     ),
-    background: readInputText(doc, "interlinear-appearance-background"),
+    background: readColorControl(
+      doc,
+      "interlinear-appearance-background",
+      "interlinear-appearance-background-inherit",
+      "#f6f6f6",
+    ),
     theme:
       (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
         ?.value as AppearanceSettings["theme"]) || "auto",
     underline: readCheckbox(doc, "interlinear-appearance-underline"),
-    underlineColor: readInputText(doc, "interlinear-appearance-underline-color"),
+    underlineColor: readColorControl(
+      doc,
+      "interlinear-appearance-underline-color",
+      "interlinear-appearance-underline-color-inherit",
+      "#333333",
+    ),
     ribbon: readCheckbox(doc, "interlinear-appearance-ribbon"),
-    ribbonColor:
-      readInputText(doc, "interlinear-appearance-ribbon-color") ||
+    ribbonColor: readColorControl(
+      doc,
+      "interlinear-appearance-ribbon-color",
+      null,
       DEFAULT_APPEARANCE.ribbonColor,
+    ),
   });
   setDisplayMode(
     getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
@@ -460,7 +803,9 @@ function saveSettings(doc: Document): void {
     shortcutValid
       ? getString("settings-saved")
       : getString("interaction-shortcut-invalid"),
+    shortcutValid ? "success" : "warning",
   );
+  setSaveHint(doc, "");
 }
 
 async function testOllama(doc: Document): Promise<void> {
@@ -474,7 +819,12 @@ async function testOllama(doc: Document): Promise<void> {
   const button = getElement<HTMLButtonElement>(doc, "interlinear-test-ollama");
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  setStatus(doc, getString("ollama-testing", { args: { url } }));
+  setTestStatus(
+    doc,
+    "ollama",
+    "running",
+    getString("ollama-testing", { args: { url } }),
+  );
   try {
     const xhr = await Zotero.HTTP.request("GET", `${url}/api/tags`, {
       responseType: "json",
@@ -492,8 +842,10 @@ async function testOllama(doc: Document): Promise<void> {
       : [];
     const hasModel = models.includes(model);
     if (models.length) {
-      setStatus(
+      setTestStatus(
         doc,
+        "ollama",
+        hasModel ? "success" : "warning",
         hasModel
           ? getString("ollama-test-success", { args: { model } })
           : getString("ollama-test-missing-model", {
@@ -501,11 +853,13 @@ async function testOllama(doc: Document): Promise<void> {
             }),
       );
     } else {
-      setStatus(doc, getString("ollama-test-no-model-list"));
+      setTestStatus(doc, "ollama", "warning", getString("ollama-test-no-model-list"));
     }
   } catch (error: any) {
-    setStatus(
+    setTestStatus(
       doc,
+      "ollama",
+      "error",
       getString("ollama-test-failed", {
         args: { detail: String(error?.message || error) },
       }),
@@ -525,13 +879,20 @@ async function testGoogle(doc: Document): Promise<void> {
   const button = getElement<HTMLButtonElement>(doc, "interlinear-test-google");
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  setStatus(doc, getString("provider-test-running"));
+  setTestStatus(doc, "google", "running", getString("provider-test-running"));
   try {
     const text = await testGoogleConnection(baseURL, targetLanguage);
-    setStatus(doc, getString("provider-test-success", { args: { text } }));
-  } catch (error: any) {
-    setStatus(
+    setTestStatus(
       doc,
+      "google",
+      "success",
+      getString("provider-test-success", { args: { text } }),
+    );
+  } catch (error: any) {
+    setTestStatus(
+      doc,
+      "google",
+      "error",
       getString("provider-test-failed", {
         args: { detail: String(error?.message || error) },
       }),
@@ -555,13 +916,20 @@ async function testOpenAI(doc: Document): Promise<void> {
   const button = getElement<HTMLButtonElement>(doc, "interlinear-test-openai");
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  setStatus(doc, getString("provider-test-running"));
+  setTestStatus(doc, "openai", "running", getString("provider-test-running"));
   try {
     const text = await testOpenAIConnection({ endpoint, apiKey, model, temperature });
-    setStatus(doc, getString("provider-test-success", { args: { text } }));
-  } catch (error: any) {
-    setStatus(
+    setTestStatus(
       doc,
+      "openai",
+      "success",
+      getString("provider-test-success", { args: { text } }),
+    );
+  } catch (error: any) {
+    setTestStatus(
+      doc,
+      "openai",
+      "error",
       getString("provider-test-failed", {
         args: { detail: String(error?.message || error) },
       }),
@@ -585,13 +953,20 @@ async function testClaude(doc: Document): Promise<void> {
   const button = getElement<HTMLButtonElement>(doc, "interlinear-test-claude");
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  setStatus(doc, getString("provider-test-running"));
+  setTestStatus(doc, "claude", "running", getString("provider-test-running"));
   try {
     const text = await testClaudeConnection({ endpoint, apiKey, model, temperature });
-    setStatus(doc, getString("provider-test-success", { args: { text } }));
-  } catch (error: any) {
-    setStatus(
+    setTestStatus(
       doc,
+      "claude",
+      "success",
+      getString("provider-test-success", { args: { text } }),
+    );
+  } catch (error: any) {
+    setTestStatus(
+      doc,
+      "claude",
+      "error",
       getString("provider-test-failed", {
         args: { detail: String(error?.message || error) },
       }),
@@ -615,13 +990,20 @@ async function testGemini(doc: Document): Promise<void> {
   const button = getElement<HTMLButtonElement>(doc, "interlinear-test-gemini");
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  setStatus(doc, getString("provider-test-running"));
+  setTestStatus(doc, "gemini", "running", getString("provider-test-running"));
   try {
     const text = await testGeminiConnection({ baseURL, apiKey, model, temperature });
-    setStatus(doc, getString("provider-test-success", { args: { text } }));
-  } catch (error: any) {
-    setStatus(
+    setTestStatus(
       doc,
+      "gemini",
+      "success",
+      getString("provider-test-success", { args: { text } }),
+    );
+  } catch (error: any) {
+    setTestStatus(
+      doc,
+      "gemini",
+      "error",
       getString("provider-test-failed", {
         args: { detail: String(error?.message || error) },
       }),
@@ -723,6 +1105,7 @@ function clearCache(doc: Document): void {
     getString("cache-cleared", {
       args: { entries: String(removed.entries), size: sizeMiB },
     }),
+    "success",
   );
   updateCacheStatus(doc);
 }
@@ -783,7 +1166,6 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     doc,
     "interlinear-appearance-font-size",
   );
-  const appearanceColor = getElement<HTMLInputElement>(doc, "interlinear-appearance-color");
   const appearanceFontFamily = getElement<HTMLInputElement>(
     doc,
     "interlinear-appearance-font-family",
@@ -796,24 +1178,12 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     doc,
     "interlinear-appearance-paragraph-spacing",
   );
-  const appearanceBackground = getElement<HTMLInputElement>(
-    doc,
-    "interlinear-appearance-background",
-  );
   const appearanceTheme = getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme");
   const appearanceUnderline = getElement<HTMLInputElement>(
     doc,
     "interlinear-appearance-underline",
   );
-  const appearanceUnderlineColor = getElement<HTMLInputElement>(
-    doc,
-    "interlinear-appearance-underline-color",
-  );
   const appearanceRibbon = getElement<HTMLInputElement>(doc, "interlinear-appearance-ribbon");
-  const appearanceRibbonColor = getElement<HTMLInputElement>(
-    doc,
-    "interlinear-appearance-ribbon-color",
-  );
   const googleBaseURL = getElement<HTMLInputElement>(doc, "interlinear-google-base-url");
   const openAIEndpoint = getElement<HTMLInputElement>(doc, "interlinear-openai-endpoint");
   const openAIModel = getElement<HTMLInputElement>(doc, "interlinear-openai-model");
@@ -886,28 +1256,27 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (requestTimeout) requestTimeout.value = String(getRequestTimeoutMs());
   const appearance = getAppearance();
   if (appearanceFontSize) appearanceFontSize.value = String(appearance.fontSize);
-  if (appearanceColor) appearanceColor.value = appearance.color;
   if (appearanceFontFamily) appearanceFontFamily.value = appearance.fontFamily;
   if (appearanceLineHeight) appearanceLineHeight.value = String(appearance.lineHeight);
   if (appearanceParagraphSpacing) {
     appearanceParagraphSpacing.value = String(appearance.paragraphSpacing);
   }
-  if (appearanceBackground) appearanceBackground.value = appearance.background;
   if (appearanceTheme) appearanceTheme.value = appearance.theme;
   if (appearanceUnderline) appearanceUnderline.checked = appearance.underline;
-  if (appearanceUnderlineColor) appearanceUnderlineColor.value = appearance.underlineColor;
   if (appearanceRibbon) appearanceRibbon.checked = appearance.ribbon;
-  if (appearanceRibbonColor) appearanceRibbonColor.value = appearance.ribbonColor;
 
   fillAppearanceLabels(doc);
   fillProviderLabels(doc);
   fillStaticLabels(doc);
   fillLanguageOptions(doc, "interlinear-source-language", SOURCE_LANGUAGES, getSourceLanguage());
   fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
+  initializeAppearanceControls(doc);
   updateBackendVisibility(doc);
   updateCacheStatus(doc);
   registerProjectLink(doc);
   registerShortcutRecorder(doc);
+  registerSettingsNav(doc);
+  registerDirtyTracking(doc, root);
 
   hoverTranslate?.addEventListener("change", () => {
     if (hoverDelay) hoverDelay.disabled = !hoverTranslate.checked;
@@ -915,12 +1284,15 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
 
   engine?.addEventListener("change", () => {
     updateBackendVisibility(doc);
-    setStatus(doc, getString("settings-engine-pending"));
+    setStatus(doc, getString("settings-engine-pending"), "warning");
+    markDirty(doc);
   });
 
-  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
-    saveSettings(doc);
-  });
+  for (const id of ["interlinear-save", "interlinear-save-bottom"]) {
+    getElement<HTMLButtonElement>(doc, id)?.addEventListener("click", () => {
+      saveSettings(doc);
+    });
+  }
 
   getElement<HTMLButtonElement>(doc, "interlinear-test-ollama")?.addEventListener(
     "click",

@@ -88,8 +88,17 @@ interface ReaderInteractions {
   controller: InteractionController;
 }
 
+interface InteractionWatcher {
+  timeouts: ReturnType<typeof setTimeout>[];
+  doc: Document | null;
+  onLoad: ((event: Event) => void) | null;
+}
+
 const runStates = new WeakMap<object, RunState>();
-const interactionControllers = new WeakMap<object, ReaderInteractions>();
+const interactionControllers = new WeakMap<object, ReaderInteractions[]>();
+const interactionWatchers = new WeakMap<object, InteractionWatcher>();
+const INTERACTION_ATTACH_DELAYS_MS = [0, 150, 500, 1500, 3000];
+const IFRAME_LOAD_RETRY_DELAYS_MS = [60, 400, 1200];
 // Shared by the full-document scheduler and on-demand triggers so the same
 // paragraph is never requested twice at once.
 const paragraphRequests = new WeakMap<HTMLElement, Promise<void>>();
@@ -723,6 +732,13 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
   return block;
 }
 
+/** On-demand triggers can run before any full translation installed reader UI. */
+function prepareOnDemandReading(reader: any, doc: Document): void {
+  installStyles(doc);
+  applyDisplayMode(doc);
+  observeReadingLayout(getActiveSDTView(reader), doc);
+}
+
 function clearTranslations(doc: Document): void {
   const nodes = Array.from(doc.querySelectorAll(`.${TRANSLATION_CLASS}`)) as HTMLElement[];
   for (const node of nodes) {
@@ -855,6 +871,7 @@ async function requestReaderParagraph(
     ),
   };
 
+  prepareOnDemandReading(reader, doc);
   const block = ensureTranslationBlock(doc, paragraph);
   if (!block) return;
 
@@ -904,10 +921,19 @@ async function requestReaderParagraph(
 }
 
 function ensureReaderInteractions(reader: any, doc: Document): void {
-  const existing = interactionControllers.get(reader);
-  if (existing?.doc === doc) return;
+  const controllers = interactionControllers.get(reader) || [];
+  for (let index = controllers.length - 1; index >= 0; index -= 1) {
+    const entry = controllers[index];
+    if (entry.doc === doc) return;
+    if (isInteractionDocumentAlive(entry.doc)) continue;
+    controllers.splice(index, 1);
+    try {
+      entry.controller.dispose();
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
 
-  existing?.controller.dispose();
   const controller = attachReaderInteractions(
     doc,
     {
@@ -925,7 +951,136 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
       }),
     },
   );
-  interactionControllers.set(reader, { doc, controller });
+  controllers.push({ doc, controller });
+  interactionControllers.set(reader, controllers);
+}
+
+function isInteractionDocumentAlive(doc: Document): boolean {
+  try {
+    return !!doc.defaultView;
+  } catch (_) {
+    return false;
+  }
+}
+
+function hasReaderInteractions(reader: any, doc: Document): boolean {
+  return !!interactionControllers.get(reader)?.some((entry) => entry.doc === doc);
+}
+
+function getReaderSDTDocuments(reader: any): Document[] {
+  const docs: Document[] = [];
+  const internal = getInternalReader(reader);
+  const views = [
+    internal?._primarySDTView,
+    internal?._secondarySDTView,
+    getActiveSDTView(reader),
+  ];
+  for (const view of views) {
+    try {
+      const doc = view?._iframeDocument || view?._iframe?.contentDocument;
+      if (doc && !docs.includes(doc)) docs.push(doc);
+    } catch (_) {
+      // A split view's iframe may already have been destroyed.
+    }
+  }
+  return docs;
+}
+
+function attachInteractionsToReaderDocument(reader: any, doc: Document): boolean {
+  if (!doc.querySelector("#sdt-content")) return false;
+  if (hasReaderInteractions(reader, doc)) return true;
+  ensureReaderInteractions(reader, doc);
+  return true;
+}
+
+/**
+ * Attach the hover/shortcut/selection controller as soon as a reader exposes
+ * its SDT document. Interactions used to be attached only from prepareAndRun,
+ * so a reader that had never run a full translation ignored hover and the
+ * shortcut entirely. Reading mode (and each split-view pane) can also be
+ * enabled after the reader mounts, so watch iframe loads and retry briefly.
+ */
+export function watchReaderInteractions(reader: any): void {
+  if (!reader || reader.type !== "pdf" || reader._isUninitialized) return;
+  if (interactionWatchers.has(reader)) return;
+
+  const state: InteractionWatcher = { timeouts: [], doc: null, onLoad: null };
+  interactionWatchers.set(reader, state);
+
+  const tryAttach = () => {
+    for (const doc of getReaderSDTDocuments(reader)) {
+      try {
+        attachInteractionsToReaderDocument(reader, doc);
+      } catch (error) {
+        Zotero.logError(error as Error);
+      }
+    }
+  };
+
+  const clearScheduledRetries = () => {
+    for (const timeout of state.timeouts) {
+      try {
+        clearTimeout(timeout);
+      } catch (_) {
+        // The main window may already be shutting down.
+      }
+    }
+    state.timeouts = [];
+  };
+
+  const scheduleRetries = (delays: number[]) => {
+    clearScheduledRetries();
+    for (const delay of delays) {
+      state.timeouts.push(
+        setTimeout(() => {
+          try {
+            tryAttach();
+          } catch (error) {
+            Zotero.logError(error as Error);
+          }
+        }, delay),
+      );
+    }
+  };
+
+  tryAttach();
+  scheduleRetries(INTERACTION_ATTACH_DELAYS_MS);
+
+  try {
+    const outerDoc = reader?._iframeWindow?.document as Document | undefined;
+    if (outerDoc) {
+      state.doc = outerDoc;
+      state.onLoad = (event: Event) => {
+        const target = event?.target as Element | null;
+        if (target?.localName !== "iframe") return;
+        scheduleRetries(IFRAME_LOAD_RETRY_DELAYS_MS);
+      };
+      outerDoc.addEventListener("load", state.onLoad, true);
+    }
+  } catch (_) {
+    // The reader window can disappear while it is being inspected.
+  }
+}
+
+function stopWatchingReaderInteractions(reader: any): void {
+  const state = interactionWatchers.get(reader);
+  if (!state) return;
+  interactionWatchers.delete(reader);
+
+  for (const timeout of state.timeouts) {
+    try {
+      clearTimeout(timeout);
+    } catch (_) {
+      // The main window may already be shutting down.
+    }
+  }
+  if (state.doc && state.onLoad) {
+    try {
+      state.doc.removeEventListener("load", state.onLoad, true);
+    } catch (_) {
+      // The reader document may already be gone.
+    }
+  }
 }
 
 function getNoticeDocument(reader: any): Document | null {
@@ -1566,7 +1721,10 @@ function openBilingualToolbarMenu(
 
 export function renderBilingualToolbarButtons(event: any): void {
   const { reader, doc, append } = event || {};
-  if (!reader || reader.type !== "pdf" || !doc || typeof append !== "function") return;
+  if (!reader || reader.type !== "pdf" || !doc) return;
+
+  watchReaderInteractions(reader);
+  if (typeof append !== "function") return;
 
   registerToolbarHandlers(doc, TOOLBAR_BUTTON_CLASS, {
     onClick: () => void toggleBilingualReading(reader),
@@ -1664,14 +1822,17 @@ function updateToolbarProgress(reader: any): void {
 
 export function cleanupBilingualReader(reader: any): void {
   cancelRun(reader);
+  stopWatchingReaderInteractions(reader);
 
   const interactions = interactionControllers.get(reader);
   if (interactions) {
     interactionControllers.delete(reader);
-    try {
-      interactions.controller.dispose();
-    } catch (error) {
-      Zotero.logError(error as Error);
+    for (const entry of interactions) {
+      try {
+        entry.controller.dispose();
+      } catch (error) {
+        Zotero.logError(error as Error);
+      }
     }
   }
 

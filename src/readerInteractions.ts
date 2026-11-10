@@ -190,6 +190,7 @@ export function attachReaderInteractions(
   let hoverMode: "alt" | "auto" | null = null;
   let hoverTimer: any = null;
   let hoverPoint: { x: number; y: number } | null = null;
+  let hoverAnchor: { x: number; y: number } | null = null;
   let popup: ReturnType<typeof createPopup> | null = null;
 
   const getHoverSettings =
@@ -227,15 +228,18 @@ export function attachReaderInteractions(
     return text.length < 2;
   };
 
-  const clearHover = () => {
-    if (hoverTimer !== null) {
-      try {
-        clearHoverTimeout(hoverTimer);
-      } catch (_) {
-        // The reader can replace its content document.
-      }
-      hoverTimer = null;
+  const clearHoverTimer = () => {
+    if (hoverTimer === null) return;
+    try {
+      clearHoverTimeout(hoverTimer);
+    } catch (_) {
+      // The reader can replace its content document.
     }
+    hoverTimer = null;
+  };
+
+  const clearHover = () => {
+    clearHoverTimer();
     if (hovered) {
       try {
         hovered.classList.remove(HOVER_CLASS);
@@ -247,6 +251,7 @@ export function attachReaderInteractions(
     }
     hoverMode = null;
     hoverPoint = null;
+    hoverAnchor = null;
   };
 
   const hidePopup = () => {
@@ -257,9 +262,11 @@ export function attachReaderInteractions(
     const settings = getHoverSettings();
     if (!settings.enabled || shouldSkipAutoTranslate(source)) return;
 
+    clearHoverTimer();
     hovered = source;
     hoverMode = "auto";
     hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
+    hoverAnchor = hoverPoint;
     source.classList.add(AUTO_HOVER_CLASS);
 
     let fired = false;
@@ -275,7 +282,10 @@ export function attachReaderInteractions(
       if (hoverPoint && (hoverPoint.x || hoverPoint.y)) {
         try {
           const at = (doc as any).elementFromPoint?.(hoverPoint.x, hoverPoint.y);
-          if (at && findSource(at) !== source) {
+          // Only a different paragraph proves the pointer left. A null hit
+          // (annotation overlay, page gap, transparent layer) is not proof.
+          const current = at ? findSource(at) : null;
+          if (current && current !== source) {
             clearHover();
             return;
           }
@@ -290,6 +300,13 @@ export function attachReaderInteractions(
       invokeParagraph(host, source);
     }, Math.max(0, Number(settings.delayMs) || 0));
     if (!fired) hoverTimer = handle;
+  };
+
+  const movedEnoughToRearm = (event: MouseEvent): boolean => {
+    if (!hoverAnchor) return true;
+    const dx = (Number(event.clientX) || 0) - hoverAnchor.x;
+    const dy = (Number(event.clientY) || 0) - hoverAnchor.y;
+    return Math.abs(dx) + Math.abs(dy) > 6;
   };
 
   const onMouseMove = (event: MouseEvent) => {
@@ -309,7 +326,13 @@ export function attachReaderInteractions(
       clearHover();
       return;
     }
-    if (hoverMode === "auto" && source === hovered) return;
+    if (hoverMode === "auto" && source === hovered) {
+      // Keep the newest pointer position for the geometry check, but restart
+      // the dwell timer only after meaningful movement. Hovering must mean
+      // resting on a paragraph, not merely entering it.
+      hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
+      if (!movedEnoughToRearm(event)) return;
+    }
     clearHover();
     if (source) armAutoHover(source, event);
   };
@@ -413,6 +436,8 @@ export function attachReaderInteractions(
     if (hoverMode === "auto") clearHover();
   };
 
+  const onWindowBlur = () => clearHover();
+
   doc.addEventListener("mousemove", onMouseMove, true);
   doc.addEventListener("mouseleave", onMouseLeave, true);
   doc.addEventListener("mouseup", onMouseUp, true);
@@ -420,6 +445,11 @@ export function attachReaderInteractions(
   doc.addEventListener("keydown", onKeyDown, true);
   doc.addEventListener("mousedown", onMouseDown, true);
   doc.addEventListener("scroll", onScroll, true);
+  try {
+    win?.addEventListener?.("blur", onWindowBlur);
+  } catch (_) {
+    // Detached test documents have no window.
+  }
 
   return {
     dispose() {
@@ -438,6 +468,11 @@ export function attachReaderInteractions(
       doc.removeEventListener("keydown", onKeyDown, true);
       doc.removeEventListener("mousedown", onMouseDown, true);
       doc.removeEventListener("scroll", onScroll, true);
+      try {
+        win?.removeEventListener?.("blur", onWindowBlur);
+      } catch (_) {
+        // The iframe may already be gone.
+      }
     },
   };
 }

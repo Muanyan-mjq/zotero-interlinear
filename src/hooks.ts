@@ -12,6 +12,7 @@ async function registerPreferencesPane(): Promise<void> {
     pluginID: addon.data.config.addonID,
     id: "interlinear-preferences",
     src: "content/preferences.xhtml",
+    stylesheets: ["content/preferences.css"],
     label: "Interlinear",
   });
 }

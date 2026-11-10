@@ -537,47 +537,79 @@ describe("startup", function () {
 
       const fontSize = byId("interlinear-appearance-font-size");
       const color = byId("interlinear-appearance-color");
+      const colorInherit = byId("interlinear-appearance-color-inherit");
       const fontFamily = byId("interlinear-appearance-font-family");
       const lineHeight = byId("interlinear-appearance-line-height");
       const paragraphSpacing = byId("interlinear-appearance-paragraph-spacing");
       const background = byId("interlinear-appearance-background");
+      const backgroundInherit = byId("interlinear-appearance-background-inherit");
       const theme = byId("interlinear-appearance-theme");
       const underline = byId("interlinear-appearance-underline");
       const underlineColor = byId("interlinear-appearance-underline-color");
+      const underlineColorInherit = byId("interlinear-appearance-underline-color-inherit");
       const ribbon = byId("interlinear-appearance-ribbon");
       const ribbonColor = byId("interlinear-appearance-ribbon-color");
       const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement;
       assert.exists(fontSize);
       assert.exists(color);
+      assert.exists(colorInherit);
       assert.exists(fontFamily);
       assert.exists(lineHeight);
       assert.exists(paragraphSpacing);
       assert.exists(background);
+      assert.exists(backgroundInherit);
       assert.exists(theme);
       assert.exists(underline);
       assert.exists(underlineColor);
+      assert.exists(underlineColorInherit);
       assert.exists(ribbon);
       assert.exists(ribbonColor);
       assert.exists(save);
       assert.equal(fontSize?.value, "16");
-      assert.equal(color?.value, "");
+      assert.equal(color?.type, "color");
+      assert.equal(color?.value, "#333333");
+      assert.equal(colorInherit?.checked, true);
+      assert.equal(color?.disabled, true);
       assert.equal(fontFamily?.value, "");
       assert.equal(lineHeight?.value, "1.75");
       assert.equal(paragraphSpacing?.value, "1.25");
-      assert.equal(background?.value, "");
+      assert.equal(background?.type, "color");
+      assert.equal(background?.value, "#f6f6f6");
+      assert.equal(backgroundInherit?.checked, true);
       assert.equal(theme?.value, "auto");
       assert.equal(underline?.checked, false);
+      assert.equal(underlineColor?.type, "color");
+      assert.equal(underlineColor?.value, "#333333");
+      assert.equal(underlineColorInherit?.checked, true);
       assert.equal(ribbon?.checked, true);
+      assert.equal(ribbonColor?.type, "color");
       assert.equal(ribbonColor?.value, "#c7354a");
 
+      const colorPresets = win?.document.querySelectorAll(
+        "#interlinear-appearance-color-presets .interlinear-color-preset",
+      );
+      assert.equal(colorPresets?.length, 8);
+      const fontPresets = win?.document.querySelectorAll(
+        "#interlinear-appearance-font-family-presets .interlinear-font-preset",
+      );
+      assert.ok((fontPresets?.length || 0) > 1);
+      const georgiaPreset = Array.from(fontPresets || []).find(
+        (button) => (button as HTMLElement).dataset.value === "Georgia, serif",
+      ) as HTMLButtonElement | undefined;
+      assert.exists(georgiaPreset);
+      georgiaPreset?.click();
+      assert.equal(fontFamily?.value, "Georgia, serif");
+
       if (fontSize) fontSize.value = "20";
+      if (colorInherit) colorInherit.checked = false;
       if (color) color.value = "#ff0000";
-      if (fontFamily) fontFamily.value = "Georgia, serif";
       if (lineHeight) lineHeight.value = "2";
       if (paragraphSpacing) paragraphSpacing.value = "2";
+      if (backgroundInherit) backgroundInherit.checked = false;
       if (background) background.value = "#101010";
       if (theme) theme.value = "dark";
       if (underline) underline.checked = true;
+      if (underlineColorInherit) underlineColorInherit.checked = false;
       if (underlineColor) underlineColor.value = "#00ff00";
       if (ribbon) ribbon.checked = false;
       save.click();
@@ -606,12 +638,12 @@ describe("startup", function () {
       assert.match(css, /border-left: none;/u);
 
       if (theme) theme.value = "auto";
-      if (color) color.value = "red; } body { display: none";
+      if (colorInherit) colorInherit.checked = true;
+      if (color) color.value = "#00ff00";
       save.click();
       assert.equal(Zotero.Prefs.get(colorPref, true), "");
       const cssAfter = doc.getElementById("interlinear-style")?.textContent || "";
       assert.notInclude(cssAfter, "#ff0000");
-      assert.notInclude(cssAfter, "body {");
     } finally {
       win?.close();
       (Zotero.Reader as any)._readers = originalReaders;
@@ -1549,19 +1581,31 @@ describe("startup", function () {
       assert.deepEqual(paragraphCalls, ["0"]);
       assert.isTrue(first.classList.contains("interlinear-source-hover-auto"));
 
-      second.dispatchEvent(
-        new win.MouseEvent("mousemove", { bubbles: true, clientX: 20, clientY: 20 }),
+      first.dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 12, clientY: 11 }),
+      );
+      assert.equal(scheduled.length, 1);
+      first.dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 24, clientY: 24 }),
       );
       assert.equal(scheduled.length, 2);
       content.dispatchEvent(new win.Event("scroll", { bubbles: true }));
       scheduled[1].callback();
       assert.deepEqual(paragraphCalls, ["0"]);
 
+      second.dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 20, clientY: 20 }),
+      );
+      assert.equal(scheduled.length, 3);
+      content.dispatchEvent(new win.Event("scroll", { bubbles: true }));
+      scheduled[2].callback();
+      assert.deepEqual(paragraphCalls, ["0"]);
+
       hoverSettings = { enabled: false, delayMs: 500 };
       second.dispatchEvent(
         new win.MouseEvent("mousemove", { bubbles: true, clientX: 30, clientY: 30 }),
       );
-      assert.equal(scheduled.length, 2);
+      assert.equal(scheduled.length, 3);
 
       selection = {
         toString: () => "Second paragraph",

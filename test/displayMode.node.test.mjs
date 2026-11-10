@@ -55,7 +55,11 @@ test("side-by-side uses two top-aligned columns without moving source nodes", ()
   );
   assert.match(
     css,
-    /#sdt-content\[data-interlinear-display="side-by-side"\] \.tr \{[\s\S]*width: 49%;[\s\S]*margin: 0 0 2em 1%;/u,
+    /#sdt-content\[data-interlinear-display="side-by-side"\] \.src \{[\s\S]*margin-block-start: 0;/u,
+  );
+  assert.match(
+    css,
+    /#sdt-content\[data-interlinear-display="side-by-side"\] \.tr \{[\s\S]*margin: 0 0 2em 1%;[\s\S]*padding-top: 0;/u,
   );
   assert.doesNotMatch(css, /position: absolute/u);
   assert.doesNotMatch(css, /transform/u);

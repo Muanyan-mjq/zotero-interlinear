@@ -24,11 +24,11 @@
 - Small toolbar icon: left-click toggles paragraph translation; right-click opens a menu with every action. A second toolbar button cycles display modes (translation below, side by side, target only, source only).
 - Built-in backends: Google Translate (default, no key), OpenAI-compatible APIs, Anthropic Claude, Google Gemini, and Ollama. No other plugin is required.
 - Full-document translation with progress, cancellation, automatic pause after repeated failures, and click-to-retry on failed or paused paragraphs.
-- Per-paragraph hover translation (configurable delay and on/off) and a configurable keyboard shortcut; both reuse in-flight full-document requests instead of calling the service twice.
+- Per-paragraph hover translation (configurable delay and on/off) and a configurable keyboard shortcut; both work as soon as reading mode is ready, without starting a full translation first, and reuse in-flight full-document requests instead of calling the service twice.
 - Selection translation from a popup, short-paragraph batching, concurrency limits, request throttling, and timeouts.
 - Translation queue prioritizes the visible viewport and re-sorts while you page through the document.
 - Glossary import/export with prompt injection for LLM backends and post-translation replacement for every backend, including Google. Cache keys include provider configuration and the glossary hash.
-- Translation cache, trailing-page skipping, configurable source/target languages, full appearance settings (font, size, color, line and paragraph spacing, theme, underline, ribbon), and a reading-assistant chat sidebar with selection/page/document context.
+- Translation cache, trailing-page skipping, configurable source/target languages, full appearance settings (font presets, size, color pickers and swatches with an inherit-theme option, line and paragraph spacing, theme, underline, ribbon), inline connection-test feedback for every backend, and a reading-assistant chat sidebar with selection/page/document context. Side-by-side mode aligns the first line of source and translation.
 - Export the current bilingual reading view as a searchable PDF attached to the Zotero item.
 - Non-blocking in-reader notices for errors instead of modal alerts.
 - UI available in English and Simplified Chinese.
@@ -107,9 +107,10 @@ AGPL-3.0-or-later.
 
 - 翻译后端（Google / OpenAI 兼容 / Claude / Gemini / Ollama）及各自的接口、模型与密钥；密钥以明文形式保存在 Zotero 偏好设置中，不会写入日志或缓存键；
 - 原文与译文语言；
-- 译文外观（字号、颜色、字体、行高、段落间距、主题、下划线、色带）；
+- 译文外观：字号、行高、段落间距、主题、下划线、色带；颜色统一使用取色器与快捷色块，可勾选“跟随主题”；字体提供 Georgia、Times New Roman、Arial、微软雅黑、宋体等预设，也可手动输入；
 - 显示模式；
-- 单段翻译：悬停自动翻译开关与停留时间、快捷键开关与组合键；
+- 单段翻译：悬停自动翻译开关与停留时间、快捷键开关与组合键；无需先开启全文对照，阅读模式就绪后即可直接悬停或按快捷键；
+- 各翻译后端的“测试连接”，会就地显示运行中、成功、警告或失败原因；
 - 术语表导入 / 导出；
 - 不翻译末尾页数；
 - 最大并发请求；

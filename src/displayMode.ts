@@ -40,6 +40,8 @@ export function buildDisplayModeCSS(
       width: 49%;
       vertical-align: top;
       box-sizing: border-box;
+      margin-top: 0;
+      margin-block-start: 0;
     }
     ${root}[data-interlinear-display="side-by-side"] .${translationClass} {
       display: inline-block;
@@ -47,6 +49,7 @@ export function buildDisplayModeCSS(
       vertical-align: top;
       box-sizing: border-box;
       margin: 0 0 ${paragraphSpacing}em 1%;
+      padding-top: 0;
     }
 `;
 }
