@@ -1,10 +1,18 @@
 import {
+  COLOR_LIST_MAX_LENGTH,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  RECENT_COLORS_MAX,
+  SAVED_COLORS_MAX,
   buildFontStack,
   normalizeAppearance,
+  normalizeColorList,
+  normalizeColorToken,
+  normalizeThemeColor,
   parseFontStack,
+  pushColorUnique,
   type AppearanceSettings,
+  type ColorRole,
 } from "./appearance";
 import {
   FONT_DETECTION_CACHE_MAX_FONTS,
@@ -150,9 +158,11 @@ const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
 const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
 const APPEARANCE_V2_PREF = `${BASE}.appearance.v2`;
 const APPEARANCE_SCHEMA_PREF = `${BASE}.appearance.schema`;
-const APPEARANCE_SCHEMA_VERSION = 2;
+const APPEARANCE_SCHEMA_VERSION = 3;
 const FONT_FAVORITES_PREF = `${BASE}.appearance.fontFavorites`;
 const FONT_DETECTION_PREF = `${BASE}.appearance.fontDetection`;
+const RECENT_COLORS_PREF = `${BASE}.appearance.recentColors`;
+const SAVED_COLORS_PREF = `${BASE}.appearance.savedColors`;
 const DISPLAY_MODE_PREF = `${BASE}.displayMode`;
 const GLOSSARY_PREF = `${BASE}.glossary`;
 
@@ -563,7 +573,21 @@ export function getAppearance(): AppearanceSettings {
 }
 
 export function setAppearance(input: Partial<AppearanceSettings>): void {
-  const merged = { ...getAppearance(), ...input };
+  const current = getAppearance();
+  const merged = { ...current, ...input };
+  // Legacy callers only send the flat fields. Translate them into colors so
+  // normalizeAppearance does not keep the previous structured mode.
+  if (input.colors === undefined) {
+    const colors = { ...current.colors };
+    const applyLegacy = (role: ColorRole, value: string | undefined) => {
+      if (value !== undefined) colors[role] = normalizeThemeColor(value);
+    };
+    applyLegacy("text", input.color);
+    applyLegacy("background", input.background);
+    applyLegacy("underline", input.underlineColor);
+    applyLegacy("ribbon", input.ribbonColor);
+    merged.colors = colors;
+  }
   // A caller that only changes the CSS font-family string still gets a
   // structured stack, so the next read and the stack UI agree.
   if (input.fontFamily !== undefined && input.fontStack === undefined) {
@@ -608,6 +632,61 @@ export function getFontFavorites(): string[] {
 
 export function setFontFavorites(value: readonly string[]): void {
   setStringPref(FONT_FAVORITES_PREF, JSON.stringify(normalizeFontFavorites(value)));
+}
+
+function readColorListPref(key: string, max: number): string[] {
+  const stored = getRawStringPref(key);
+  if (!stored || stored.length > COLOR_LIST_MAX_LENGTH) return [];
+  try {
+    return normalizeColorList(JSON.parse(stored), max);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeColorListPref(key: string, colors: readonly string[], max: number): string[] {
+  const normalized = normalizeColorList(colors, max);
+  setStringPref(key, JSON.stringify(normalized));
+  return normalized;
+}
+
+export function getRecentColors(): string[] {
+  return readColorListPref(RECENT_COLORS_PREF, RECENT_COLORS_MAX);
+}
+
+export function setRecentColors(colors: readonly string[]): void {
+  writeColorListPref(RECENT_COLORS_PREF, colors, RECENT_COLORS_MAX);
+}
+
+export function pushRecentColor(color: string): string[] {
+  return writeColorListPref(
+    RECENT_COLORS_PREF,
+    pushColorUnique(getRecentColors(), color, RECENT_COLORS_MAX),
+    RECENT_COLORS_MAX,
+  );
+}
+
+export function getSavedColors(): string[] {
+  return readColorListPref(SAVED_COLORS_PREF, SAVED_COLORS_MAX);
+}
+
+export function setSavedColors(colors: readonly string[]): void {
+  writeColorListPref(SAVED_COLORS_PREF, colors, SAVED_COLORS_MAX);
+}
+
+export function addSavedColor(color: string): string[] {
+  return writeColorListPref(
+    SAVED_COLORS_PREF,
+    pushColorUnique(getSavedColors(), color, SAVED_COLORS_MAX),
+    SAVED_COLORS_MAX,
+  );
+}
+
+export function removeSavedColor(color: string): string[] {
+  const token = normalizeColorToken(color);
+  if (!token) return getSavedColors();
+  const remaining = getSavedColors().filter((entry) => entry !== token);
+  return writeColorListPref(SAVED_COLORS_PREF, remaining, SAVED_COLORS_MAX);
 }
 
 export function getCachedFontDetection(): string[] | null {

@@ -1087,3 +1087,41 @@
 6. 字重选 700、勾选斜体、字距 0.1、字号模式 em 1.1：预览与已打开阅读器的译文块同步变化；改回默认后样式恢复。
 7. 目标语言切到阿拉伯语（或手动把方向设为 RTL）：译文块文字右对齐、标点位置正确；切回中文/英文恢复 LTR。
 8. 修改任意字体/颜色设置后，已翻译的文档不应重新请求翻译；观察网络面板或缓存命中状态确认。
+
+## Step 3：颜色系统重做（P1）
+
+### 做了什么
+- **数据模型**：`AppearanceSettings` 新增 `colors: Record<ColorRole, ThemeColor>`，`ColorRole` 覆盖 text/background/underline/ribbon/border/source/loading/error；每个角色有 `mode: theme | single | split` 与 `light/dark` 值。旧的 `color/background/underlineColor/ribbonColor` 字段保留并由 `normalizeAppearance` 从 `colors` 派生，旧偏好与旧缓存读取兼容。
+- **自实现取色器**（无新依赖）：SV 面板 + 色相条 + 透明度滑块 + HEX + R/G/B + H/S/L 数值输入；SV 面板支持方向键（Shift 加速），色相/透明度/数值输入均可键盘操作；同时保留原生 `input[type=color]` 作为“系统取色器”入口。当文档没有 `PointerEvent` 时（自定义面板不可用）自动降级为直接打开原生取色器。
+- **色板与复用**：`buildColorPalette()` 生成 5 行 × 8 列色板；最近使用最多 12 个、我的颜色最多 24 个，存 JSON 偏好（`appearance.recentColors` / `appearance.savedColors`），读取时严格校验为 hex、去重、限长；取色器提供复制/粘贴 HEX（Clipboard API 不可用时回退 `execCommand`）。
+- **浅深分别配色**：每个颜色卡片有“跟随主题 / 统一颜色 / 浅深分别设置”三态下拉；split 时显示深色行，浅色与深色各有独立 HEX/取色器；预览卡片增加“预览深色主题”开关，`buildTranslationCSS(..., { colorScheme })` 让预览在浅/深之间切换。阅读器里自动模式额外输出 `:root[data-color-scheme="dark"]` 覆盖块。
+- **适用颜色项**：译文文字、译文背景、下划线、左侧色带、译文边框、原文淡化色、加载中状态色、出错状态色；每张卡片都有“恢复默认”。原文淡化目前以颜色 + 透明度形式输出，后续 Step 4 会接入透明度范围。
+- **对比度**：新增 `parseColorToRgba`、`rgbaToHsl`、`hslToRgba`、`compositeRgba`、`contrastRatioOver`；文字色/背景色带 alpha 时先合成到当前主题底色，再计算 WCAG 对比度；浅色与深色各检查一次，低于 4.5:1 显示非阻塞警告并给出两个比值。
+- **存储**：旧值（3/6 位 hex、rgb()、命名色）读取兼容；新值带 alpha 时规范化为 8 位 HEX（`#RRGGBBAA`）；`appearance.v2` JSON 保存完整结构，旧逐字段偏好继续同步写入，便于回退与旧代码读取。验证只接受 `#RGB/#RRGGBB/#RRGGBBAA`、rgb()/hsl() 与字母命名色，拒绝分号、花括号、`url()`、`expression` 等注入。
+- **设置页结构**：删除 XHTML 中四段静态颜色控件，改为 `#interlinear-appearance-color-controls` 宿主，由 `COLOR_CONTROLS` 表动态构建 8 张卡片，避免颜色项与 HTML 双份维护。
+
+### 改动文件
+`src/appearance.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：162 pass / 0 fail（新增颜色解析、HSL/RGB 互转、alpha 合成、对比度、旧值兼容、恶意输入等用例）。
+- `npm run test:review`（Zotero headless，独立 profile）：53 pass / 0 fail。新增/更新用例覆盖：split 深浅色写入、深色预览、额外颜色角色（border/source/loading/error）存在、色板/最近使用/我的颜色、取色器打开与 HEX 同步、非法颜色拒绝、主题模式对比度警告。
+
+### 不确定项 / 未目视验证
+- 自定义取色器在真实 Zotero 设置窗口中的布局、滚动与触摸板拖动未目视；headless 只断言 DOM/状态与生成的 CSS。
+- Clipboard API 在 Zotero chrome 文档中的可用性未实测；复制/粘贴失败会显示状态文字并使用回退路径。
+- 8 位 HEX 在旧版阅读器/打印导出中的 alpha 表现取决于 Gecko；打印模式会改用 6 位/显式颜色，不会把深色主题带入纸张。
+- 颜色角色 `source` 目前输出为 `color`；是否会让 Zotero 原生高亮观感受影响未在真实 PDF 上验证，Step 4 会改为更保守的 opacity 方案并补回归。
+- 深色覆盖块依赖阅读器设置 `:root[data-color-scheme="dark"]`；未在所有 Zotero 主题上确认该属性是否会设置，代码同时输出显式 scheme 的 CSS 作为兜底。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置→外观→颜色：确认 8 张颜色卡片（文字/背景/下划线/色带/边框/原文/加载/错误）按统一布局显示，每张都有模式下拉、预览、取色器、HEX、恢复默认。
+2. 点“自定义…”打开取色器：拖动 SV 面板、色相条、透明度滑块，确认 HEX/RGB/HSL 同步、预览变化；用键盘方向键移动 SV 光标；按 Esc/关闭按钮退出。
+3. 在“我的颜色”保存一个颜色，关闭再打开设置页，确认仍在；复制 HEX 后粘贴到另一个颜色卡片。
+4. 把文字颜色设为 split，浅色 #333333、深色 #EEEEEE，勾选“预览深色主题”，确认预览变浅色字；切到阅读器深色主题，确认译文块使用深色值。
+5. 把文字色 #777777、背景 #FFFFFF：确认出现浅色/深色两个对比度比值的警告；改成 #000000 后警告消失；保存不被阻止。
+6. 输入非法值 `red; } body { display:none` 或 `url(evil)`：确认被拒绝、显示行内错误、不写入偏好，页面样式无异常。
+7. 修改颜色后保存，确认已打开的阅读器立即变化且没有重新发起翻译请求；关闭重开仍保持。
+8. 在浅色/深色 Zotero 主题下检查 8 张卡片的文字、边框、状态点对比度，并确认取色器面板不被裁切（滚动到视口内）。

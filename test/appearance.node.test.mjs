@@ -8,16 +8,27 @@ import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   FONT_STACK_PRESETS,
+  buildColorPalette,
   buildTranslationCSS,
   contrastRatio,
+  contrastRatioOver,
   hexToRgb,
+  hslToRgba,
   isValidColor,
   isValidFontFamily,
   meetsContrastAA,
   normalizeAppearance,
+  normalizeColorList,
+  normalizeColorToken,
   normalizeHexInput,
+  normalizeThemeColor,
+  parseColorToRgba,
+  pushColorUnique,
   resolveEffectiveColor,
   resolveFontSelection,
+  resolveThemeColor,
+  rgbaToHex,
+  rgbaToHsl,
 } from "../src/appearance.ts";
 
 test("normalizeAppearance falls back to defaults for missing input", () => {
@@ -336,4 +347,278 @@ test("isValidFontFamily accepts empty and safe stacks but rejects CSS-breaking t
   assert.equal(isValidFontFamily("Arial; color: red"), false);
   assert.equal(isValidFontFamily('Font "Name"'), false);
   assert.equal(isValidFontFamily("Arial}"), false);
+});
+
+test("normalizeThemeColor converts legacy strings and keeps safe split colors", () => {
+  assert.deepEqual(normalizeThemeColor("#ff0000"), {
+    mode: "single",
+    light: "#ff0000",
+    dark: "#ff0000",
+  });
+  assert.deepEqual(normalizeThemeColor(""), { mode: "theme", light: "", dark: "" });
+  assert.deepEqual(
+    normalizeThemeColor({ mode: "split", light: "#111", dark: "#222" }),
+    { mode: "split", light: "#111", dark: "#222" },
+  );
+  const fallback = { mode: "split", light: "#333333", dark: "#444444" };
+  assert.deepEqual(
+    normalizeThemeColor({ mode: "split", light: "red;}", dark: "#eeeeee" }, fallback),
+    { mode: "split", light: "#333333", dark: "#eeeeee" },
+  );
+  assert.deepEqual(normalizeThemeColor("url(x)", fallback), fallback);
+  assert.deepEqual(normalizeThemeColor({ mode: "split" }, fallback), fallback);
+});
+
+test("normalizeAppearance derives colors from legacy fields and lets colors win", () => {
+  const legacy = normalizeAppearance({
+    color: "#ff0000",
+    background: "",
+    underlineColor: "red",
+    ribbonColor: "#123456",
+  });
+  assert.deepEqual(legacy.colors.text, {
+    mode: "single",
+    light: "#ff0000",
+    dark: "#ff0000",
+  });
+  assert.deepEqual(legacy.colors.background, { mode: "theme", light: "", dark: "" });
+  assert.deepEqual(legacy.colors.underline, {
+    mode: "single",
+    light: "red",
+    dark: "red",
+  });
+  assert.deepEqual(legacy.colors.ribbon, {
+    mode: "single",
+    light: "#123456",
+    dark: "#123456",
+  });
+  assert.equal(legacy.color, "#ff0000");
+
+  const split = normalizeAppearance({
+    color: "#999999",
+    colors: { text: { mode: "split", light: "#111111", dark: "#eeeeee" } },
+  });
+  assert.equal(split.color, "#111111");
+  assert.deepEqual(split.colors.text, {
+    mode: "split",
+    light: "#111111",
+    dark: "#eeeeee",
+  });
+  assert.deepEqual(
+    normalizeAppearance(undefined).colors,
+    DEFAULT_APPEARANCE.colors,
+  );
+});
+
+test("theme colors resolve to palette defaults or stored values per role and scheme", () => {
+  const theme = { mode: "theme", light: "", dark: "" };
+  assert.equal(resolveThemeColor(theme, "light", "text"), "");
+  assert.equal(resolveThemeColor(theme, "dark", "text"), "");
+  assert.equal(resolveThemeColor(theme, "light", "ribbon"), "#2f6fdf");
+  assert.equal(resolveThemeColor(theme, "dark", "ribbon"), "#4f8ff0");
+  assert.equal(resolveThemeColor(theme, "light", "error"), "#c7354a");
+  assert.equal(resolveThemeColor(theme, "dark", "error"), "#ff8a9a");
+  assert.equal(
+    resolveThemeColor({ mode: "single", light: "#123456", dark: "#654321" }, "dark", "text"),
+    "#123456",
+  );
+  assert.equal(
+    resolveThemeColor({ mode: "split", light: "#111111", dark: "#eeeeee" }, "dark", "text"),
+    "#eeeeee",
+  );
+  assert.equal(
+    resolveThemeColor({ mode: "split", light: "#111111", dark: "" }, "dark", "text"),
+    "",
+  );
+});
+
+test("color tokens and HSL/RGB conversion round-trip with alpha", () => {
+  assert.equal(normalizeColorToken("#abc"), "#AABBCC");
+  assert.equal(normalizeColorToken("#aabbccdd"), "#AABBCCDD");
+  assert.equal(normalizeColorToken("#12345"), null);
+  assert.equal(normalizeColorToken("red"), null);
+  assert.equal(normalizeColorToken("url(x)"), null);
+
+  assert.equal(rgbaToHex({ r: 255, g: 0, b: 0, a: 1 }), "#FF0000");
+  assert.equal(rgbaToHex({ r: 255, g: 0, b: 0, a: 128 / 255 }), "#FF000080");
+
+  const rgba = parseColorToRgba("rgba(255, 0, 0, 0.5)");
+  assert.equal(rgba.r, 255);
+  assert.equal(rgba.g, 0);
+  assert.equal(rgba.b, 0);
+  assert.ok(Math.abs(rgba.a - 0.5) < 0.01);
+  assert.deepEqual(parseColorToRgba("hsl(120, 100%, 50%)"), {
+    r: 0,
+    g: 255,
+    b: 0,
+    a: 1,
+  });
+  assert.equal(parseColorToRgba("url(x)"), null);
+  assert.equal(parseColorToRgba("#12345"), null);
+
+  assert.deepEqual(hslToRgba({ h: 240, s: 100, l: 50, a: 1 }), {
+    r: 0,
+    g: 0,
+    b: 255,
+    a: 1,
+  });
+  const hsl = rgbaToHsl({ r: 0, g: 0, b: 255, a: 1 });
+  assert.equal(Math.round(hsl.h), 240);
+  assert.equal(Math.round(hsl.s), 100);
+  assert.equal(Math.round(hsl.l), 50);
+});
+
+test("contrast checks composite translucent colors over the theme base", () => {
+  assert.equal(contrastRatio("#000000", "#ffffff"), 21);
+  const opaque = contrastRatio("#808080", "#ffffff");
+  const translucent = contrastRatioOver("#80808080", "#ffffff00", "#ffffff");
+  assert.ok(translucent !== null && translucent < opaque);
+  const gray = contrastRatioOver("#777777", "#ffffff00", "#ffffff");
+  assert.ok(gray !== null && Math.abs(gray - 4.48) < 0.02);
+  assert.equal(contrastRatioOver("nope", "#ffffff", "#ffffff"), null);
+});
+
+test("color lists normalize, deduplicate and cap entries", () => {
+  assert.deepEqual(
+    normalizeColorList(["#abc", "#AABBCC", "#12345678", "nope", "#ff000080", 42], 12),
+    ["#AABBCC", "#12345678", "#FF000080"],
+  );
+  const many = Array.from(
+    { length: 20 },
+    (_, index) => `#${(index * 1000).toString(16).padStart(6, "0")}`,
+  );
+  assert.equal(normalizeColorList(many, 12).length, 12);
+  assert.deepEqual(normalizeColorList("nope", 12), []);
+});
+
+test("color palette is five lightness rows by eight hue columns", () => {
+  const rows = buildColorPalette();
+  assert.equal(rows.length, 5);
+  for (const row of rows) {
+    assert.equal(row.length, 8);
+    for (const color of row) assert.equal(normalizeColorToken(color), color);
+  }
+  const unique = new Set(rows.flat());
+  assert.equal(unique.size, 40);
+  // Every row must be a lightness step of the same eight hues.
+  assert.match(rows[0][0], /^#[0-9A-F]{6}$/u);
+  assert.notEqual(rows[0][3], rows[4][3]);
+});
+
+test("pushColorUnique moves a color to the front and caps the list", () => {
+  assert.deepEqual(pushColorUnique(["#AABBCC", "#112233"], "#aabbcc", 12), [
+    "#AABBCC",
+    "#112233",
+  ]);
+  assert.deepEqual(pushColorUnique(["#112233"], "#AABBCC", 12), [
+    "#AABBCC",
+    "#112233",
+  ]);
+  assert.deepEqual(pushColorUnique(["#112233"], "nope", 12), ["#112233"]);
+  assert.deepEqual(pushColorUnique(["#112233", "#445566"], "#778899", 2), [
+    "#778899",
+    "#112233",
+  ]);
+});
+
+test("reader CSS emits light colors and a data-color-scheme dark override", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "#eeeeee" },
+        background: { mode: "split", light: "#ffffff", dark: "#000000" },
+      },
+    },
+    "reader",
+  );
+  assert.match(css, /color: #111111;/u);
+  assert.match(css, /background: #ffffff;/u);
+  assert.match(css, /:root\[data-color-scheme="dark"\] \.interlinear-translation \{/u);
+  assert.match(css, /color: #eeeeee;/u);
+  assert.match(css, /background: #000000;/u);
+});
+
+test("reader CSS can be forced to one scheme for the preview", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "#eeeeee" },
+      },
+    },
+    "reader",
+    { colorScheme: "dark" },
+  );
+  assert.match(css, /color: #eeeeee;/u);
+  assert.doesNotMatch(css, /data-color-scheme/u);
+});
+
+test("print CSS always uses the light color of a split setting", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "#eeeeee" },
+      },
+    },
+    "print",
+  );
+  assert.match(css, /color: #111111 !important;/u);
+  assert.doesNotMatch(css, /#eeeeee/u);
+});
+
+test("reader CSS skips a dark override when the dark side inherits", () => {
+  const css = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: { mode: "split", light: "#111111", dark: "" },
+      },
+    },
+    "reader",
+  );
+  assert.match(css, /color: #111111;/u);
+  assert.doesNotMatch(css, /data-color-scheme/u);
+});
+
+test("reader CSS rejects malicious split colors and keeps state colors explicit", () => {
+  const malicious = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        text: {
+          mode: "single",
+          light: "red; } body { display: none",
+          dark: "#ffffff",
+        },
+      },
+    },
+    "reader",
+  );
+  assert.doesNotMatch(malicious, /body/u);
+  assert.doesNotMatch(malicious, /color:/u);
+
+  const defaultCss = buildTranslationCSS("interlinear-translation", undefined, "reader");
+  assert.doesNotMatch(defaultCss, /data-state=/u);
+
+  const states = buildTranslationCSS(
+    "interlinear-translation",
+    {
+      colors: {
+        loading: { mode: "single", light: "#666666", dark: "#666666" },
+        error: { mode: "split", light: "#cc0000", dark: "#ff8888" },
+      },
+    },
+    "reader",
+  );
+  assert.match(states, /\.interlinear-translation\[data-state="loading"\] \{/u);
+  assert.match(states, /color: #666666;/u);
+  assert.match(states, /\.interlinear-translation\[data-state="error"\] \{/u);
+  assert.match(states, /color: #cc0000;/u);
+  assert.match(
+    states,
+    /:root\[data-color-scheme="dark"\] \.interlinear-translation\[data-state="error"\]/u,
+  );
+  assert.match(states, /color: #ff8888;/u);
 });

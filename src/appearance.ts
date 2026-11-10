@@ -6,6 +6,25 @@ export type FontGeneric = "" | "sans-serif" | "serif" | "monospace";
 export type FontStyle = "normal" | "italic";
 export type FontSizeMode = "px" | "em";
 export type TextDirection = "auto" | "ltr" | "rtl";
+export type ColorMode = "theme" | "single" | "split";
+export type ColorScheme = "light" | "dark";
+export type ColorRole =
+  | "text"
+  | "background"
+  | "underline"
+  | "ribbon"
+  | "border"
+  | "source"
+  | "loading"
+  | "error";
+
+export interface ThemeColor {
+  mode: ColorMode;
+  light: string;
+  dark: string;
+}
+
+export type ColorSettings = Record<ColorRole, ThemeColor>;
 
 export interface FontStack {
   primary: string;
@@ -16,6 +35,8 @@ export interface FontStack {
 export interface AppearanceSettings {
   fontSize: number;
   color: string;
+  /** Structured per-theme colors; the flat color fields are derived for compatibility. */
+  colors: ColorSettings;
   fontFamily: string;
   /** Structured font stack; `fontFamily` is the sanitized CSS string derived from it. */
   fontStack: FontStack;
@@ -50,6 +71,60 @@ export const LETTER_SPACING_MAX = 0.3;
 export const FONT_SIZE_EM_MIN = 0.9;
 export const FONT_SIZE_EM_MAX = 1.2;
 export const FONT_STACK_MAX_FALLBACKS = 6;
+export const RECENT_COLORS_MAX = 12;
+export const SAVED_COLORS_MAX = 24;
+export const COLOR_LIST_MAX_LENGTH = 4096;
+
+export const COLOR_ROLES: readonly ColorRole[] = [
+  "text",
+  "background",
+  "underline",
+  "ribbon",
+  "border",
+  "source",
+  "loading",
+  "error",
+];
+
+/** Theme-mode defaults; an empty value means "let the reader inherit". */
+export const THEME_ROLE_COLORS: Readonly<
+  Record<ColorRole, Readonly<Record<ColorScheme, string>>>
+> = {
+  text: { light: "", dark: "" },
+  background: { light: "", dark: "" },
+  underline: { light: "", dark: "" },
+  ribbon: { light: "#2f6fdf", dark: "#4f8ff0" },
+  border: { light: "#d9d9d9", dark: "#4a4a4a" },
+  source: { light: "#666666", dark: "#a8a8a8" },
+  loading: { light: "#666666", dark: "#a8a8a8" },
+  error: { light: "#c7354a", dark: "#ff8a9a" },
+};
+
+export const THEME_PREVIEW_PALETTE: Readonly<
+  Record<ColorScheme, { text: string; background: string }>
+> = {
+  light: { text: "#222", background: "#f6f6f6" },
+  dark: { text: "#e8e8e8", background: "#2b2b2b" },
+};
+
+function themeColor(
+  mode: ColorMode,
+  light: string,
+  dark: string,
+): ThemeColor {
+  return { mode, light, dark };
+}
+
+export const DEFAULT_COLORS: ColorSettings = {
+  text: themeColor("theme", "", ""),
+  background: themeColor("theme", "", ""),
+  underline: themeColor("theme", "", ""),
+  ribbon: themeColor("single", DEFAULT_RIBBON_COLOR, DEFAULT_RIBBON_COLOR),
+  border: themeColor("theme", "", ""),
+  source: themeColor("theme", "", ""),
+  loading: themeColor("theme", "", ""),
+  error: themeColor("theme", "", ""),
+};
 
 export const DEFAULT_FONT_STACK: FontStack = {
   primary: "",
@@ -61,6 +136,16 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   fontSize: 16,
   // Empty means "inherit", so the reader follows Zotero's light/dark theme.
   color: "",
+  colors: {
+    text: themeColor("theme", "", ""),
+    background: themeColor("theme", "", ""),
+    underline: themeColor("theme", "", ""),
+    ribbon: themeColor("single", DEFAULT_RIBBON_COLOR, DEFAULT_RIBBON_COLOR),
+    border: themeColor("theme", "", ""),
+    source: themeColor("theme", "", ""),
+    loading: themeColor("theme", "", ""),
+    error: themeColor("theme", "", ""),
+  },
   fontFamily: "",
   fontStack: { ...DEFAULT_FONT_STACK, fallbacks: [] },
   fontWeight: 400,
@@ -110,6 +195,258 @@ function normalizeOptionalColor(raw: unknown): string {
   const value = typeof raw === "string" ? raw.trim() : "";
   return isValidColor(value) ? value : "";
 }
+
+const HEX_TOKEN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/iu;
+const RGB_FUNCTION =
+  /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/iu;
+const HSL_FUNCTION =
+  /^hsla?\(\s*([\d.]+)(?:deg)?\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+)\s*)?\)$/iu;
+
+export interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+function clampChannel(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function clampAlpha(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Expand a HEX token to uppercase #RRGGBB or #RRGGBBAA, or null. */
+export function normalizeColorToken(raw: string): string | null {
+  const match = raw.trim().match(HEX_TOKEN);
+  if (!match) return null;
+  const hex = match[0].slice(1);
+  const expanded =
+    hex.length === 3 ? hex.split("").map((part) => part + part).join("") : hex;
+  return `#${expanded.toUpperCase()}`;
+}
+
+export function rgbaToHex(rgba: Rgba): string {
+  const base = [rgba.r, rgba.g, rgba.b]
+    .map((channel) => clampChannel(channel).toString(16).padStart(2, "0"))
+    .join("");
+  const alpha = clampAlpha(rgba.a);
+  if (alpha >= 1) return `#${base.toUpperCase()}`;
+  return `#${base.toUpperCase()}${Math.round(alpha * 255)
+    .toString(16)
+    .padStart(2, "0")
+    .toUpperCase()}`;
+}
+
+export function parseColorToRgba(raw: unknown): Rgba | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!value) return null;
+  const token = normalizeColorToken(value);
+  if (token) {
+    const hex = token.slice(1);
+    const channel = (index: number) => parseInt(hex.slice(index, index + 2), 16);
+    return {
+      r: channel(0),
+      g: channel(2),
+      b: channel(4),
+      a: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
+    };
+  }
+  const rgb = value.match(RGB_FUNCTION);
+  if (rgb) {
+    return {
+      r: clampChannel(Number(rgb[1])),
+      g: clampChannel(Number(rgb[2])),
+      b: clampChannel(Number(rgb[3])),
+      a: clampAlpha(rgb[4] === undefined ? 1 : Number(rgb[4])),
+    };
+  }
+  const hsl = value.match(HSL_FUNCTION);
+  if (hsl) {
+    return hslToRgba({
+      h: Number(hsl[1]),
+      s: Number(hsl[2]),
+      l: Number(hsl[3]),
+      a: hsl[4] === undefined ? 1 : Number(hsl[4]),
+    });
+  }
+  return null;
+}
+
+export function hslToRgba(input: {
+  h: number;
+  s: number;
+  l: number;
+  a?: number;
+}): Rgba {
+  const h = ((Number(input.h) % 360) + 360) % 360;
+  const s = Math.min(100, Math.max(0, Number(input.s))) / 100;
+  const l = Math.min(100, Math.max(0, Number(input.l))) / 100;
+  const a = clampAlpha(input.a === undefined ? 1 : Number(input.a));
+  const channel = (offset: number): number => {
+    const k = (offset + h / 30) % 12;
+    const amount = s * Math.min(l, 1 - l);
+    return clampChannel(255 * (l - amount * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+  };
+  return { r: channel(0), g: channel(8), b: channel(4), a };
+}
+
+export function rgbaToHsl(rgba: Rgba): { h: number; s: number; l: number; a: number } {
+  const r = clampChannel(rgba.r) / 255;
+  const g = clampChannel(rgba.g) / 255;
+  const b = clampChannel(rgba.b) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (delta > 0) {
+    s = delta / (1 - Math.abs(2 * l - 1));
+    if (max === r) h = ((g - b) / delta) % 6;
+    else if (max === g) h = (b - r) / delta + 2;
+    else h = (r - g) / delta + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return {
+    h: Math.round(h * 10) / 10,
+    s: Math.round(s * 1000) / 10,
+    l: Math.round(l * 1000) / 10,
+    a: clampAlpha(rgba.a),
+  };
+}
+
+export function compositeRgba(foreground: Rgba, background: Rgba): Rgba {
+  const alpha = clampAlpha(foreground.a);
+  const backdrop = clampAlpha(background.a);
+  const outAlpha = alpha + backdrop * (1 - alpha);
+  if (outAlpha <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+  return {
+    r: clampChannel((foreground.r * alpha + background.r * backdrop * (1 - alpha)) / outAlpha),
+    g: clampChannel((foreground.g * alpha + background.g * backdrop * (1 - alpha)) / outAlpha),
+    b: clampChannel((foreground.b * alpha + background.b * backdrop * (1 - alpha)) / outAlpha),
+    a: outAlpha,
+  };
+}
+
+function luminanceOf(rgba: Rgba): number {
+  return (
+    0.2126 * channelLuminance(rgba.r) +
+    0.7152 * channelLuminance(rgba.g) +
+    0.0722 * channelLuminance(rgba.b)
+  );
+}
+
+function ratioBetween(foreground: Rgba, background: Rgba): number {
+  const l1 = luminanceOf(foreground);
+  const l2 = luminanceOf(background);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return Math.round(((lighter + 0.05) / (darker + 0.05)) * 100) / 100;
+}
+
+/** WCAG ratio after compositing translucent text and background over a page base. */
+export function contrastRatioOver(
+  foreground: string,
+  background: string,
+  base: string,
+): number | null {
+  const fg = parseColorToRgba(foreground);
+  const bg = parseColorToRgba(background);
+  const page = parseColorToRgba(base);
+  if (!fg || !bg || !page) return null;
+  const solidBackground = compositeRgba(bg, page);
+  const solidForeground = compositeRgba(fg, solidBackground);
+  return ratioBetween(solidForeground, solidBackground);
+}
+
+function cloneThemeColor(color: ThemeColor): ThemeColor {
+  return { mode: color.mode, light: color.light, dark: color.dark };
+}
+
+/**
+ * Accept the legacy flat color string or the structured {mode, light, dark}.
+ * Invalid sides fall back to the supplied default, never to raw CSS.
+ */
+export function normalizeThemeColor(
+  raw: unknown,
+  fallback: ThemeColor = { mode: "theme", light: "", dark: "" },
+): ThemeColor {
+  const base = cloneThemeColor(fallback);
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return { mode: "theme", light: "", dark: "" };
+    if (!isValidColor(trimmed)) return base;
+    return { mode: "single", light: trimmed, dark: trimmed };
+  }
+  if (!raw || typeof raw !== "object") return base;
+  const input = raw as Partial<ThemeColor>;
+  const mode: ColorMode =
+    input.mode === "theme" || input.mode === "single" || input.mode === "split"
+      ? input.mode
+      : base.mode;
+  const side = (key: "light" | "dark"): string => {
+    const value = input[key];
+    if (typeof value !== "string") return base[key];
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    return isValidColor(trimmed) ? trimmed : base[key];
+  };
+  return { mode, light: side("light"), dark: side("dark") };
+}
+
+/** Effective CSS color for one scheme; empty means inherit from the reader. */
+export function resolveThemeColor(
+  color: ThemeColor,
+  scheme: ColorScheme,
+  role: ColorRole,
+): string {
+  if (color.mode === "theme") return THEME_ROLE_COLORS[role][scheme];
+  if (color.mode === "single") return color.light;
+  return scheme === "dark" ? color.dark : color.light;
+}
+
+export function normalizeColorList(raw: unknown, max: number): string[] {
+  if (!Array.isArray(raw) || max <= 0) return [];
+  const seen = new Set<string>();
+  const colors: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    const token = normalizeColorToken(entry);
+    if (!token || seen.has(token)) continue;
+    seen.add(token);
+    colors.push(token);
+    if (colors.length >= max) break;
+  }
+  return colors;
+}
+
+export function pushColorUnique(
+  raw: unknown,
+  color: string,
+  max: number,
+): string[] {
+  const token = normalizeColorToken(color);
+  const list = normalizeColorList(raw, max);
+  if (!token) return list;
+  return normalizeColorList([token, ...list], max);
+}
+
+const PALETTE_HUES = [0, 25, 50, 90, 150, 200, 260, 320] as const;
+const PALETTE_LIGHTNESS = [88, 74, 58, 42, 26] as const;
+
+/** Five lightness rows over eight hues; every swatch is a six-digit hex. */
+export function buildColorPalette(): string[][] {
+  return PALETTE_LIGHTNESS.map((lightness) =>
+    PALETTE_HUES.map((hue) =>
+      rgbaToHex(hslToRgba({ h: hue, s: 72, l: lightness, a: 1 })),
+    ),
+  );
+}
+
 
 export const CONTRAST_AA_MIN = 4.5;
 
@@ -432,6 +769,34 @@ function normalizeTheme(raw: unknown): AppearanceTheme {
   return raw === "light" || raw === "dark" ? raw : "auto";
 }
 
+function normalizeColors(
+  rawColors: unknown,
+  legacy: Partial<Record<ColorRole, string>>,
+): ColorSettings {
+  const source =
+    rawColors && typeof rawColors === "object"
+      ? (rawColors as Record<string, unknown>)
+      : {};
+  const colors = {} as ColorSettings;
+  for (const role of COLOR_ROLES) {
+    const candidate = source[role] !== undefined ? source[role] : legacy[role];
+    colors[role] = normalizeThemeColor(candidate, DEFAULT_COLORS[role]);
+  }
+  return colors;
+}
+
+/**
+ * The flat fields are still written to the legacy per-field prefs and read by
+ * older integrations. A theme-mode color is stored as empty, except the ribbon
+ * whose historical default must stay visible to old code.
+ */
+function colorToLegacy(color: ThemeColor, role: ColorRole): string {
+  if (color.mode === "theme") {
+    return role === "ribbon" ? THEME_ROLE_COLORS.ribbon.light : "";
+  }
+  return color.light;
+}
+
 export function normalizeAppearance(
   input?: Partial<AppearanceSettings> | null,
 ): AppearanceSettings {
@@ -439,8 +804,6 @@ export function normalizeAppearance(
   const fontSize = Number.isFinite(rawSize)
     ? Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(rawSize)))
     : DEFAULT_APPEARANCE.fontSize;
-  const rawColor = typeof input?.color === "string" ? input.color.trim() : "";
-  const rawRibbon = typeof input?.ribbonColor === "string" ? input.ribbonColor.trim() : "";
   let fontStack = normalizeFontStack(input?.fontStack);
   const stackIsEmpty =
     !fontStack.primary && fontStack.fallbacks.length === 0 && !fontStack.generic;
@@ -448,9 +811,19 @@ export function normalizeAppearance(
     fontStack = parseFontStack(input.fontFamily);
   }
   const fontFamily = buildFontStack(fontStack) || normalizeFontFamily(input?.fontFamily);
+  const colors = normalizeColors(input?.colors, {
+    text: typeof input?.color === "string" ? input.color.trim() : undefined,
+    background:
+      typeof input?.background === "string" ? input.background.trim() : undefined,
+    underline:
+      typeof input?.underlineColor === "string" ? input.underlineColor.trim() : undefined,
+    ribbon:
+      typeof input?.ribbonColor === "string" ? input.ribbonColor.trim() : undefined,
+  });
   return {
     fontSize,
-    color: isValidColor(rawColor) ? rawColor : DEFAULT_APPEARANCE.color,
+    color: colorToLegacy(colors.text, "text"),
+    colors,
     fontFamily,
     fontStack,
     fontWeight: normalizeFontWeight(input?.fontWeight),
@@ -475,13 +848,13 @@ export function normalizeAppearance(
       PARAGRAPH_SPACING_MIN,
       PARAGRAPH_SPACING_MAX,
     ),
-    background: normalizeOptionalColor(input?.background),
+    background: colorToLegacy(colors.background, "background"),
     theme: normalizeTheme(input?.theme),
     underline: typeof input?.underline === "boolean" ? input.underline : false,
-    underlineColor: normalizeOptionalColor(input?.underlineColor),
+    underlineColor: colorToLegacy(colors.underline, "underline"),
     ribbon: typeof input?.ribbon === "boolean" ? input.ribbon : DEFAULT_APPEARANCE.ribbon,
     ribbonColor:
-      isValidColor(rawRibbon) && rawRibbon ? rawRibbon : DEFAULT_APPEARANCE.ribbonColor,
+      colorToLegacy(colors.ribbon, "ribbon") || DEFAULT_APPEARANCE.ribbonColor,
   };
 }
 
@@ -489,11 +862,46 @@ function points(px: number): number {
   return Number((px * 0.75).toFixed(2));
 }
 
-function readerColors(settings: AppearanceSettings): { color: string; background: string } {
-  return {
-    color: resolveEffectiveColor(settings.color, settings.theme, "color"),
-    background: resolveEffectiveColor(settings.background, settings.theme, "background"),
-  };
+/**
+ * Resolve one role for a concrete scheme. Theme-mode text and background stay
+ * empty in auto mode so the reader can inherit its own colors; everywhere else
+ * the theme palette or role default is written explicitly.
+ */
+function cssColorForRole(
+  settings: AppearanceSettings,
+  role: ColorRole,
+  scheme: ColorScheme,
+  explicitScheme: boolean,
+): string {
+  const color = settings.colors[role];
+  if (color.mode === "theme") {
+    if (role === "text" || role === "background") {
+      return explicitScheme ? THEME_PREVIEW_PALETTE[scheme][role] : "";
+    }
+    return THEME_ROLE_COLORS[role][scheme];
+  }
+  return resolveThemeColor(color, scheme, role);
+}
+
+/** Dark value to emit in a :root[data-color-scheme=dark] override, if any. */
+function darkColorForRole(settings: AppearanceSettings, role: ColorRole): string | null {
+  const color = settings.colors[role];
+  if (color.mode === "theme") {
+    if (role === "text" || role === "background" || role === "underline") return null;
+    const light = THEME_ROLE_COLORS[role].light;
+    const dark = THEME_ROLE_COLORS[role].dark;
+    return dark && dark !== light ? dark : null;
+  }
+  if (color.mode !== "split") return null;
+  const light = resolveThemeColor(color, "light", role);
+  const dark = resolveThemeColor(color, "dark", role);
+  return dark && dark !== light ? dark : null;
+}
+
+function explicitTextColor(settings: AppearanceSettings): string {
+  const color = settings.colors.text;
+  if (color.mode === "theme") return "#222";
+  return color.light || "#222";
 }
 
 /**
@@ -505,18 +913,9 @@ export function buildTranslationCSS(
   className: string,
   input: Partial<AppearanceSettings> | null | undefined,
   mode: "reader" | "print",
-  context: { targetLanguage?: string } = {},
+  context: { targetLanguage?: string; colorScheme?: ColorScheme } = {},
 ): string {
   const settings = normalizeAppearance(input);
-  const underline = settings.underline
-    ? `  text-decoration: underline${mode === "print" ? " !important" : ""};\n${
-        settings.underlineColor
-          ? `  text-decoration-color: ${settings.underlineColor}${
-              mode === "print" ? " !important" : ""
-            };\n`
-          : ""
-      }`
-    : "";
   const explicitFont = buildFontStack(settings.fontStack);
   const autoFont = settings.autoFontByLanguage
     ? buildFontStack(resolveAutoFontStack(context.targetLanguage))
@@ -548,11 +947,24 @@ export function buildTranslationCSS(
 
   if (mode === "print") {
     // The export is meant for paper: a dark reader theme must not bleed into it.
+    const underlineColor =
+      settings.underline &&
+      settings.colors.underline.mode !== "theme" &&
+      settings.colors.underline.light
+        ? `  text-decoration-color: ${settings.colors.underline.light} !important;\n`
+        : "";
+    const underline = settings.underline
+      ? `  text-decoration: underline !important;\n${underlineColor}`
+      : "";
     return `.${className} {
   margin: 0.18em 0 ${settings.paragraphSpacing}em !important;
   padding: 0.12em 0 0.12em 0.78em !important;
-  border-left: ${settings.ribbon ? `2.2pt solid ${settings.ribbonColor}` : "none"} !important;
-  color: ${settings.color || "#222"} !important;
+  border-left: ${
+    settings.ribbon
+      ? `2.2pt solid ${resolveThemeColor(settings.colors.ribbon, "light", "ribbon")}`
+      : "none"
+  } !important;
+  color: ${explicitTextColor(settings)} !important;
   background: transparent !important;
 ${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directionRule}  font-size: ${points(printFontSizePx)}pt !important;
   line-height: ${settings.lineHeight} !important;
@@ -561,10 +973,28 @@ ${underline}  break-inside: avoid-page;
 }`;
   }
 
-  const { color, background } = readerColors(settings);
-  return `.${className} {
+  const forcedScheme = context.colorScheme !== undefined;
+  const scheme: ColorScheme =
+    context.colorScheme || (settings.theme === "dark" ? "dark" : "light");
+  const explicitScheme = forcedScheme || settings.theme !== "auto";
+  const followReaderScheme = !forcedScheme && settings.theme === "auto";
+
+  const color = cssColorForRole(settings, "text", scheme, explicitScheme);
+  const background = cssColorForRole(settings, "background", scheme, explicitScheme);
+  const ribbonColor = cssColorForRole(settings, "ribbon", scheme, explicitScheme);
+  const underlineColor =
+    settings.underline && settings.colors.underline.mode !== "theme"
+      ? cssColorForRole(settings, "underline", scheme, explicitScheme)
+      : "";
+  const underline = settings.underline
+    ? `  text-decoration: underline;\n${
+        underlineColor ? `  text-decoration-color: ${underlineColor};\n` : ""
+      }`
+    : "";
+
+  let css = `.${className} {
   box-sizing: border-box;
-  border-left: ${settings.ribbon ? `4px solid ${settings.ribbonColor}` : "none"};
+  border-left: ${settings.ribbon ? `4px solid ${ribbonColor || "#2f6fdf"}` : "none"};
   margin: 0.65em 0 ${settings.paragraphSpacing}em;
   padding: 0.45em 0.95em;
 ${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directionRule}  line-height: ${settings.lineHeight};
@@ -572,4 +1002,40 @@ ${fontFamilyRule}${fontWeightRule}${fontStyleRule}${letterSpacingRule}${directio
 ${color ? `  color: ${color};\n` : ""}${background ? `  background: ${background};\n` : ""}${underline}  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }`;
+
+  if (followReaderScheme) {
+    const darkLines: string[] = [];
+    const push = (property: string, role: ColorRole) => {
+      const dark = darkColorForRole(settings, role);
+      if (dark) darkLines.push(`  ${property}: ${dark};`);
+    };
+    push("color", "text");
+    push("background", "background");
+    if (settings.underline) push("text-decoration-color", "underline");
+    if (settings.ribbon) push("border-left-color", "ribbon");
+    if (darkLines.length) {
+      css += `\n:root[data-color-scheme="dark"] .${className} {\n${darkLines.join(
+        "\n",
+      )}\n}`;
+    }
+  }
+
+  const stateColors: Array<{ state: string; role: ColorRole }> = [
+    { state: "loading", role: "loading" },
+    { state: "error", role: "error" },
+  ];
+  for (const { state, role } of stateColors) {
+    const show = settings.colors[role].mode !== "theme" || explicitScheme;
+    if (!show) continue;
+    const value = cssColorForRole(settings, role, scheme, explicitScheme);
+    if (!value) continue;
+    css += `\n.${className}[data-state="${state}"] {\n  color: ${value};\n}`;
+    if (followReaderScheme) {
+      const dark = darkColorForRole(settings, role);
+      if (dark) {
+        css += `\n:root[data-color-scheme="dark"] .${className}[data-state="${state}"] {\n  color: ${dark};\n}`;
+      }
+    }
+  }
+  return css;
 }

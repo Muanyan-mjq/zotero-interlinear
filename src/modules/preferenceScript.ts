@@ -21,6 +21,7 @@ import {
   DEFAULT_TARGET_LANGUAGE,
   SOURCE_LANGUAGES,
   TARGET_LANGUAGES,
+  addSavedColor,
   getAppearance,
   getCachedFontDetection,
   getClaudeApiKey,
@@ -51,8 +52,10 @@ import {
   getOpenAIModel,
   getOpenAIPrompt,
   getOpenAITemperature,
+  getRecentColors,
   getRequestGapMs,
   getRequestTimeoutMs,
+  getSavedColors,
   getShortcut,
   getShortcutEnabled,
   getSkipLastPages,
@@ -92,6 +95,8 @@ import {
   setRequestGapMs,
   setRequestTimeoutMs,
   setShortcut,
+  pushRecentColor,
+  removeSavedColor,
   setShortcutEnabled,
   setSkipLastPages,
   setSourceLanguage,
@@ -99,22 +104,38 @@ import {
   type TranslationEngine,
 } from "../settings";
 import {
+  COLOR_ROLES,
   DEFAULT_APPEARANCE,
+  DEFAULT_COLORS,
   FONT_STACK_MAX_FALLBACKS,
+  RECENT_COLORS_MAX,
+  SAVED_COLORS_MAX,
+  THEME_PREVIEW_PALETTE,
+  THEME_ROLE_COLORS,
+  buildColorPalette,
   buildFontStack,
   buildTranslationCSS,
-  contrastRatio,
+  contrastRatioOver,
+  hslToRgba,
   isValidFontFamily,
   meetsContrastAA,
+  normalizeColorToken,
   normalizeFontStack,
-  normalizeHexInput,
+  parseColorToRgba,
   parseFontStack,
-  resolveEffectiveColor,
   resolveTextDirection,
+  resolveThemeColor,
+  rgbaToHex,
+  rgbaToHsl,
   type AppearanceSettings,
   type AppearanceTheme,
+  type ColorMode,
+  type ColorRole as ThemeColorRole,
+  type ColorSettings,
+  type ColorScheme,
   type FontGeneric,
   type FontStack,
+  type ThemeColor,
 } from "../appearance";
 import {
   FONT_CANDIDATES,
@@ -404,82 +425,245 @@ function resolveColorForPicker(doc: Document, value: string, fallback: string): 
   }
 }
 
-function readColorControl(
-  doc: Document,
-  inputId: string,
-  inheritId: string | null,
-  fallback: string,
-): string {
-  const inherit = inheritId ? getElement<HTMLInputElement>(doc, inheritId) : null;
-  if (inherit?.checked) return "";
-  const value = getElement<HTMLInputElement>(doc, inputId)?.value.trim() || "";
-  if (value) return value;
-  return inheritId ? "" : fallback;
+function controlValue(doc: Document, base: string): string {
+  const typed = normalizeColorToken(
+    getElement<HTMLInputElement>(doc, `${base}-hex`)?.value || "",
+  );
+  if (typed) return typed;
+  return (
+    normalizeColorToken(getElement<HTMLInputElement>(doc, base)?.value || "") || ""
+  );
 }
-
-type ColorRole = "color" | "background" | "underline" | "ribbon";
 
 interface ColorControlConfig {
   base: string;
-  role: ColorRole;
+  role: ThemeColorRole;
+  labelKey: FluentKey;
+  helpKey: FluentKey;
   presets: readonly ColorPreset[];
   presetTitleKey: FluentKey;
   fallback: string;
-  resetValue: string;
+  resetValue: ThemeColor;
   hasInherit: boolean;
 }
 
 const COLOR_CONTROLS: readonly ColorControlConfig[] = [
   {
     base: "interlinear-appearance-color",
-    role: "color",
+    role: "text",
+    labelKey: "appearance-color-label",
+    helpKey: "appearance-color-help",
     presets: TEXT_PRESETS,
     presetTitleKey: "appearance-text-preset-title",
     fallback: "#333333",
-    resetValue: "",
+    resetValue: DEFAULT_COLORS.text,
     hasInherit: true,
   },
   {
     base: "interlinear-appearance-background",
     role: "background",
+    labelKey: "appearance-background-label",
+    helpKey: "appearance-background-help",
     presets: BACKGROUND_PRESETS,
     presetTitleKey: "appearance-background-preset-title",
     fallback: "#f6f6f6",
-    resetValue: "",
+    resetValue: DEFAULT_COLORS.background,
     hasInherit: true,
   },
   {
     base: "interlinear-appearance-underline-color",
     role: "underline",
+    labelKey: "appearance-underline-color-label",
+    helpKey: "appearance-underline-color-help",
     presets: ACCENT_PRESETS,
     presetTitleKey: "appearance-accent-preset-title",
     fallback: "#333333",
-    resetValue: "",
+    resetValue: DEFAULT_COLORS.underline,
     hasInherit: true,
   },
   {
     base: "interlinear-appearance-ribbon-color",
     role: "ribbon",
+    labelKey: "appearance-ribbon-color-label",
+    helpKey: "appearance-ribbon-color-help",
     presets: ACCENT_PRESETS,
     presetTitleKey: "appearance-accent-preset-title",
     fallback: DEFAULT_APPEARANCE.ribbonColor,
-    resetValue: DEFAULT_APPEARANCE.ribbonColor,
+    resetValue: DEFAULT_COLORS.ribbon,
     hasInherit: false,
+  },
+  {
+    base: "interlinear-appearance-border-color",
+    role: "border",
+    labelKey: "appearance-border-color-label",
+    helpKey: "appearance-border-color-help",
+    presets: ACCENT_PRESETS,
+    presetTitleKey: "appearance-accent-preset-title",
+    fallback: THEME_PREVIEW_PALETTE.light.text,
+    resetValue: DEFAULT_COLORS.border,
+    hasInherit: true,
+  },
+  {
+    base: "interlinear-appearance-source-color",
+    role: "source",
+    labelKey: "appearance-source-color-label",
+    helpKey: "appearance-source-color-help",
+    presets: TEXT_PRESETS,
+    presetTitleKey: "appearance-text-preset-title",
+    fallback: THEME_PREVIEW_PALETTE.light.text,
+    resetValue: DEFAULT_COLORS.source,
+    hasInherit: true,
+  },
+  {
+    base: "interlinear-appearance-loading-color",
+    role: "loading",
+    labelKey: "appearance-loading-color-label",
+    helpKey: "appearance-loading-color-help",
+    presets: TEXT_PRESETS,
+    presetTitleKey: "appearance-text-preset-title",
+    fallback: THEME_PREVIEW_PALETTE.light.text,
+    resetValue: DEFAULT_COLORS.loading,
+    hasInherit: true,
+  },
+  {
+    base: "interlinear-appearance-error-color",
+    role: "error",
+    labelKey: "appearance-error-color-label",
+    helpKey: "appearance-error-color-help",
+    presets: ACCENT_PRESETS,
+    presetTitleKey: "appearance-accent-preset-title",
+    fallback: THEME_ROLE_COLORS.error.light,
+    resetValue: DEFAULT_COLORS.error,
+    hasInherit: true,
   },
 ];
 
-function inheritIdFor(config: ColorControlConfig): string | null {
-  return config.hasInherit ? `${config.base}-inherit` : null;
+function readThemeColor(doc: Document, config: ColorControlConfig): ThemeColor {
+  const inherit = config.hasInherit
+    ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
+    : null;
+  const selected = getElement<HTMLSelectElement>(doc, `${config.base}-mode`)?.value;
+  const mode: ColorMode = inherit?.checked
+    ? "theme"
+    : selected === "single" || selected === "split"
+      ? selected
+      : "theme";
+  const light = controlValue(doc, config.base);
+  const dark = controlValue(doc, `${config.base}-dark`);
+  return { mode, light, dark: dark || light };
 }
 
-function storedColor(doc: Document, config: ColorControlConfig): string {
-  return readColorControl(doc, config.base, inheritIdFor(config), "");
+function readColorSettings(doc: Document): ColorSettings {
+  const colors = {} as ColorSettings;
+  for (const config of COLOR_CONTROLS) {
+    colors[config.role] = readThemeColor(doc, config);
+  }
+  return colors;
 }
 
-function syncHexFromPicker(doc: Document, config: ColorControlConfig): void {
-  const picker = getElement<HTMLInputElement>(doc, config.base);
-  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
-  if (picker && hex) hex.value = picker.value.toUpperCase();
+function createElement<K extends keyof HTMLElementTagNameMap>(
+  doc: Document,
+  tag: K,
+  className?: string,
+  id?: string,
+): HTMLElementTagNameMap[K] {
+  const element = doc.createElementNS(HTML_NS, tag) as HTMLElementTagNameMap[K];
+  if (className) element.className = className;
+  if (id) element.id = id;
+  return element;
+}
+
+function createOption(
+  doc: Document,
+  select: HTMLSelectElement,
+  value: string,
+  id: string,
+  label: string,
+): void {
+  const option = createElement(doc, "option", undefined, id);
+  option.value = value;
+  option.textContent = label;
+  select.append(option);
+}
+
+function createButton(
+  doc: Document,
+  id: string,
+  label: string,
+  className = "interlinear-button interlinear-button-small",
+): HTMLButtonElement {
+  const button = createElement(doc, "button", className, id);
+  button.type = "button";
+  button.textContent = label;
+  return button;
+}
+
+function buildColorCard(doc: Document, config: ColorControlConfig): HTMLElement {
+  const card = createElement(doc, "div", "interlinear-color-control", `${config.base}-control`);
+  const head = createElement(doc, "div", "interlinear-color-head");
+  const label = createElement(doc, "label", "interlinear-color-label", `${config.base}-label`);
+  label.setAttribute("for", config.base);
+  label.textContent = getString(config.labelKey);
+  const mode = createElement(doc, "select", "interlinear-select interlinear-color-mode", `${config.base}-mode`);
+  mode.setAttribute("aria-label", getString("appearance-color-mode-label"));
+  createOption(doc, mode, "theme", `${config.base}-mode-theme`, getString("appearance-color-mode-theme"));
+  createOption(doc, mode, "single", `${config.base}-mode-single`, getString("appearance-color-mode-single"));
+  createOption(doc, mode, "split", `${config.base}-mode-split`, getString("appearance-color-mode-split"));
+  head.append(label, mode);
+
+  const row = createElement(doc, "div", "interlinear-color-row");
+  const preview = createElement(doc, "span", "interlinear-color-preview", `${config.base}-preview`);
+  const picker = createElement(doc, "input", "interlinear-color-input", config.base);
+  picker.type = "color";
+  const hex = createElement(doc, "input", "interlinear-color-hex", `${config.base}-hex`);
+  hex.type = "text";
+  hex.spellcheck = false;
+  const open = createButton(doc, `${config.base}-open-picker`, getString("appearance-color-custom-picker"));
+  const reset = createButton(doc, `${config.base}-reset`, getString("appearance-color-reset"));
+  row.append(preview, picker, hex, open, reset);
+
+  const fragment: HTMLElement[] = [head, row];
+  if (config.hasInherit) {
+    const inheritRow = createElement(doc, "div", "interlinear-color-inherit-row");
+    const inherit = createElement(doc, "input", "interlinear-checkbox", `${config.base}-inherit`);
+    inherit.type = "checkbox";
+    const inheritLabel = createElement(doc, "label", "interlinear-check-label");
+    inheritLabel.setAttribute("for", inherit.id);
+    inheritLabel.textContent = getString("appearance-color-inherit-label");
+    const inheritHelp = createElement(doc, "span", "interlinear-inherit-help", `${config.base}-inherit-help`);
+    inheritHelp.textContent = getString("appearance-color-inherit-help");
+    inheritRow.append(inherit, inheritLabel, inheritHelp);
+    fragment.push(inheritRow);
+  }
+
+  const darkRow = createElement(doc, "div", "interlinear-color-row interlinear-color-dark-row", `${config.base}-dark-row`);
+  darkRow.hidden = true;
+  const darkLabel = createElement(doc, "span", "interlinear-color-dark-label");
+  darkLabel.textContent = getString("appearance-color-dark-label");
+  const darkPreview = createElement(doc, "span", "interlinear-color-preview", `${config.base}-dark-preview`);
+  const darkPicker = createElement(doc, "input", "interlinear-color-input", `${config.base}-dark`);
+  darkPicker.type = "color";
+  const darkHex = createElement(doc, "input", "interlinear-color-hex", `${config.base}-dark-hex`);
+  darkHex.type = "text";
+  darkHex.spellcheck = false;
+  const darkOpen = createButton(doc, `${config.base}-dark-open-picker`, getString("appearance-color-custom-picker"));
+  darkRow.append(darkLabel, darkPreview, darkPicker, darkHex, darkOpen);
+  fragment.push(darkRow);
+
+  const presets = createElement(doc, "span", "interlinear-color-presets", `${config.base}-presets`);
+  const error = createElement(doc, "span", "interlinear-inline-error", `${config.base}-error`);
+  const help = createElement(doc, "p", "interlinear-help", `${config.base}-help`);
+  help.textContent = getString(config.helpKey);
+  fragment.push(presets, error, help);
+  card.append(...fragment);
+  return card;
+}
+
+function renderColorControlCards(doc: Document): void {
+  const host = getElement<HTMLElement>(doc, "interlinear-appearance-color-controls");
+  if (!host || host.dataset.ready === "true") return;
+  host.replaceChildren(...COLOR_CONTROLS.map((config) => buildColorCard(doc, config)));
+  host.dataset.ready = "true";
 }
 
 function setControlDisabled(
@@ -487,11 +671,15 @@ function setControlDisabled(
   config: ColorControlConfig,
   disabled: boolean,
 ): void {
-  const picker = getElement<HTMLInputElement>(doc, config.base);
-  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
+  for (const id of [
+    config.base,
+    `${config.base}-hex`,
+    `${config.base}-open-picker`,
+  ]) {
+    const element = getElement<HTMLInputElement>(doc, id);
+    if (element) element.disabled = disabled;
+  }
   const container = getElement<HTMLElement>(doc, `${config.base}-presets`);
-  if (picker) picker.disabled = disabled;
-  if (hex) hex.disabled = disabled;
   if (container) {
     for (const button of Array.from(container.querySelectorAll("button"))) {
       (button as HTMLButtonElement).disabled = disabled;
@@ -499,134 +687,227 @@ function setControlDisabled(
   }
 }
 
-function clearHexError(doc: Document, config: ColorControlConfig): void {
-  updateStatus(getElement<HTMLElement>(doc, `${config.base}-error`), "", "info");
+function clearHexError(doc: Document, base: string): void {
+  updateStatus(getElement<HTMLElement>(doc, `${base}-error`), "", "info");
 }
 
-function applyStoredToControl(
+function applyThemeColorToControl(
   doc: Document,
   config: ColorControlConfig,
-  stored: string,
+  color: ThemeColor,
 ): void {
-  const picker = getElement<HTMLInputElement>(doc, config.base);
+  const mode = getElement<HTMLSelectElement>(doc, `${config.base}-mode`);
+  if (mode) mode.value = color.mode;
   const inherit = config.hasInherit
     ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
     : null;
-  const hasValue = !!stored.trim();
-  if (inherit) inherit.checked = !hasValue;
-  if (picker) picker.value = resolveColorForPicker(doc, stored, config.fallback);
-  syncHexFromPicker(doc, config);
-  setControlDisabled(doc, config, !!inherit && !hasValue);
-  clearHexError(doc, config);
+  if (inherit) inherit.checked = color.mode === "theme";
+  const light = color.light || "";
+  const picker = getElement<HTMLInputElement>(doc, config.base);
+  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
+  if (picker) {
+    picker.value = resolveColorForPicker(doc, light, config.fallback);
+  }
+  if (hex) hex.value = light ? light.toUpperCase() : "";
+  const dark = color.dark || light;
+  const darkPicker = getElement<HTMLInputElement>(doc, `${config.base}-dark`);
+  const darkHex = getElement<HTMLInputElement>(doc, `${config.base}-dark-hex`);
+  if (darkPicker) {
+    darkPicker.value = resolveColorForPicker(doc, dark, config.fallback);
+  }
+  if (darkHex) darkHex.value = color.dark ? color.dark.toUpperCase() : "";
+  const darkRow = getElement<HTMLElement>(doc, `${config.base}-dark-row`);
+  if (darkRow) darkRow.hidden = color.mode !== "split";
+  setControlDisabled(doc, config, color.mode === "theme");
+  clearHexError(doc, config.base);
+  clearHexError(doc, `${config.base}-dark`);
+}
+
+function setControlValue(
+  doc: Document,
+  config: ColorControlConfig,
+  value: string,
+  scheme: ColorScheme,
+): void {
+  const token = normalizeColorToken(value);
+  if (!token) return;
+  const base = scheme === "dark" ? `${config.base}-dark` : config.base;
+  const picker = getElement<HTMLInputElement>(doc, base);
+  const hex = getElement<HTMLInputElement>(doc, `${base}-hex`);
+  if (picker) picker.value = token.slice(0, 7).toLowerCase();
+  if (hex) hex.value = token;
+  const mode = getElement<HTMLSelectElement>(doc, `${config.base}-mode`);
+  if (scheme === "dark") {
+    if (mode && mode.value !== "split") mode.value = "split";
+    const darkRow = getElement<HTMLElement>(doc, `${config.base}-dark-row`);
+    if (darkRow) darkRow.hidden = false;
+  } else {
+    if (mode && mode.value === "theme") mode.value = "single";
+    const inherit = config.hasInherit
+      ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
+      : null;
+    if (inherit) inherit.checked = false;
+  }
+  setControlDisabled(doc, config, false);
+  clearHexError(doc, base);
+  refreshColorUI(doc);
+  markDirty(doc);
 }
 
 function renderControlPresets(doc: Document, config: ColorControlConfig): void {
   const container = getElement<HTMLElement>(doc, `${config.base}-presets`);
-  const picker = getElement<HTMLInputElement>(doc, config.base);
-  if (!container || !picker) return;
+  if (!container) return;
   const title = getString(config.presetTitleKey);
   container.title = title;
   container.setAttribute("aria-label", title);
   const buttons = config.presets.map((preset) => {
-    const button = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+    const button = createElement(doc, "button", "interlinear-color-preset");
     button.type = "button";
-    button.className = "interlinear-color-preset";
     button.style.backgroundColor = preset.value;
     button.dataset.value = preset.value;
     const name = getString(preset.nameKey);
     button.title = `${name} (${preset.value})`;
     button.setAttribute("aria-label", `${name} (${preset.value})`);
     button.addEventListener("click", () => {
-      picker.value = preset.value.toLowerCase();
-      const inherit = config.hasInherit
-        ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
-        : null;
-      if (inherit) inherit.checked = false;
-      setControlDisabled(doc, config, false);
-      syncHexFromPicker(doc, config);
-      clearHexError(doc, config);
-      refreshColorUI(doc);
-      markDirty(doc);
+      setControlValue(doc, config, preset.value, "light");
+      pushRecentColor(preset.value);
+      renderPickerSwatches(doc);
     });
     return button;
   });
   container.replaceChildren(...buttons);
 }
 
-function initColorControl(doc: Document, config: ColorControlConfig): void {
+function bindHexInput(
+  doc: Document,
+  config: ColorControlConfig,
+  base: string,
+  scheme: ColorScheme,
+): void {
+  const hex = getElement<HTMLInputElement>(doc, `${base}-hex`);
+  if (!hex) return;
+  hex.setAttribute("aria-label", getString("appearance-color-hex-label"));
+  hex.placeholder = "#RRGGBB / #RRGGBBAA";
+  hex.maxLength = 9;
+  hex.spellcheck = false;
+  hex.addEventListener("input", () => {
+    const token = normalizeColorToken(hex.value);
+    if (!token) return;
+    setControlValue(doc, config, token, scheme);
+    hex.value = token;
+  });
+  hex.addEventListener("blur", () => {
+    const token = normalizeColorToken(hex.value);
+    if (token) {
+      hex.value = token;
+      clearHexError(doc, base);
+      pushRecentColor(token);
+      renderPickerSwatches(doc);
+      return;
+    }
+    if (hex.value.trim() !== "") {
+      updateStatus(
+        getElement<HTMLElement>(doc, `${base}-error`),
+        getString("appearance-color-hex-invalid"),
+        "error",
+      );
+    }
+    hex.value = controlValue(doc, base).toUpperCase();
+  });
+}
+
+function bindNativePicker(
+  doc: Document,
+  config: ColorControlConfig,
+  base: string,
+  scheme: ColorScheme,
+): void {
+  const picker = getElement<HTMLInputElement>(doc, base);
+  if (!picker) return;
+  picker.addEventListener("input", () => {
+    setControlValue(doc, config, picker.value, scheme);
+  });
+  picker.addEventListener("change", () => {
+    pushRecentColor(picker.value);
+    renderPickerSwatches(doc);
+  });
+}
+
+function initColorControl(
+  doc: Document,
+  config: ColorControlConfig,
+  stored: ThemeColor,
+): void {
   const picker = getElement<HTMLInputElement>(doc, config.base);
   if (!picker) return;
   const inherit = config.hasInherit
     ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
     : null;
-  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
+  const mode = getElement<HTMLSelectElement>(doc, `${config.base}-mode`);
   const reset = getElement<HTMLButtonElement>(doc, `${config.base}-reset`);
 
-  const appearance = getAppearance();
-  const stored =
-    config.role === "color"
-      ? appearance.color
-      : config.role === "background"
-        ? appearance.background
-        : config.role === "underline"
-          ? appearance.underlineColor
-          : appearance.ribbonColor;
-  applyStoredToControl(doc, config, stored);
+  applyThemeColorToControl(doc, config, stored);
   renderControlPresets(doc, config);
-
-  if (hex) {
-    hex.setAttribute("aria-label", getString("appearance-color-hex-label"));
-    hex.placeholder = "#RRGGBB";
-    hex.maxLength = 7;
-    hex.spellcheck = false;
-    hex.addEventListener("input", () => {
-      const normalized = normalizeHexInput(hex.value);
-      if (!normalized) return;
-      picker.value = normalized.toLowerCase();
-      hex.value = normalized;
-      if (inherit) inherit.checked = false;
-      setControlDisabled(doc, config, false);
-      clearHexError(doc, config);
-      refreshColorUI(doc);
-      markDirty(doc);
-    });
-    hex.addEventListener("blur", () => {
-      const normalized = normalizeHexInput(hex.value);
-      if (normalized) {
-        hex.value = normalized;
-        clearHexError(doc, config);
-        return;
-      }
-      if (hex.value.trim() !== "") {
-        updateStatus(
-          getElement<HTMLElement>(doc, `${config.base}-error`),
-          getString("appearance-color-hex-invalid"),
-          "error",
-        );
-      }
-      hex.value = picker.value.toUpperCase();
-    });
-  }
-
-  picker.addEventListener("input", () => {
-    if (inherit) inherit.checked = false;
-    setControlDisabled(doc, config, false);
-    syncHexFromPicker(doc, config);
-    clearHexError(doc, config);
-    refreshColorUI(doc);
-    markDirty(doc);
-  });
+  bindHexInput(doc, config, config.base, "light");
+  bindHexInput(doc, config, `${config.base}-dark`, "dark");
+  bindNativePicker(doc, config, config.base, "light");
+  bindNativePicker(doc, config, `${config.base}-dark`, "dark");
 
   inherit?.addEventListener("change", () => {
-    setControlDisabled(doc, config, inherit.checked);
-    if (!inherit.checked) syncHexFromPicker(doc, config);
-    clearHexError(doc, config);
+    if (inherit.checked) {
+      if (mode) mode.value = "theme";
+      setControlDisabled(doc, config, true);
+    } else {
+      if (mode?.value === "theme") mode.value = "single";
+      setControlDisabled(doc, config, false);
+    }
+    clearHexError(doc, config.base);
     refreshColorUI(doc);
     markDirty(doc);
   });
 
+  mode?.addEventListener("change", () => {
+    if (inherit) inherit.checked = mode.value === "theme";
+    if (mode.value === "theme") {
+      setControlDisabled(doc, config, true);
+    } else {
+      setControlDisabled(doc, config, false);
+      if (mode.value === "split") {
+        const darkHex = getElement<HTMLInputElement>(doc, `${config.base}-dark-hex`);
+        const light = controlValue(doc, config.base);
+        if (darkHex && !normalizeColorToken(darkHex.value)) {
+          const fallback = light || resolveColorForPicker(doc, "", config.fallback);
+          if (darkHex) darkHex.value = fallback.toUpperCase();
+          const darkPicker = getElement<HTMLInputElement>(doc, `${config.base}-dark`);
+          if (darkPicker) darkPicker.value = fallback.slice(0, 7).toLowerCase();
+        }
+      }
+    }
+    const darkRow = getElement<HTMLElement>(doc, `${config.base}-dark-row`);
+    if (darkRow) darkRow.hidden = mode.value !== "split";
+    refreshColorUI(doc);
+    markDirty(doc);
+  });
+
+  getElement<HTMLButtonElement>(doc, `${config.base}-open-picker`)?.addEventListener(
+    "click",
+    (event) =>
+      openColorPicker(
+        doc,
+        config,
+        "light",
+        event.currentTarget as HTMLElement | null,
+      ),
+  );
+  getElement<HTMLButtonElement>(
+    doc,
+    `${config.base}-dark-open-picker`,
+  )?.addEventListener("click", (event) =>
+    openColorPicker(doc, config, "dark", event.currentTarget as HTMLElement | null),
+  );
+
   reset?.addEventListener("click", () => {
-    applyStoredToControl(doc, config, config.resetValue);
+    applyThemeColorToControl(doc, config, config.resetValue);
     refreshColorUI(doc);
     markDirty(doc);
   });
@@ -639,30 +920,55 @@ function currentTheme(doc: Document): AppearanceTheme {
   );
 }
 
+function previewScheme(doc: Document): ColorScheme {
+  const toggle = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-preview-scheme",
+  );
+  if (toggle?.checked) return "dark";
+  return currentTheme(doc) === "dark" ? "dark" : "light";
+}
+
 function effectivePreviewColor(
   doc: Document,
   config: ColorControlConfig,
-  theme: AppearanceTheme,
+  scheme: ColorScheme,
 ): string {
-  const stored = storedColor(doc, config);
-  switch (config.role) {
-    case "color":
-      return resolveEffectiveColor(stored, theme, "color");
-    case "background":
-      return resolveEffectiveColor(stored, theme, "background");
-    case "underline": {
-      if (stored.trim()) return stored;
-      const text = readColorControl(
-        doc,
-        "interlinear-appearance-color",
-        "interlinear-appearance-color-inherit",
-        "",
-      );
-      return resolveEffectiveColor(text, theme, "color");
-    }
-    case "ribbon":
-      return stored.trim() || DEFAULT_APPEARANCE.ribbonColor;
+  const color = readThemeColor(doc, config);
+  const value = resolveThemeColor(color, scheme, config.role);
+  if (value) return value;
+  if (config.role === "text") return THEME_PREVIEW_PALETTE[scheme].text;
+  if (config.role === "underline") {
+    const text = readThemeColor(
+      doc,
+      COLOR_CONTROLS[0] as ColorControlConfig,
+    );
+    return (
+      resolveThemeColor(text, scheme, "text") ||
+      THEME_PREVIEW_PALETTE[scheme].text
+    );
   }
+  return "";
+}
+
+function setPreviewSwatch(
+  preview: HTMLElement | null,
+  value: string,
+  inheritLabel: string,
+): void {
+  if (!preview) return;
+  if (value.trim()) {
+    preview.style.backgroundColor = value;
+    preview.dataset.inherit = "false";
+    preview.title = value;
+    preview.setAttribute("aria-label", value);
+  } else {
+    preview.style.backgroundColor = "";
+    preview.dataset.inherit = "true";
+    preview.title = inheritLabel;
+    preview.setAttribute("aria-label", inheritLabel);
+  }
+  preview.textContent = "";
 }
 
 function refreshContrastWarning(doc: Document): void {
@@ -671,24 +977,29 @@ function refreshContrastWarning(doc: Document): void {
     "interlinear-appearance-contrast-warning",
   );
   if (!warning) return;
-  const text = readColorControl(
-    doc,
-    "interlinear-appearance-color",
-    "interlinear-appearance-color-inherit",
-    "",
-  );
-  const background = readColorControl(
-    doc,
-    "interlinear-appearance-background",
-    "interlinear-appearance-background-inherit",
-    "",
-  );
-  const ratio =
-    text.trim() && background.trim() ? contrastRatio(text, background) : null;
-  if (ratio !== null && !meetsContrastAA(ratio)) {
+  const colors = readColorSettings(doc);
+  const ratioFor = (scheme: ColorScheme): number | null => {
+    const palette = THEME_PREVIEW_PALETTE[scheme];
+    const text = resolveThemeColor(colors.text, scheme, "text") || palette.text;
+    const background =
+      resolveThemeColor(colors.background, scheme, "background") ||
+      palette.background;
+    return contrastRatioOver(text, background, palette.background);
+  };
+  const light = ratioFor("light");
+  const dark = ratioFor("dark");
+  const failing =
+    (light !== null && !meetsContrastAA(light)) ||
+    (dark !== null && !meetsContrastAA(dark));
+  if (failing) {
     updateStatus(
       warning,
-      getString("appearance-contrast-warning", { args: { ratio } }),
+      getString("appearance-contrast-warning-schemes", {
+        args: {
+          light: light === null ? "?" : light.toFixed(2),
+          dark: dark === null ? "?" : dark.toFixed(2),
+        },
+      }),
       "warning",
     );
   } else {
@@ -697,33 +1008,26 @@ function refreshContrastWarning(doc: Document): void {
 }
 
 function refreshColorUI(doc: Document): void {
-  const theme = currentTheme(doc);
+  const scheme = previewScheme(doc);
   const inheritLabel = getString("appearance-color-preview-inherit");
   for (const config of COLOR_CONTROLS) {
-    const preview = getElement<HTMLElement>(doc, `${config.base}-preview`);
-    if (preview) {
-      const effective = effectivePreviewColor(doc, config, theme);
-      if (effective.trim()) {
-        preview.style.backgroundColor = effective;
-        preview.dataset.inherit = "false";
-        preview.textContent = "";
-        preview.title = effective;
-        preview.setAttribute("aria-label", effective);
-      } else {
-        preview.style.backgroundColor = "";
-        preview.dataset.inherit = "true";
-        preview.textContent = "";
-        preview.title = inheritLabel;
-        preview.setAttribute("aria-label", inheritLabel);
-      }
-    }
-    const picker = getElement<HTMLInputElement>(doc, config.base);
-    const inherit = config.hasInherit
-      ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
-      : null;
-    const activeValue = inherit?.checked ? "" : (picker?.value || "").toLowerCase();
+    const lightPreview = getElement<HTMLElement>(doc, `${config.base}-preview`);
+    setPreviewSwatch(
+      lightPreview,
+      effectivePreviewColor(doc, config, scheme),
+      inheritLabel,
+    );
+    const color = readThemeColor(doc, config);
+    const darkPreview = getElement<HTMLElement>(
+      doc,
+      `${config.base}-dark-preview`,
+    );
+    const darkValue =
+      resolveThemeColor({ ...color, mode: "split" }, "dark", config.role) || "";
+    setPreviewSwatch(darkPreview, darkValue, inheritLabel);
     const container = getElement<HTMLElement>(doc, `${config.base}-presets`);
     if (container) {
+      const activeValue = color.light.toLowerCase();
       for (const button of Array.from(
         container.querySelectorAll(".interlinear-color-preset"),
       )) {
@@ -737,6 +1041,662 @@ function refreshColorUI(doc: Document): void {
   }
   refreshContrastWarning(doc);
   refreshAppearancePreview(doc);
+}
+
+interface ColorPickerState {
+  config: ColorControlConfig;
+  scheme: ColorScheme;
+  h: number;
+  s: number;
+  l: number;
+  a: number;
+  opener: HTMLElement | null;
+}
+
+let colorPickerState: ColorPickerState | null = null;
+
+const PICKER_SWATCH_CLASS = "interlinear-color-swatch";
+
+function pickerPanel(doc: Document): HTMLElement | null {
+  return getElement<HTMLElement>(doc, "interlinear-color-picker");
+}
+
+function supportsCustomPicker(doc: Document): boolean {
+  return typeof (doc.defaultView as any)?.PointerEvent === "function";
+}
+
+function pickerHex(state: ColorPickerState): string {
+  return rgbaToHex(hslToRgba({ h: state.h, s: state.s, l: state.l, a: state.a }));
+}
+
+function pickerTargetBase(state: ColorPickerState): string {
+  return state.scheme === "dark"
+    ? `${state.config.base}-dark`
+    : state.config.base;
+}
+
+function makePickerSwatch(doc: Document, color: string): HTMLButtonElement {
+  const button = createElement(doc, "button", PICKER_SWATCH_CLASS);
+  button.type = "button";
+  button.style.backgroundColor = color;
+  button.dataset.value = color;
+  button.title = color;
+  button.setAttribute("aria-label", color);
+  button.addEventListener("click", () => applyPickerHex(doc, color, false));
+  return button;
+}
+
+function renderPickerSwatches(doc: Document): void {
+  const panel = pickerPanel(doc);
+  if (!panel) return;
+  const palette = getElement<HTMLElement>(doc, "interlinear-color-picker-palette");
+  if (palette) {
+    palette.replaceChildren(
+      ...buildColorPalette()
+        .flat()
+        .map((color) => makePickerSwatch(doc, color)),
+    );
+  }
+  const recent = getElement<HTMLElement>(doc, "interlinear-color-picker-recent");
+  if (recent) {
+    recent.replaceChildren(
+      ...getRecentColors()
+        .slice(0, RECENT_COLORS_MAX)
+        .map((color: string) => makePickerSwatch(doc, color)),
+    );
+    recent.dataset.empty = String(recent.childElementCount === 0);
+  }
+  const saved = getElement<HTMLElement>(doc, "interlinear-color-picker-saved");
+  if (saved) {
+    const items = getSavedColors()
+      .slice(0, SAVED_COLORS_MAX)
+      .map((color) => {
+        const item = createElement(doc, "span", "interlinear-color-saved-item");
+        item.append(makePickerSwatch(doc, color));
+        const remove = createButton(
+          doc,
+          "",
+          "\u00d7",
+          "interlinear-color-saved-remove",
+        );
+        remove.title = getString("appearance-color-picker-remove");
+        remove.setAttribute("aria-label", `${remove.title} ${color}`);
+        remove.addEventListener("click", (event) => {
+          event.stopPropagation();
+          removeSavedColor(color);
+          renderPickerSwatches(doc);
+        });
+        item.append(remove);
+        return item;
+      });
+    saved.replaceChildren(...items);
+    saved.dataset.empty = String(items.length === 0);
+  }
+}
+
+function syncPickerFields(doc: Document, skip?: "hex" | "rgb" | "hsl"): void {
+  const state = colorPickerState;
+  if (!state) return;
+  const hex = pickerHex(state);
+  if (skip !== "hex") {
+    const hexInput = getElement<HTMLInputElement>(doc, "interlinear-color-picker-hex");
+    if (hexInput) hexInput.value = hex;
+  }
+  const rgba = hslToRgba({ h: state.h, s: state.s, l: state.l, a: state.a });
+  if (skip !== "rgb") {
+    for (const [id, value] of [
+      ["interlinear-color-picker-r", rgba.r],
+      ["interlinear-color-picker-g", rgba.g],
+      ["interlinear-color-picker-b", rgba.b],
+    ] as const) {
+      const input = getElement<HTMLInputElement>(doc, id);
+      if (input) input.value = String(value);
+    }
+  }
+  if (skip !== "hsl") {
+    for (const [id, value] of [
+      ["interlinear-color-picker-h", state.h],
+      ["interlinear-color-picker-s", state.s],
+      ["interlinear-color-picker-l", state.l],
+    ] as const) {
+      const input = getElement<HTMLInputElement>(doc, id);
+      if (input) input.value = String(Math.round(value));
+    }
+  }
+  const hue = getElement<HTMLInputElement>(doc, "interlinear-color-picker-hue");
+  if (hue) hue.value = String(Math.round(state.h));
+  const alpha = getElement<HTMLInputElement>(doc, "interlinear-color-picker-alpha");
+  if (alpha) alpha.value = String(Math.round(state.a * 100));
+  const sv = getElement<HTMLElement>(doc, "interlinear-color-picker-sv");
+  if (sv) {
+    sv.style.backgroundImage = `linear-gradient(to top, #000, rgba(0,0,0,0)), linear-gradient(to right, #fff, hsl(${state.h} 100% 50%))`;
+  }
+  const cursor = getElement<HTMLElement>(doc, "interlinear-color-picker-cursor");
+  if (cursor) {
+    cursor.style.left = `${state.s}%`;
+    cursor.style.top = `${100 - state.l}%`;
+    cursor.style.backgroundColor = hex;
+  }
+  const preview = getElement<HTMLElement>(doc, "interlinear-color-picker-preview");
+  if (preview) preview.style.backgroundColor = hex;
+  const native = getElement<HTMLInputElement>(doc, "interlinear-color-picker-native");
+  if (native) native.value = hex.slice(0, 7).toLowerCase();
+}
+
+function applyPickerColor(doc: Document, skip?: "hex" | "rgb" | "hsl"): void {
+  const state = colorPickerState;
+  if (!state) return;
+  const hex = pickerHex(state);
+  const base = pickerTargetBase(state);
+  const hexInput = getElement<HTMLInputElement>(doc, `${base}-hex`);
+  if (hexInput) hexInput.value = hex;
+  const picker = getElement<HTMLInputElement>(doc, base);
+  if (picker) picker.value = hex.slice(0, 7).toLowerCase();
+  const mode = getElement<HTMLSelectElement>(
+    doc,
+    `${state.config.base}-mode`,
+  );
+  if (state.scheme === "dark") {
+    if (mode && mode.value !== "split") mode.value = "split";
+    const darkRow = getElement<HTMLElement>(
+      doc,
+      `${state.config.base}-dark-row`,
+    );
+    if (darkRow) darkRow.hidden = false;
+  } else if (mode?.value === "theme") {
+    mode.value = "single";
+  }
+  const inherit = state.config.hasInherit
+    ? getElement<HTMLInputElement>(doc, `${state.config.base}-inherit`)
+    : null;
+  if (inherit) inherit.checked = false;
+  setControlDisabled(doc, state.config, false);
+  clearHexError(doc, base);
+  syncPickerFields(doc, skip);
+  refreshColorUI(doc);
+  markDirty(doc);
+}
+
+function applyPickerHex(doc: Document, value: string, commit: boolean): void {
+  const state = colorPickerState;
+  if (!state) return;
+  const rgba = parseColorToRgba(value);
+  if (!rgba) return;
+  const hsl = rgbaToHsl(rgba);
+  state.h = hsl.h;
+  state.s = hsl.s;
+  state.l = hsl.l;
+  state.a = rgba.a;
+  applyPickerColor(doc);
+  if (commit) {
+    pushRecentColor(pickerHex(state));
+    renderPickerSwatches(doc);
+  }
+}
+
+function setPickerStatus(doc: Document, text: string): void {
+  const status = getElement<HTMLElement>(doc, "interlinear-color-picker-status");
+  if (status) status.textContent = text;
+}
+
+function closeColorPicker(doc: Document, commit = true): void {
+  const state = colorPickerState;
+  const panel = pickerPanel(doc);
+  if (!state || !panel) return;
+  const opener = state.opener;
+  if (commit) {
+    pushRecentColor(pickerHex(state));
+    renderPickerSwatches(doc);
+  }
+  panel.hidden = true;
+  colorPickerState = null;
+  opener?.focus();
+}
+
+function pickerRangeRow(
+  doc: Document,
+  id: string,
+  labelKey: FluentKey,
+  min: number,
+  max: number,
+): HTMLElement {
+  const row = createElement(doc, "div", "interlinear-color-picker-range");
+  const label = createElement(doc, "label", "interlinear-color-picker-label");
+  label.setAttribute("for", id);
+  label.textContent = getString(labelKey);
+  const input = createElement(doc, "input", "interlinear-color-picker-slider", id);
+  input.type = "range";
+  input.min = String(min);
+  input.max = String(max);
+  input.step = "1";
+  row.append(label, input);
+  return row;
+}
+
+function pickerNumberRow(
+  doc: Document,
+  fields: readonly { id: string; labelKey: FluentKey; min: number; max: number }[],
+  className: string,
+): HTMLElement {
+  const row = createElement(doc, "div", className);
+  for (const field of fields) {
+    const wrap = createElement(doc, "label", "interlinear-color-picker-number");
+    const label = createElement(doc, "span");
+    label.textContent = getString(field.labelKey);
+    label.id = `${field.id}-label`;
+    const input = createElement(doc, "input", "interlinear-input", field.id);
+    input.type = "number";
+    input.min = String(field.min);
+    input.max = String(field.max);
+    input.step = "1";
+    wrap.setAttribute("for", field.id);
+    wrap.append(label, input);
+    row.append(wrap);
+  }
+  return row;
+}
+
+function initializeColorPicker(doc: Document): void {
+  if (pickerPanel(doc)) return;
+  const root = doc.body || doc.documentElement;
+  if (!root) return;
+  const panel = createElement(doc, "div", "interlinear-color-picker");
+  panel.id = "interlinear-color-picker";
+  panel.hidden = true;
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", getString("appearance-color-picker-title"));
+
+  const head = createElement(doc, "div", "interlinear-color-picker-head");
+  const title = createElement(doc, "strong", "interlinear-color-picker-title");
+  title.textContent = getString("appearance-color-picker-title");
+  const close = createButton(doc, "interlinear-color-picker-close", getString("appearance-color-picker-close"));
+  head.append(title, close);
+
+  const sv = createElement(doc, "div", "interlinear-color-picker-sv", "interlinear-color-picker-sv");
+  sv.tabIndex = 0;
+  sv.setAttribute("role", "slider");
+  sv.setAttribute("aria-label", getString("appearance-color-picker-saturation-lightness"));
+  const cursor = createElement(doc, "span", "interlinear-color-picker-cursor", "interlinear-color-picker-cursor");
+  sv.append(cursor);
+
+  const hueRow = pickerRangeRow(doc, "interlinear-color-picker-hue", "appearance-color-picker-hue", 0, 360);
+  const alphaRow = pickerRangeRow(doc, "interlinear-color-picker-alpha", "appearance-color-picker-alpha", 0, 100);
+
+  const hexRow = createElement(doc, "div", "interlinear-color-picker-hex-row");
+  const hexLabel = createElement(doc, "label", "interlinear-color-picker-label");
+  hexLabel.setAttribute("for", "interlinear-color-picker-hex");
+  hexLabel.textContent = getString("appearance-color-picker-hex");
+  const hexInput = createElement(doc, "input", "interlinear-color-hex", "interlinear-color-picker-hex");
+  hexInput.type = "text";
+  hexInput.maxLength = 9;
+  hexInput.spellcheck = false;
+  hexInput.placeholder = "#RRGGBB / #RRGGBBAA";
+  const preview = createElement(doc, "span", "interlinear-color-picker-preview", "interlinear-color-picker-preview");
+  hexRow.append(hexLabel, hexInput, preview);
+
+  const rgbRow = pickerNumberRow(
+    doc,
+    [
+      { id: "interlinear-color-picker-r", labelKey: "appearance-color-picker-red", min: 0, max: 255 },
+      { id: "interlinear-color-picker-g", labelKey: "appearance-color-picker-green", min: 0, max: 255 },
+      { id: "interlinear-color-picker-b", labelKey: "appearance-color-picker-blue", min: 0, max: 255 },
+    ],
+    "interlinear-color-picker-numbers",
+  );
+  const hslRow = pickerNumberRow(
+    doc,
+    [
+      { id: "interlinear-color-picker-h", labelKey: "appearance-color-picker-hsl-hue", min: 0, max: 360 },
+      { id: "interlinear-color-picker-s", labelKey: "appearance-color-picker-hsl-saturation", min: 0, max: 100 },
+      { id: "interlinear-color-picker-l", labelKey: "appearance-color-picker-hsl-lightness", min: 0, max: 100 },
+    ],
+    "interlinear-color-picker-numbers",
+  );
+
+  const paletteTitle = createElement(doc, "div", "interlinear-color-picker-section-title");
+  paletteTitle.textContent = getString("appearance-color-picker-palette");
+  const palette = createElement(doc, "div", "interlinear-color-picker-grid", "interlinear-color-picker-palette");
+  const recentTitle = createElement(doc, "div", "interlinear-color-picker-section-title");
+  recentTitle.textContent = getString("appearance-color-picker-recent");
+  const recent = createElement(doc, "div", "interlinear-color-picker-grid", "interlinear-color-picker-recent");
+  const savedHead = createElement(doc, "div", "interlinear-color-picker-section-head");
+  const savedTitle = createElement(doc, "div", "interlinear-color-picker-section-title");
+  savedTitle.textContent = getString("appearance-color-picker-saved");
+  const save = createButton(doc, "interlinear-color-picker-save", getString("appearance-color-picker-save"));
+  savedHead.append(savedTitle, save);
+  const saved = createElement(doc, "div", "interlinear-color-picker-grid", "interlinear-color-picker-saved");
+
+  const actions = createElement(doc, "div", "interlinear-color-picker-actions");
+  const copy = createButton(doc, "interlinear-color-picker-copy", getString("appearance-color-picker-copy"));
+  const paste = createButton(doc, "interlinear-color-picker-paste", getString("appearance-color-picker-paste"));
+  const nativeLabel = createElement(doc, "label", "interlinear-color-picker-label");
+  nativeLabel.setAttribute("for", "interlinear-color-picker-native");
+  nativeLabel.textContent = getString("appearance-color-picker-native");
+  const native = createElement(doc, "input", "interlinear-color-input", "interlinear-color-picker-native");
+  native.type = "color";
+  const status = createElement(doc, "span", "interlinear-color-picker-status", "interlinear-color-picker-status");
+  status.setAttribute("role", "status");
+  actions.append(copy, paste, nativeLabel, native);
+
+  panel.append(
+    head,
+    sv,
+    hueRow,
+    alphaRow,
+    hexRow,
+    rgbRow,
+    hslRow,
+    paletteTitle,
+    palette,
+    recentTitle,
+    recent,
+    savedHead,
+    saved,
+    actions,
+    status,
+  );
+  root.append(panel);
+
+  close.addEventListener("click", () => closeColorPicker(doc));
+  panel.addEventListener("keydown", (event) => {
+    if ((event as KeyboardEvent).key === "Escape") {
+      event.preventDefault();
+      closeColorPicker(doc);
+    }
+  });
+  doc.addEventListener("pointerdown", (event) => {
+    if (panel.hidden || !colorPickerState) return;
+    const target = event.target as Node | null;
+    if (target && (panel.contains(target) || colorPickerState.opener?.contains(target))) {
+      return;
+    }
+    closeColorPicker(doc);
+  });
+
+  const stateGuard = () => colorPickerState;
+  const svUpdate = (clientX: number, clientY: number) => {
+    const state = stateGuard();
+    if (!state) return;
+    const rect = sv.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    state.s = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
+    state.l = Math.min(
+      100,
+      Math.max(0, 100 - ((clientY - rect.top) / rect.height) * 100),
+    );
+    applyPickerColor(doc);
+  };
+  let svDragging = false;
+  sv.addEventListener("pointerdown", ((event: PointerEvent) => {
+    if (!stateGuard()) return;
+    svDragging = true;
+    sv.setPointerCapture?.(event.pointerId);
+    svUpdate(event.clientX, event.clientY);
+    event.preventDefault();
+  }) as EventListener);
+  sv.addEventListener("pointermove", ((event: PointerEvent) => {
+    if (svDragging) svUpdate(event.clientX, event.clientY);
+  }) as EventListener);
+  sv.addEventListener("pointerup", () => {
+    if (!svDragging) return;
+    svDragging = false;
+    const state = stateGuard();
+    if (state) {
+      pushRecentColor(pickerHex(state));
+      renderPickerSwatches(doc);
+    }
+  });
+  sv.addEventListener("keydown", (event) => {
+    const state = stateGuard();
+    if (!state) return;
+    const keyEvent = event as KeyboardEvent;
+    const step = keyEvent.shiftKey ? 5 : 1;
+    if (keyEvent.key === "ArrowLeft") state.s -= step;
+    else if (keyEvent.key === "ArrowRight") state.s += step;
+    else if (keyEvent.key === "ArrowUp") state.l += step;
+    else if (keyEvent.key === "ArrowDown") state.l -= step;
+    else return;
+    event.preventDefault();
+    state.s = Math.min(100, Math.max(0, state.s));
+    state.l = Math.min(100, Math.max(0, state.l));
+    applyPickerColor(doc);
+  });
+
+  getElement<HTMLInputElement>(doc, "interlinear-color-picker-hue")?.addEventListener(
+    "input",
+    (event) => {
+      const state = stateGuard();
+      if (!state) return;
+      state.h = Number((event.target as HTMLInputElement).value) || 0;
+      applyPickerColor(doc);
+    },
+  );
+  getElement<HTMLInputElement>(doc, "interlinear-color-picker-alpha")?.addEventListener(
+    "input",
+    (event) => {
+      const state = stateGuard();
+      if (!state) return;
+      state.a = (Number((event.target as HTMLInputElement).value) || 0) / 100;
+      applyPickerColor(doc);
+    },
+  );
+
+  hexInput.addEventListener("input", () => {
+    const state = stateGuard();
+    const token = normalizeColorToken(hexInput.value);
+    if (!state || !token) return;
+    const rgba = parseColorToRgba(token);
+    if (!rgba) return;
+    const hsl = rgbaToHsl(rgba);
+    state.h = hsl.h;
+    state.s = hsl.s;
+    state.l = hsl.l;
+    state.a = rgba.a;
+    applyPickerColor(doc, "hex");
+  });
+  hexInput.addEventListener("change", () => {
+    const state = stateGuard();
+    if (!state) return;
+    if (normalizeColorToken(hexInput.value)) {
+      pushRecentColor(pickerHex(state));
+      setPickerStatus(doc, getString("appearance-color-picker-copied"));
+      renderPickerSwatches(doc);
+    }
+  });
+
+  const bindNumbers = (
+    ids: readonly string[],
+    update: (state: ColorPickerState, values: number[]) => void,
+    skip: "rgb" | "hsl",
+  ) => {
+    for (const id of ids) {
+      getElement<HTMLInputElement>(doc, id)?.addEventListener("input", () => {
+        const state = stateGuard();
+        if (!state) return;
+        const values = ids.map((inputId) =>
+          Number(getElement<HTMLInputElement>(doc, inputId)?.value || 0),
+        );
+        if (values.some((value) => !Number.isFinite(value))) return;
+        update(state, values);
+        applyPickerColor(doc, skip);
+      });
+    }
+  };
+  bindNumbers(
+    [
+      "interlinear-color-picker-r",
+      "interlinear-color-picker-g",
+      "interlinear-color-picker-b",
+    ],
+    (state, values) => {
+      const hsl = rgbaToHsl({
+        r: Math.min(255, Math.max(0, values[0] || 0)),
+        g: Math.min(255, Math.max(0, values[1] || 0)),
+        b: Math.min(255, Math.max(0, values[2] || 0)),
+        a: state.a,
+      });
+      state.h = hsl.h;
+      state.s = hsl.s;
+      state.l = hsl.l;
+    },
+    "rgb",
+  );
+  bindNumbers(
+    [
+      "interlinear-color-picker-h",
+      "interlinear-color-picker-s",
+      "interlinear-color-picker-l",
+    ],
+    (state, values) => {
+      state.h = Math.min(360, Math.max(0, values[0] || 0));
+      state.s = Math.min(100, Math.max(0, values[1] || 0));
+      state.l = Math.min(100, Math.max(0, values[2] || 0));
+    },
+    "hsl",
+  );
+
+  save.addEventListener("click", () => {
+    const state = stateGuard();
+    if (!state) return;
+    addSavedColor(pickerHex(state));
+    renderPickerSwatches(doc);
+    setPickerStatus(doc, getString("appearance-color-picker-saved-status"));
+  });
+  copy.addEventListener("click", () => {
+    void copyPickerHex(doc);
+  });
+  paste.addEventListener("click", () => {
+    void pastePickerHex(doc);
+  });
+  native.addEventListener("input", () => {
+    applyPickerHex(doc, native.value, false);
+  });
+  native.addEventListener("change", () => {
+    applyPickerHex(doc, native.value, true);
+  });
+
+  for (const id of [
+    "interlinear-color-picker-hue",
+    "interlinear-color-picker-alpha",
+    "interlinear-color-picker-r",
+    "interlinear-color-picker-g",
+    "interlinear-color-picker-b",
+    "interlinear-color-picker-h",
+    "interlinear-color-picker-s",
+    "interlinear-color-picker-l",
+    "interlinear-color-picker-native",
+  ]) {
+    getElement<HTMLInputElement>(doc, id)?.addEventListener("change", () => {
+      const state = stateGuard();
+      if (!state) return;
+      pushRecentColor(pickerHex(state));
+      renderPickerSwatches(doc);
+    });
+  }
+}
+
+async function copyPickerHex(doc: Document): Promise<void> {
+  const state = colorPickerState;
+  if (!state) return;
+  const hex = pickerHex(state);
+  try {
+    const clipboard = doc.defaultView?.navigator?.clipboard;
+    if (!clipboard) throw new Error("unavailable");
+    await clipboard.writeText(hex);
+    setPickerStatus(doc, getString("appearance-color-picker-copied"));
+  } catch (_) {
+    try {
+      const textarea = createElement(doc, "textarea");
+      textarea.value = hex;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      const host = doc.documentElement || doc.body;
+      if (!host) throw new Error("no document host");
+      host.append(textarea);
+      textarea.select();
+      const ok = doc.execCommand?.("copy") || false;
+      textarea.remove();
+      setPickerStatus(
+        doc,
+        getString(
+          ok
+            ? "appearance-color-picker-copied"
+            : "appearance-color-picker-copy-failed",
+        ),
+      );
+    } catch (__) {
+      setPickerStatus(doc, getString("appearance-color-picker-copy-failed"));
+    }
+  }
+}
+
+async function pastePickerHex(doc: Document): Promise<void> {
+  try {
+    const clipboard = doc.defaultView?.navigator?.clipboard;
+    if (!clipboard) throw new Error("unavailable");
+    const text = await clipboard.readText();
+    const token = normalizeColorToken(text);
+    if (!token) {
+      setPickerStatus(doc, getString("appearance-color-picker-invalid"));
+      return;
+    }
+    applyPickerHex(doc, token, true);
+    setPickerStatus(doc, getString("appearance-color-picker-pasted"));
+  } catch (_) {
+    setPickerStatus(doc, getString("appearance-color-picker-copy-failed"));
+  }
+}
+
+function openColorPicker(
+  doc: Document,
+  config: ColorControlConfig,
+  scheme: ColorScheme,
+  opener: HTMLElement | null,
+): void {
+  const base = scheme === "dark" ? `${config.base}-dark` : config.base;
+  const native = getElement<HTMLInputElement>(doc, base);
+  if (!supportsCustomPicker(doc)) {
+    native?.click();
+    return;
+  }
+  initializeColorPicker(doc);
+  const panel = pickerPanel(doc);
+  if (!panel) return;
+  const color =
+    controlValue(doc, base) ||
+    normalizeColorToken(resolveColorForPicker(doc, "", config.fallback)) ||
+    "#000000";
+  const rgba = parseColorToRgba(color) || { r: 0, g: 0, b: 0, a: 1 };
+  const hsl = rgbaToHsl(rgba);
+  colorPickerState = {
+    config,
+    scheme,
+    h: hsl.h,
+    s: hsl.s,
+    l: hsl.l,
+    a: rgba.a,
+    opener,
+  };
+  renderPickerSwatches(doc);
+  syncPickerFields(doc);
+  setPickerStatus(doc, "");
+  panel.hidden = false;
+  const win = doc.defaultView;
+  const rect = (opener || native)?.getBoundingClientRect();
+  if (win && rect) {
+    const width = 340;
+    const left = Math.max(8, Math.min(rect.left, win.innerWidth - width - 8));
+    panel.style.left = `${left}px`;
+    panel.style.visibility = "hidden";
+    const height = panel.offsetHeight || 460;
+    const top =
+      rect.bottom + height + 12 > win.innerHeight
+        ? Math.max(8, rect.top - height - 8)
+        : rect.bottom + 6;
+    panel.style.top = `${top}px`;
+    panel.style.visibility = "";
+  }
+  getElement<HTMLInputElement>(doc, "interlinear-color-picker-hex")?.focus();
 }
 
 function readFontStackForm(doc: Document): FontStack {
@@ -758,12 +1718,7 @@ function readAppearanceForm(doc: Document): AppearanceSettings {
       "interlinear-appearance-font-size",
       DEFAULT_APPEARANCE.fontSize,
     ),
-    color: readColorControl(
-      doc,
-      "interlinear-appearance-color",
-      "interlinear-appearance-color-inherit",
-      "#333333",
-    ),
+    colors: readColorSettings(doc),
     fontFamily: buildFontStack(fontStack),
     fontStack,
     fontWeight: readNumberInput(
@@ -795,29 +1750,16 @@ function readAppearanceForm(doc: Document): AppearanceSettings {
       "interlinear-appearance-paragraph-spacing",
       DEFAULT_APPEARANCE.paragraphSpacing,
     ),
-    background: readColorControl(
-      doc,
-      "interlinear-appearance-background",
-      "interlinear-appearance-background-inherit",
-      "#f6f6f6",
-    ),
     theme:
       (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
         ?.value as AppearanceTheme) || "auto",
     underline: readCheckbox(doc, "interlinear-appearance-underline"),
-    underlineColor: readColorControl(
-      doc,
-      "interlinear-appearance-underline-color",
-      "interlinear-appearance-underline-color-inherit",
-      "#333333",
-    ),
     ribbon: readCheckbox(doc, "interlinear-appearance-ribbon"),
-    ribbonColor: readColorControl(
-      doc,
-      "interlinear-appearance-ribbon-color",
-      null,
-      DEFAULT_APPEARANCE.ribbonColor,
-    ),
+    // Legacy flat colors are derived by normalizeAppearance from `colors`.
+    color: "",
+    background: "",
+    underlineColor: "",
+    ribbonColor: "",
   };
 }
 
@@ -856,7 +1798,10 @@ function refreshAppearancePreview(doc: Document): void {
     "interlinear-translation",
     appearance,
     "reader",
-    { targetLanguage: getTargetLanguage() },
+    {
+      targetLanguage: getTargetLanguage(),
+      colorScheme: previewScheme(doc),
+    },
   )}\n${buildDisplayModeCSS(
     "interlinear-translation",
     "interlinear-source",
@@ -1444,7 +2389,16 @@ function initFontControls(doc: Document): void {
 }
 
 function initializeAppearanceControls(doc: Document): void {
-  for (const config of COLOR_CONTROLS) initColorControl(doc, config);
+  renderColorControlCards(doc);
+  const appearance = getAppearance();
+  for (const config of COLOR_CONTROLS) {
+    initColorControl(doc, config, appearance.colors[config.role]);
+  }
+
+  getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-preview-scheme",
+  )?.addEventListener("change", () => refreshColorUI(doc));
 
   getElement<HTMLSelectElement>(
     doc,
@@ -1682,6 +2636,7 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-colors-title", "appearance-colors-title"],
     ["interlinear-appearance-preview-label", "appearance-preview-label"],
     ["interlinear-appearance-preview-help", "appearance-preview-help"],
+    ["interlinear-appearance-preview-scheme-label", "appearance-preview-scheme"],
     ["interlinear-appearance-font-size-label", "appearance-font-size-label"],
     ["interlinear-appearance-font-size-help", "appearance-font-size-help"],
     ["interlinear-appearance-color-label", "appearance-color-label"],

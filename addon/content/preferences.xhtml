@@ -752,6 +752,17 @@
               id="interlinear-appearance-preview-help"
               class="interlinear-preview-help"
             ></html:span>
+            <html:label class="interlinear-check-row interlinear-check-inline">
+              <html:input
+                id="interlinear-appearance-preview-scheme"
+                type="checkbox"
+                class="interlinear-checkbox"
+              />
+              <html:span
+                id="interlinear-appearance-preview-scheme-label"
+                class="interlinear-check-label"
+              ></html:span>
+            </html:label>
           </html:div>
           <html:div
             id="interlinear-appearance-preview"
@@ -1059,125 +1070,14 @@
             class="interlinear-subtitle"
           ></html:h4>
 
-          <html:div
-            id="interlinear-appearance-color-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-color-label"
-                for="interlinear-appearance-color"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-color-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-color"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-color-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-color-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
-            </html:div>
-            <html:div class="interlinear-color-inherit-row">
-              <html:input
-                id="interlinear-appearance-color-inherit"
-                type="checkbox"
-                class="interlinear-checkbox"
-              />
-              <html:label
-                id="interlinear-appearance-color-inherit-label"
-                for="interlinear-appearance-color-inherit"
-                class="interlinear-check-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-color-inherit-help"
-                class="interlinear-inherit-help"
-              ></html:span>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-color-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-color-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-color-help"
-              class="interlinear-help"
-            ></html:p>
-          </html:div>
+          
+
+          
 
           <html:div
-            id="interlinear-appearance-background-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-background-label"
-                for="interlinear-appearance-background"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-background-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-background"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-background-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-background-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
-            </html:div>
-            <html:div class="interlinear-color-inherit-row">
-              <html:input
-                id="interlinear-appearance-background-inherit"
-                type="checkbox"
-                class="interlinear-checkbox"
-              />
-              <html:label
-                id="interlinear-appearance-background-inherit-label"
-                for="interlinear-appearance-background-inherit"
-                class="interlinear-check-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-background-inherit-help"
-                class="interlinear-inherit-help"
-              ></html:span>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-background-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-background-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-background-help"
-              class="interlinear-help"
-            ></html:p>
-          </html:div>
+            id="interlinear-appearance-color-controls"
+            class="interlinear-color-controls"
+          ></html:div>
 
           <html:p
             id="interlinear-appearance-contrast-warning"
@@ -1196,65 +1096,7 @@
               class="interlinear-check-label"
             ></html:label>
           </html:div>
-          <html:div
-            id="interlinear-appearance-underline-color-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-underline-color-label"
-                for="interlinear-appearance-underline-color"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-underline-color-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-underline-color"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-underline-color-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-underline-color-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
-            </html:div>
-            <html:div class="interlinear-color-inherit-row">
-              <html:input
-                id="interlinear-appearance-underline-color-inherit"
-                type="checkbox"
-                class="interlinear-checkbox"
-              />
-              <html:label
-                id="interlinear-appearance-underline-color-inherit-label"
-                for="interlinear-appearance-underline-color-inherit"
-                class="interlinear-check-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-underline-color-inherit-help"
-                class="interlinear-inherit-help"
-              ></html:span>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-underline-color-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-underline-color-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-underline-color-help"
-              class="interlinear-help"
-            ></html:p>
-          </html:div>
+          
 
           <html:div class="interlinear-check-row">
             <html:input
@@ -1268,49 +1110,7 @@
               class="interlinear-check-label"
             ></html:label>
           </html:div>
-          <html:div
-            id="interlinear-appearance-ribbon-color-control"
-            class="interlinear-color-control"
-          >
-            <html:div class="interlinear-color-row">
-              <html:label
-                id="interlinear-appearance-ribbon-color-label"
-                for="interlinear-appearance-ribbon-color"
-                class="interlinear-color-label"
-              ></html:label>
-              <html:span
-                id="interlinear-appearance-ribbon-color-preview"
-                class="interlinear-color-preview"
-              ></html:span>
-              <html:input
-                id="interlinear-appearance-ribbon-color"
-                type="color"
-                class="interlinear-color-input"
-              />
-              <html:input
-                id="interlinear-appearance-ribbon-color-hex"
-                type="text"
-                class="interlinear-color-hex"
-              />
-              <html:button
-                id="interlinear-appearance-ribbon-color-reset"
-                type="button"
-                class="interlinear-button interlinear-button-small"
-              ></html:button>
-            </html:div>
-            <html:span
-              id="interlinear-appearance-ribbon-color-presets"
-              class="interlinear-color-presets"
-            ></html:span>
-            <html:span
-              id="interlinear-appearance-ribbon-color-error"
-              class="interlinear-inline-error"
-            ></html:span>
-            <html:p
-              id="interlinear-appearance-ribbon-color-help"
-              class="interlinear-help"
-            ></html:p>
-          </html:div>
+          
         </html:div>
       </html:div>
 
