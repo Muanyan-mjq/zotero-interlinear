@@ -13,6 +13,7 @@ import { clearTranslationCache } from "../src/translationCache";
 import { getCacheEngineTag, getDisplayMode } from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
+import { getString } from "../src/utils/locale";
 
 describe("startup", function () {
   it("should have plugin instance defined", function () {
@@ -706,10 +707,14 @@ describe("startup", function () {
           },
         },
       };
-      (Zotero.HTTP as any).request = async () => ({
-        status: 200,
-        response: [[["显示模式集成测试译文。", "source", null, null]]],
-      });
+      let requests = 0;
+      (Zotero.HTTP as any).request = async () => {
+        requests += 1;
+        return {
+          status: 200,
+          response: [[["显示模式集成测试译文。", "source", null, null]]],
+        };
+      };
 
       await toggleBilingualReading(reader);
       assert.equal(pdfTranslateCalls, 0);
@@ -739,13 +744,18 @@ describe("startup", function () {
         assert.equal(sources[0].nextElementSibling, blocks[0]);
       }
 
+      const requestsAfterRun = requests;
       await toggleBilingualReading(reader);
-      for (const source of sources) {
-        assert.isFalse(source.classList.contains("interlinear-source"));
-      }
+      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 2);
+      assert.equal(content.dataset.interlinearHidden, "true");
       assert.isUndefined(content.dataset.interlinearDisplay);
-      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 0);
       assert.isTrue(sources[0].isConnected);
+
+      await toggleBilingualReading(reader);
+      assert.isUndefined(content.dataset.interlinearHidden);
+      assert.equal(content.dataset.interlinearDisplay, "top-bottom");
+      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 2);
+      assert.equal(requests, requestsAfterRun, "Re-showing must reuse results, not re-request");
     } finally {
       clearTranslationCache();
       (Zotero.Reader as any)._readers = originalReaders;
@@ -1202,9 +1212,11 @@ describe("startup", function () {
     const enginePref = "extensions.zotero.interlinear.engine";
     const apiKeyPref = "extensions.zotero.interlinear.gemini.apiKey";
     const baseURLPref = "extensions.zotero.interlinear.gemini.baseUrl";
+    const modelPref = "extensions.zotero.interlinear.gemini.model";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousApiKey = Zotero.Prefs.get(apiKeyPref, true);
     const previousBaseURL = Zotero.Prefs.get(baseURLPref, true);
+    const previousModel = Zotero.Prefs.get(modelPref, true);
     const previousRequest = Zotero.HTTP.request;
     const secret = `AIza-integration-${Date.now()}`;
     let requestedURL = "";
@@ -1236,6 +1248,7 @@ describe("startup", function () {
       Zotero.Prefs.set(enginePref, "gemini", true);
       Zotero.Prefs.set(apiKeyPref, secret, true);
       Zotero.Prefs.set(baseURLPref, "https://generativelanguage.googleapis.com", true);
+      Zotero.Prefs.set(modelPref, "gemini-2.5-flash", true);
       (Zotero.HTTP as any).request = async (
         _method: string,
         url: string,
@@ -1279,6 +1292,7 @@ describe("startup", function () {
         [enginePref, previousEngine],
         [apiKeyPref, previousApiKey],
         [baseURLPref, previousBaseURL],
+        [modelPref, previousModel],
       ] as Array<[string, unknown]>) {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value, true);
@@ -1775,8 +1789,12 @@ describe("startup", function () {
 
       await toggleBilingualReading(reader);
       assert.isTrue(progress.hidden);
-      assert.equal(toggle.title, idleTitle);
-      assert.equal(doc.querySelectorAll(".interlinear-translation").length, 0);
+      assert.equal(toggle.getAttribute("aria-pressed"), "false");
+      assert.equal(toggle.title, getString("toolbar-toggle-resume-title"));
+      const pausedBlock = doc.querySelector(".interlinear-translation") as HTMLElement;
+      assert.exists(pausedBlock);
+      assert.equal(pausedBlock.dataset.state, "paused");
+      assert.equal(content.dataset.interlinearHidden, "true");
 
       resolveTranslation({
         status: 200,
@@ -1793,8 +1811,11 @@ describe("startup", function () {
         doc.querySelector(".interlinear-translation")?.textContent,
         "完成后的译文。",
       );
+      assert.equal(doc.querySelector(".interlinear-translation")?.getAttribute("data-state"), "done");
+      assert.isUndefined(content.dataset.interlinearHidden);
       assert.isTrue(progress.hidden);
-      assert.equal(toggle.title, idleTitle);
+      assert.equal(toggle.getAttribute("aria-pressed"), "true");
+      assert.equal(toggle.title, getString("toolbar-toggle-hide-title"));
     } finally {
       clearTranslationCache();
       (Zotero.HTTP as any).request = previousRequest;
@@ -1803,7 +1824,7 @@ describe("startup", function () {
     }
   });
 
-  it("shrinks the reader toolbar icon and exposes every action from its context menu", function () {
+  it("shrinks the reader toolbar icon and exposes maintenance actions from its context menu", function () {
     this.timeout(10000);
     const modePref = "extensions.zotero.interlinear.displayMode";
     const previousMode = Zotero.Prefs.get(modePref, true);
@@ -1864,31 +1885,261 @@ describe("startup", function () {
       const actions = Array.from(menu.querySelectorAll("button[data-action]")).map(
         (button) => button.getAttribute("data-action"),
       );
-      for (const action of [
-        "toggle",
-        "refresh",
-        "cancel",
-        "display:top-bottom",
-        "display:side-by-side",
-        "display:target-only",
-        "display:source-only",
-        "export",
-        "chat",
-        "settings",
-      ]) {
-        assert.include(actions, action);
-      }
+      assert.deepEqual(actions, ["refresh", "cancel", "export", "settings"]);
+      const cancel = menu.querySelector('[data-action="cancel"]') as HTMLButtonElement;
+      assert.isTrue(cancel.disabled, "Cancel is only available while a run is active");
 
-      const targetOnly = menu.querySelector(
-        '[data-action="display:target-only"]',
-      ) as HTMLButtonElement;
-      targetOnly.click();
-      assert.equal(getDisplayMode(), "target-only");
+      toolbarDoc.dispatchEvent(
+        new win.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
+      );
       assert.notExists(toolbarDoc.querySelector(".interlinear-reader-menu"));
     } finally {
       (Zotero.Reader as any)._readers = originalReaders;
       if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
       else Zotero.Prefs.set(modePref, previousMode, true);
+    }
+  });
+});
+
+describe("reader toggle", function () {
+  function makeReader(doc: Document, itemID: number) {
+    return {
+      type: "pdf",
+      itemID,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+  }
+
+  function makeDoc(texts: string[]) {
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument("toggle-test");
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const elements = texts.map((text, index) => {
+      const paragraph = doc.createElement("p");
+      paragraph.dataset.refPath = String(index);
+      paragraph.textContent = `${text} ${Date.now()}.`;
+      content.append(paragraph);
+      return paragraph;
+    });
+    doc.body.append(content);
+    return { doc, content, elements };
+  }
+
+  const waitFor = async (condition: () => boolean) => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      if (condition()) return;
+      await Zotero.Promise.delay(20);
+    }
+    throw new Error("Timed out waiting for the next translation request");
+  };
+
+  it("pauses mid-run keeping completed blocks and resumes only unfinished paragraphs", async function () {
+    this.timeout(15000);
+    const prefs = [
+      "extensions.zotero.interlinear.engine",
+      "extensions.zotero.interlinear.maxConcurrent",
+      "extensions.zotero.interlinear.maxBatchParagraphs",
+      "extensions.zotero.interlinear.requestGapMs",
+    ];
+    const previous = new Map<string, unknown>(prefs.map((key) => [key, Zotero.Prefs.get(key, true)]));
+    const previousRequest = Zotero.HTTP.request;
+    const { doc, content, elements } = makeDoc(["Alpha pause", "Beta pause", "Gamma pause"]);
+    const reader = makeReader(doc, 2147483630);
+
+    const bodies: string[] = [];
+    const resolvers: Array<(value: any) => void> = [];
+    (Zotero.HTTP as any).request = (_method: string, _url: string, options: any) => {
+      bodies.push(String(options?.body || ""));
+      return new Promise((resolve) => resolvers.push(resolve));
+    };
+    const requestedText = (body: string) => new URLSearchParams(body).get("q") || "";
+    const ok = () => ({ status: 200, response: [[["译文。", "", null, null]]] });
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(prefs[0], "google", true);
+      Zotero.Prefs.set(prefs[1], 1, true);
+      Zotero.Prefs.set(prefs[2], 1, true);
+      Zotero.Prefs.set(prefs[3], 0, true);
+
+      const run = toggleBilingualReading(reader);
+      await waitFor(() => bodies.length === 1);
+      assert.include(requestedText(bodies[0]), "Alpha pause");
+      resolvers.shift()?.(ok());
+
+      await waitFor(() => bodies.length === 2);
+      assert.include(requestedText(bodies[1]), "Beta pause");
+
+      // Pause + hide while Beta is in flight; Alpha is already done.
+      await toggleBilingualReading(reader);
+      assert.equal(content.dataset.interlinearHidden, "true");
+      assert.equal(elements[0].nextElementSibling?.getAttribute("data-state"), "done");
+      assert.equal(elements[1].nextElementSibling?.getAttribute("data-state"), "paused");
+      assert.equal(bodies.length, 2, "Pausing must not start new requests");
+
+      resolvers.shift()?.(ok());
+      await run;
+
+      // Resume: Alpha comes from cache, only Beta and Gamma are re-requested.
+      const resume = toggleBilingualReading(reader);
+      await waitFor(() => bodies.length === 3);
+      assert.include(requestedText(bodies[2]), "Beta pause");
+      assert.isUndefined(content.dataset.interlinearHidden);
+      resolvers.shift()?.(ok());
+      await waitFor(() => bodies.length === 4);
+      assert.include(requestedText(bodies[3]), "Gamma pause");
+      resolvers.shift()?.(ok());
+      await resume;
+
+      for (const element of elements) {
+        assert.equal(element.nextElementSibling?.getAttribute("data-state"), "done");
+      }
+      assert.equal(bodies.length, 4, "Completed paragraphs must not be requested again");
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      for (const [key, value] of previous) {
+        if (value === undefined) Zotero.Prefs.clear(key, true);
+        else Zotero.Prefs.set(key, value as any, true);
+      }
+    }
+  });
+
+  it("toggles each reader independently", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const a = makeDoc(["Reader A paragraph"]);
+    const b = makeDoc(["Reader B paragraph"]);
+    const readerA = makeReader(a.doc, 2147483629);
+    const readerB = makeReader(b.doc, 2147483628);
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      (Zotero.HTTP as any).request = async () => ({
+        status: 200,
+        response: [[["独立译文。", "", null, null]]],
+      });
+
+      await toggleBilingualReading(readerA);
+      assert.equal(a.doc.querySelectorAll(".interlinear-translation").length, 1);
+      assert.equal(b.doc.querySelectorAll(".interlinear-translation").length, 0);
+
+      await toggleBilingualReading(readerA);
+      assert.equal(a.content.dataset.interlinearHidden, "true");
+      assert.isUndefined(b.content.dataset.interlinearHidden);
+
+      await toggleBilingualReading(readerB);
+      assert.equal(b.doc.querySelectorAll(".interlinear-translation").length, 1);
+      assert.isUndefined(b.content.dataset.interlinearHidden);
+      assert.equal(a.content.dataset.interlinearHidden, "true");
+      assert.equal(a.doc.querySelectorAll(".interlinear-translation").length, 1);
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+    }
+  });
+
+  it("reveals hidden translations on Alt-click without re-requesting done blocks", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const { doc, content, elements } = makeDoc(["Alt reveal paragraph"]);
+    const reader = makeReader(doc, 2147483627);
+    let requests = 0;
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      (Zotero.HTTP as any).request = async () => {
+        requests += 1;
+        return { status: 200, response: [[["揭示译文。", "", null, null]]] };
+      };
+
+      await toggleBilingualReading(reader);
+      await toggleBilingualReading(reader);
+      assert.equal(content.dataset.interlinearHidden, "true");
+      const requestsAfterHide = requests;
+
+      const win = Zotero.getMainWindow() as any;
+      elements[0].dispatchEvent(
+        new win.MouseEvent("click", { bubbles: true, cancelable: true, altKey: true }),
+      );
+      await waitFor(() => content.dataset.interlinearHidden === undefined);
+      assert.equal(content.dataset.interlinearDisplay, "top-bottom");
+      assert.equal(requests, requestsAfterHide, "A done block must not be re-requested");
+      assert.equal(elements[0].nextElementSibling?.getAttribute("data-state"), "done");
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+    }
+  });
+
+  it("gates hover auto-translate while translations are hidden", function () {
+    const { doc, elements } = makeDoc(["Hover gating paragraph"]);
+    let hidden = true;
+    const scheduled: Array<{ callback: () => void }> = [];
+    const calls: string[] = [];
+    const controller = attachReaderInteractions(
+      doc,
+      {
+        translateSelection: async () => "",
+        translateParagraph: async (source) => {
+          calls.push(source.dataset.refPath || "");
+        },
+      },
+      {
+        getSelection: () => null,
+        getHoverSettings: () => ({ enabled: true, delayMs: 500 }),
+        isTranslationHidden: () => hidden,
+        setHoverTimer: (callback) => {
+          scheduled.push({ callback });
+          return scheduled.length;
+        },
+        clearHoverTimer: () => undefined,
+      },
+    );
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      elements[0].dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      assert.equal(scheduled.length, 0, "Hidden readers must not arm the dwell timer");
+
+      hidden = false;
+      elements[0].dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 12, clientY: 12 }),
+      );
+      assert.equal(scheduled.length, 1);
+      // The user hides translations during the dwell; the timer must not fire.
+      hidden = true;
+      scheduled[0].callback();
+      assert.deepEqual(calls, []);
+
+      hidden = false;
+      elements[0].dispatchEvent(
+        new win.MouseEvent("mousemove", { bubbles: true, clientX: 30, clientY: 30 }),
+      );
+      assert.equal(scheduled.length, 2);
+      scheduled[1].callback();
+      assert.deepEqual(calls, ["0"]);
+    } finally {
+      controller.dispose();
     }
   });
 });

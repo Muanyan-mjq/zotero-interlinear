@@ -55,6 +55,14 @@ import { exportBilingualPDF } from "./readerUI";
 import { getString } from "./utils/locale";
 import { registerToolbarHandlers } from "./toolbarEvents";
 import { INTERLINEAR_ICON_DATA_URL } from "./interlinearIcon";
+import {
+  transition,
+  isTranslationVisible,
+  isTranslationHidden,
+  type ToggleState,
+  type ToggleEvent,
+  type ToggleTransition,
+} from "./readerToggle";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
@@ -95,6 +103,7 @@ interface InteractionWatcher {
 }
 
 const runStates = new WeakMap<object, RunState>();
+const toggleStates = new WeakMap<object, ToggleState>();
 const interactionControllers = new WeakMap<object, ReaderInteractions[]>();
 const interactionWatchers = new WeakMap<object, InteractionWatcher>();
 const INTERACTION_ATTACH_DELAYS_MS = [0, 150, 500, 1500, 3000];
@@ -305,11 +314,92 @@ function cancelRun(reader: any): void {
 }
 
 export function cancelBilingualReading(reader: any): void {
+  dispatchToggle(reader, "run-cancelled");
   cancelRun(reader);
 }
 
 export function isBilingualRunning(reader: any): boolean {
   return Boolean(runStates.get(reader)?.running);
+}
+
+function getToggleState(reader: any): ToggleState {
+  const state = toggleStates.get(reader) || "empty";
+  if (state === "empty" || state === "running") return state;
+  // The reader can replace its SDT document (re-render, split view switch).
+  // Without translation blocks the reader is untranslated again.
+  try {
+    const doc = getSDTDocument(reader);
+    if (!doc?.querySelector(`.${TRANSLATION_CLASS}`)) {
+      toggleStates.delete(reader);
+      return "empty";
+    }
+  } catch (_) {
+    toggleStates.delete(reader);
+    return "empty";
+  }
+  return state;
+}
+
+function setTranslationsHidden(reader: any, hidden: boolean): void {
+  const doc = getSDTDocument(reader);
+  const content = doc?.querySelector("#sdt-content") as HTMLElement | null;
+  if (!doc || !content) return;
+  if (hidden) {
+    // All display-mode CSS is scoped by data-interlinear-display, so removing
+    // it restores the native layout (including side-by-side margins) while
+    // the blocks and their results stay in the DOM.
+    delete content.dataset.interlinearDisplay;
+    content.dataset.interlinearHidden = "true";
+  } else {
+    delete content.dataset.interlinearHidden;
+    content.dataset.interlinearDisplay = getDisplayMode();
+  }
+  // The layout MutationObserver does not watch data-* attributes.
+  refreshReadingLayout(doc);
+}
+
+function markLoadingBlocksPaused(reader: any): void {
+  const doc = getSDTDocument(reader);
+  if (!doc) return;
+  const blocks = Array.from(
+    doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="loading"]`),
+  ) as HTMLElement[];
+  for (const block of blocks) {
+    setBlockState(block, "paused", getString("paragraph-paused"));
+  }
+}
+
+function dispatchToggle(reader: any, event: ToggleEvent): ToggleTransition {
+  const result = transition(getToggleState(reader), event);
+  if (result.state === "empty") toggleStates.delete(reader);
+  else toggleStates.set(reader, result.state);
+
+  for (const effect of result.effects) {
+    try {
+      if (effect === "pause-run") {
+        cancelRun(reader);
+        markLoadingBlocksPaused(reader);
+      } else if (effect === "hide") {
+        setTranslationsHidden(reader, true);
+      } else if (effect === "show") {
+        setTranslationsHidden(reader, false);
+      } else if (effect === "mark-paused") {
+        markLoadingBlocksPaused(reader);
+      }
+      // start-run / resume-run / clear-translations need async orchestration
+      // and are executed by the calling event handler.
+    } catch (error) {
+      Zotero.logError(error as Error);
+    }
+  }
+  updateToolbarProgress(reader);
+  return result;
+}
+
+function reportToggleError(reader: any, error: any): void {
+  if (isDeadObjectError(error) || isCancellationError(error)) return;
+  dispatchToggle(reader, "reset");
+  showError(reader, error?.message || String(error));
 }
 
 function isCurrentRun(reader: any, generation: number, doc: Document): boolean {
@@ -345,7 +435,7 @@ function finishRun(reader: any, generation: number): void {
   state.cancellation = undefined;
   state.completed = 0;
   state.total = 0;
-  updateToolbarProgress(reader);
+  dispatchToggle(reader, "run-finished");
 }
 
 function setRunProgress(
@@ -391,6 +481,9 @@ function installStyles(doc: Document): void {
   const css = `
 ${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader")}
 ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraphSpacing)}
+    #sdt-content[data-interlinear-hidden="true"] .${TRANSLATION_CLASS} {
+      display: none;
+    }
     .${TRANSLATION_CLASS}[data-state="loading"] {
       opacity: 0.62;
     }
@@ -514,6 +607,8 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
 function applyDisplayMode(doc: Document, mode: DisplayMode = getDisplayMode()): void {
   const content = doc.querySelector("#sdt-content") as HTMLElement | null;
   if (!content) return;
+  // Hidden readers keep the native layout until the user shows translations.
+  if (content.dataset.interlinearHidden === "true") return;
   content.dataset.interlinearDisplay = mode;
   refreshReadingLayout(doc);
 }
@@ -709,6 +804,9 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
   ) {
     source.classList.add(SOURCE_CELL_CLASS);
     paragraph.block = sibling;
+    if (paragraph.translation && sibling.dataset.state !== "done") {
+      setBlockState(sibling, "done", paragraph.translation);
+    }
     return sibling;
   }
 
@@ -761,7 +859,10 @@ function clearTranslations(doc: Document): void {
   }
 
   const content = doc.querySelector("#sdt-content") as HTMLElement | null;
-  if (content) delete content.dataset.interlinearDisplay;
+  if (content) {
+    delete content.dataset.interlinearDisplay;
+    delete content.dataset.interlinearHidden;
+  }
 
   const root = getDocumentRoot(doc);
   if (root) delete root.dataset.interlinearRunning;
@@ -878,6 +979,7 @@ async function requestReaderParagraph(
   if (paragraph.translation) {
     setBlockState(block, "done", paragraph.translation);
     refreshReadingLayout(doc);
+    dispatchToggle(reader, "paragraph-translated");
     return;
   }
 
@@ -904,6 +1006,7 @@ async function requestReaderParagraph(
     if (block.isConnected) {
       setBlockState(block, "done", response.text);
     }
+    dispatchToggle(reader, "paragraph-translated");
   } catch (error: any) {
     if (block.isConnected) {
       setBlockState(
@@ -938,7 +1041,10 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
     doc,
     {
       translateSelection: (text) => translateSelectedText(reader, text),
-      translateParagraph: (source) => translateReaderParagraph(reader, source),
+      translateParagraph: (source) => {
+        dispatchToggle(reader, "shortcut");
+        return translateReaderParagraph(reader, source);
+      },
     },
     {
       getHoverSettings: () => ({
@@ -949,6 +1055,7 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
         enabled: getShortcutEnabled(),
         spec: getShortcutSpec(),
       }),
+      isTranslationHidden: () => isTranslationHidden(getToggleState(reader)),
     },
   );
   controllers.push({ doc, controller });
@@ -1442,6 +1549,7 @@ async function translateParagraphs(
         if (isDeadObjectError(error)) {
           aborted = true;
           cancelRun(reader);
+          dispatchToggle(reader, "run-paused");
           return;
         }
         if (!isCurrentRun(reader, generation, doc)) return;
@@ -1464,6 +1572,7 @@ async function translateParagraphs(
           aborted = true;
           markUnfinishedPaused(doc, paragraphs);
           cancelRun(reader);
+          dispatchToggle(reader, "run-paused");
           return;
         }
       } finally {
@@ -1542,33 +1651,25 @@ async function prepareAndRun(reader: any): Promise<void> {
 
 export async function toggleBilingualReading(reader: any): Promise<void> {
   try {
-    const doc = await ensureReadingMode(reader);
-
-    if (doc.querySelector(`.${TRANSLATION_CLASS}`)) {
-      cancelRun(reader);
-      clearTranslations(doc);
-      return;
+    const { effects } = dispatchToggle(reader, "toggle");
+    if (effects.includes("start-run") || effects.includes("resume-run")) {
+      await prepareAndRun(reader);
     }
-
-    await prepareAndRun(reader);
   } catch (error: any) {
-    if (!isDeadObjectError(error) && !isCancellationError(error)) {
-      showError(reader, error?.message || String(error));
-    }
+    reportToggleError(reader, error);
   }
 }
 
 export async function refreshBilingualReading(reader: any): Promise<void> {
   try {
+    dispatchToggle(reader, "refresh");
     cancelRun(reader);
     const doc = await ensureReadingMode(reader);
     clearTranslations(doc);
     await Zotero.Promise.delay(30);
     await prepareAndRun(reader);
   } catch (error: any) {
-    if (!isDeadObjectError(error) && !isCancellationError(error)) {
-      showError(reader, error?.message || String(error));
-    }
+    reportToggleError(reader, error);
   }
 }
 
@@ -1623,28 +1724,6 @@ function createInterlinearIcon(doc: Document): HTMLImageElement {
   return image;
 }
 
-function revealChatPane(): boolean {
-  const win = Zotero.getMainWindow() as any;
-  const pane = win?.ZoteroContextPane;
-  if (!pane || !win?.document) return false;
-
-  try {
-    pane.collapsed = false;
-  } catch (_) {
-    // Opening the pane is best-effort; the sidenav click below still works.
-  }
-
-  const buttons = Array.from(
-    win.document.querySelectorAll(".btn[data-pane]"),
-  ) as HTMLElement[];
-  const button = buttons.find((candidate) =>
-    String((candidate as any).dataset?.pane || "").endsWith("-interlinear-chat"),
-  );
-  if (!button) return false;
-  button.click();
-  return true;
-}
-
 function openBilingualToolbarMenu(
   reader: any,
   doc: Document,
@@ -1652,9 +1731,7 @@ function openBilingualToolbarMenu(
   y: number,
 ): void {
   const running = isBilingualRunning(reader);
-  const mode = getDisplayMode();
   const entries: ReaderMenuEntry[] = [
-    { action: "toggle", label: getString("toolbar-menu-toggle") },
     { action: "refresh", label: getString("toolbar-menu-refresh") },
     {
       action: "cancel",
@@ -1662,29 +1739,7 @@ function openBilingualToolbarMenu(
       disabled: !running,
     },
     "separator",
-    {
-      action: "display:top-bottom",
-      label: getString("display-mode-top-bottom"),
-      checked: mode === "top-bottom",
-    },
-    {
-      action: "display:side-by-side",
-      label: getString("display-mode-side-by-side"),
-      checked: mode === "side-by-side",
-    },
-    {
-      action: "display:target-only",
-      label: getString("display-mode-target-only"),
-      checked: mode === "target-only",
-    },
-    {
-      action: "display:source-only",
-      label: getString("display-mode-source-only"),
-      checked: mode === "source-only",
-    },
-    "separator",
     { action: "export", label: getString("toolbar-menu-export") },
-    { action: "chat", label: getString("toolbar-menu-chat") },
     { action: "settings", label: getString("toolbar-menu-settings") },
   ];
 
@@ -1693,21 +1748,12 @@ function openBilingualToolbarMenu(
     y,
     entries,
     onSelect: (action) => {
-      if (action === "toggle") {
-        void toggleBilingualReading(reader);
-      } else if (action === "refresh") {
+      if (action === "refresh") {
         void refreshBilingualReading(reader);
       } else if (action === "cancel") {
         cancelBilingualReading(reader);
-      } else if (action.startsWith("display:")) {
-        setDisplayMode(action.slice("display:".length));
-        refreshDisplayModes();
       } else if (action === "export") {
         void exportBilingualPDF(reader);
-      } else if (action === "chat") {
-        if (!revealChatPane()) {
-          showError(reader, getString("toolbar-menu-chat-unavailable"));
-        }
       } else if (action === "settings") {
         configureTranslation(reader);
       }
@@ -1808,16 +1854,32 @@ function updateToolbarProgress(reader: any): void {
     `.${TOOLBAR_BUTTON_CLASS}`,
   ) as HTMLButtonElement | null;
   if (!toggle) return;
-  const title =
-    running && total > 0
-      ? getString("toolbar-toggle-running-title", { args: { done, total } })
-      : getString("toolbar-toggle-title");
+  const toggleState = getToggleState(reader);
+  const visible = isTranslationVisible(toggleState);
+  toggle.setAttribute("aria-pressed", String(visible));
+  // A neutral translucent fill reads as "active" in both light and dark themes.
+  toggle.style.background = visible ? "rgba(127, 127, 127, 0.28)" : "";
+  toggle.style.borderRadius = visible ? "4px" : "";
+
+  let title: string;
+  if (running) {
+    title = getString("toolbar-toggle-running-title", { args: { done, total } });
+  } else if (toggleState === "hidden-paused") {
+    title = getString("toolbar-toggle-resume-title");
+  } else if (toggleState === "hidden") {
+    title = getString("toolbar-toggle-show-title");
+  } else if (toggleState === "shown" || toggleState === "shown-paused") {
+    title = getString("toolbar-toggle-hide-title");
+  } else {
+    title = getString("toolbar-toggle-title");
+  }
   toggle.title = title;
   toggle.setAttribute("aria-label", title);
 }
 
 export function cleanupBilingualReader(reader: any): void {
   cancelRun(reader);
+  toggleStates.delete(reader);
   stopWatchingReaderInteractions(reader);
 
   const interactions = interactionControllers.get(reader);

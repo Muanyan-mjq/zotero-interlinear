@@ -30,6 +30,8 @@ export interface InteractionOptions {
   /** Read at gesture time so settings changes apply without re-attaching. */
   getHoverSettings?: () => { enabled: boolean; delayMs: number };
   getShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
+  /** Hover auto-translate pauses while the reader's translations are hidden. */
+  isTranslationHidden?: () => boolean;
   /** Tests can replace the dwell timer with a manual handle. */
   setHoverTimer?: (callback: () => void, delay: number) => any;
   clearHoverTimer?: (handle: any) => void;
@@ -260,7 +262,7 @@ export function attachReaderInteractions(
 
   const armAutoHover = (source: HTMLElement, event: MouseEvent) => {
     const settings = getHoverSettings();
-    if (!settings.enabled || shouldSkipAutoTranslate(source)) return;
+    if (!settings.enabled || options.isTranslationHidden?.() || shouldSkipAutoTranslate(source)) return;
 
     clearHoverTimer();
     hovered = source;
@@ -275,6 +277,7 @@ export function attachReaderInteractions(
       hoverTimer = null;
       if (disposed || hovered !== source || hoverMode !== "auto") return;
       if (!getHoverSettings().enabled) return;
+      if (options.isTranslationHidden?.()) return;
       if (!source.isConnected) {
         clearHover();
         return;

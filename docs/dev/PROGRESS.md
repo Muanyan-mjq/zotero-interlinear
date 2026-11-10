@@ -693,3 +693,50 @@
 5. 切换到左右分栏，确认英文与中文首行齐平，不再出现译文高一行。
 6. 不先点击工具栏开启全文对照：在阅读模式中直接悬停一个段落，确认到达停留时间后翻译；按住 Alt 按快捷键确认同样可用。
 7. 快速划过多个段落、在段落内小幅移动、滚动页面、切换到其他窗口，确认不会误触发；在分栏的另一侧重复悬停，确认同样生效。
+
+---
+
+# UI 打磨任务（feat/ui-polish 分支）
+
+从 `af6fed3` 新建 `feat/ui-polish`，提交前缀 `ui:` / `fix:`。范围：工具栏开关、设置页颜色控件/实时预览/字体排版、全面自查、文档同步；不新增翻译功能、不动 Providers/chat。每子步骤跑 `npm run build`、`npm run lint:check`、`npm run test:unit`、`npm run test:review`（Zotero headless 独立 profile，安全 no-op kill），如实记录。
+
+## Step A：阅读器工具栏按钮改为「显示/隐藏/暂停」开关
+
+### 做了什么
+- **纯状态机** `src/readerToggle.ts`（无 DOM、无 Zotero）：6 状态 `empty | running | shown | shown-paused | hidden | hidden-paused`，8 事件 `toggle | shortcut | refresh | run-finished | run-paused | run-cancelled | paragraph-translated | reset`，7 效果 `start-run | resume-run | pause-run | hide | show | mark-paused | clear-translations`。`transition(state,event)` 查表返回 `{state,effects}`；`refresh` 恒返回 `running + [clear-translations,show,start-run]`，`reset` 恒回 `empty`。辅助谓词 `isTranslationVisible/isTranslationHidden/isRunActive`。同步效果在 dispatch 内执行，异步效果（start/resume/clear）由调用方编排。
+- **每个阅读器独立状态**：`toggleStates` WeakMap 按 reader 存状态。`getToggleState` 对非 empty/running 状态做 reconcile——若 SDT 文档已无译文块（阅读器重渲染/换文档/重开）则回退 empty，避免脏状态。
+- **隐藏 ≠ 清除**：`setTranslationsHidden(reader,true)` 删除 `#sdt-content` 的 `data-interlinear-display` 并置 `data-interlinear-hidden="true"`；因为所有显示模式 CSS 都以 `data-interlinear-display` 为作用域，移除该属性即恢复原生布局（含左右分栏的 margin/inline-block 全部还原），译文块与结果、缓存仍留在 DOM。`installStyles` 增加 `[data-interlinear-hidden="true"] .interlinear-translation{display:none}`。显示时反向操作并按 `getDisplayMode()` 重写模式属性。**隐藏/显示都不改保存的 displayMode 偏好**。两次操作后都显式 `refreshReadingLayout(doc)`（布局 MutationObserver 不监听 data-* 属性），触发原生高亮坐标重算。
+- **运行中点击 = 暂停 + 隐藏**：`running + toggle → hidden-paused + [pause-run,hide]`；`pause-run` 复用 `cancelRun`（递增 generation + 取消令牌）并把 loading 块置 paused，已完成段落保留。再次点击 `hidden-paused + toggle → running + [show,resume-run]`，`prepareAndRun` 经 `collectParagraphs` 命中缓存、`ensureTranslationBlock` 复用相邻兄弟块，只重跑未完成段落。修复复用路径：兄弟块若有缓存译文但状态非 done，补置 done（避免续跑时显示旧的 paused 文案）。
+- **隐藏期间的交互**：悬停自动翻译暂停（`readerInteractions` 新增 `isTranslationHidden` 选项，在 arm 与驻留计时触发两处都 gate）；划词弹窗仍可用；快捷键/Alt 单段触发会先 `dispatchToggle(reader,"shortcut")` 把阅读器切回显示再翻译该段（`hidden + shortcut → shown+[show]`，`hidden-paused + shortcut → shown-paused+[show]`，即只揭示不续跑全文）——此为有意决策，已记录。
+- **按钮状态可视**：`updateToolbarProgress` 写 `aria-pressed`（visible 为 true），active 时用中性半透明填充 `rgba(127,127,127,0.28)` + 4px 圆角（浅/深主题都可辨），不重绘图标；title/aria-label 随状态切换：running→「翻译中…（n/m）」、hidden-paused→「显示译文并继续翻译」、hidden→「显示译文」、shown/shown-paused→「隐藏译文（显示原文）」、empty→原文案。新增 3 个 Fluent 键（en/zh 同步）。
+- **右键菜单精简为 4 项**：重新翻译全文、取消翻译（仅 running 时启用）、导出双语 PDF、打开设置。移除菜单里的显示模式切换、开关、阅读助手项（显示模式仍可由工具栏 `◫` 按钮与侧边栏下拉切换；聊天仍在侧边栏）；删除 `revealChatPane()` 与 `toolbar-menu-chat`/`toolbar-menu-chat-unavailable` 两个 FTL 键（保留 `toolbar-menu-toggle`，侧边栏 chatPane 仍用）。
+- **生命周期接线**：`finishRun`→`run-finished`；`cancelBilingualReading`→`run-cancelled`；worker 死对象中止与连续失败暂停→`run-paused`；单段翻译成功（缓存命中与新请求两条路径）→`paragraph-translated`；`refreshBilingualReading`→`refresh`；`cleanupBilingualReader` 删除 toggleStates。错误统一经 `reportToggleError`（跳过死对象/取消，否则 reset + 非阻塞 showError）。
+- **顺带修一个无关的测试隔离 bug（`fix:` 性质）**：`test:review` 用持久 profile（`.scaffold/test/profile`），其 `prefs.js` 残留 `user_pref("…gemini.model","gemini-2.5-pro")`（由 provider 设置保存用例写入并被「恢复到 previous」自我延续）。「通过 Gemini 翻译」用例从不显式设 model，依赖默认 flash，于是确定性失败（期望 flash 收到 pro）。根因是该用例隐式依赖环境偏好；修复为在用例内显式 `set(modelPref,"gemini-2.5-flash")` 并在 finally 恢复 previous，使其不受 profile 污染影响。此 bug 与开关功能无关，Step A 代码不触碰 gemini 偏好。
+
+### 改动文件
+- 新增：`src/readerToggle.ts`、`test/readerToggle.node.test.mjs`（42 个纯函数用例）。
+- 修改：`src/bilingualReader.ts`、`src/readerInteractions.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`package.json`（lint 与 test:unit 列表）、`test/startup.test.ts`（显示模式/进度取消/菜单用例改写 + 新增 `reader toggle` 4 用例 + Gemini 用例隔离修复）、`test/readingLayout.test.ts`（新增隐藏/再显示高亮对齐回归用例）、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过（`tsc --noEmit` + scaffold 打包）。新增 FTL 键后先 `npx zotero-plugin build` 重新生成 typings，否则 tsc 报未知 Fluent ID。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**118 pass / 0 fail**（新增 42 个状态机用例：逐 transition 表驱动、refresh/reset 全状态、两条生命周期序列、谓词真值表）。
+- `npm run test:review`（Zotero headless 独立 profile）：**43 pass / 0 fail**。新增 `reader toggle` 4 用例（运行中暂停保留已完成并只续跑未完成、双阅读器独立、Alt 点击揭示隐藏译文且不重发已完成块、隐藏时 gate 悬停）+ readingLayout 隐藏/再显示高亮对齐用例（断言对齐误差 <2、存储 PDF 坐标 rects[0][1] 恒为 690 不变）。
+- 诚实记录：首次 `test:review` 为 **42 pass / 1 fail**，失败项是上述 Gemini 用例（profile 残留 pro）；定位为测试隔离 bug 并修复后，**带着同一污染 profile 复跑仍 43 pass**，证明修复对泄漏状态稳健。此前会话另观察到一次 `npm test` 首跑「Expected: undefined / Received: undefined」的偶发失败、复跑即绿，未再复现，按偶发记录而非已修复 bug。
+
+### 不确定项 / 未目视验证
+- 按钮 active 半透明填充在 Zotero 真实浅/深主题下的观感：**未目视验证**（headless 只断言 aria-pressed 与内联样式值）。
+- 隐藏后原生布局（尤其左右分栏 margin/列宽）的像素级还原：**未目视验证**（只断言 display 属性移除、hidden 属性置位、源节点 isConnected、模式 CSS 作用域）。
+- 隐藏/再显示后原生高亮在真实 PDF 上的对齐：**未目视验证**（集成断言对齐误差与存储坐标不变，非真实论文逐页截图）。
+- 隐藏期间快捷键/Alt 单段「先揭示再翻译该段」为有意决策；若用户期望隐藏时单段也保持隐藏，需另行调整。
+- 运行中点击暂停复用 cancelRun，在途 XHR 不被物理中止，响应靠 isCurrentRun 丢弃；与既有取消行为一致。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开英文 PDF，点工具栏图标开启对照。预期：译文出现，按钮呈 active 态（半透明底），title 为「隐藏译文（显示原文）」；浅/深主题都清晰可辨。
+2. 译文显示时再点图标。预期：所有译文隐藏、恢复原生排版（若之前是左右分栏，margin/列宽完全还原），按钮 title 变「显示译文」；已翻译结果与缓存保留。
+3. 隐藏后再点图标。预期：译文立即重现（命中缓存、不发新请求），title 回「隐藏译文（显示原文）」；高亮坐标不偏移。
+4. 全文翻译运行中点图标。预期：暂停并隐藏，已完成段落保留、未完成块变「已暂停」，title 变「显示译文并继续翻译」；再点一次只续跑未完成段落（已完成段不重发请求）。
+5. 右键图标。预期：菜单仅 4 项（重新翻译全文 / 取消翻译 / 导出双语 PDF / 打开设置）；未运行时「取消翻译」为禁用态。
+6. 隐藏状态下把鼠标停在未翻译段落。预期：不触发悬停自动翻译；但划词弹窗仍可用；按快捷键或 Alt 点击某段会先揭示译文再翻译该段。
+7. 打开两个 PDF 标签各自切换。预期：两个阅读器开关状态互不影响；关闭再重开同一 PDF 后按钮回到未翻译初始态。
+8. 在左右分栏模式下加一条高亮，再隐藏/显示译文。预期：高亮矩形始终覆盖原文文字、位置不偏移，批注侧栏可正常跳转。
