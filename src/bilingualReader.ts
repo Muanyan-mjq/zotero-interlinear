@@ -1485,17 +1485,13 @@ async function translateParagraphs(
   finishRun(reader, generation);
 }
 
-async function prepareAndRun(reader: any, refresh: boolean): Promise<void> {
+async function prepareAndRun(reader: any): Promise<void> {
   const doc = await ensureReadingMode(reader);
   const root = getDocumentRoot(doc);
   if (!root) throw new Error(getString("error-reading-mode-page"));
 
   installStyles(doc);
   cancelRun(reader);
-
-  if (refresh) {
-    clearTranslations(doc);
-  }
 
   applyDisplayMode(doc);
   ensureReaderInteractions(reader, doc);
@@ -1554,7 +1550,7 @@ export async function toggleBilingualReading(reader: any): Promise<void> {
       return;
     }
 
-    await prepareAndRun(reader, false);
+    await prepareAndRun(reader);
   } catch (error: any) {
     if (!isDeadObjectError(error) && !isCancellationError(error)) {
       showError(reader, error?.message || String(error));
@@ -1568,7 +1564,7 @@ export async function refreshBilingualReading(reader: any): Promise<void> {
     const doc = await ensureReadingMode(reader);
     clearTranslations(doc);
     await Zotero.Promise.delay(30);
-    await prepareAndRun(reader, false);
+    await prepareAndRun(reader);
   } catch (error: any) {
     if (!isDeadObjectError(error) && !isCancellationError(error)) {
       showError(reader, error?.message || String(error));
