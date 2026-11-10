@@ -583,7 +583,7 @@ describe("startup", function () {
       assert.equal(underlineColorInherit?.checked, true);
       assert.equal(ribbon?.checked, true);
       assert.equal(ribbonColor?.type, "color");
-      assert.equal(ribbonColor?.value, "#c7354a");
+      assert.equal(ribbonColor?.value, "#2f6fdf");
 
       const colorPresets = win?.document.querySelectorAll(
         "#interlinear-appearance-color-presets .interlinear-color-preset",

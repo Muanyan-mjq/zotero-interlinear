@@ -34,7 +34,7 @@ appearance-underline-color-inherit-label = Match text color
 appearance-ribbon-label = Show left ribbon
 appearance-ribbon-color-label = Ribbon color
 appearance-ribbon-color-reset = Reset
-appearance-ribbon-color-help = The ribbon marks each translation block. Click the swatch to pick a color or reset it to the default red.
+appearance-ribbon-color-help = The ribbon marks each translation block. Click the swatch to pick a color or reset it to the default blue.
 
 settings-intro = Interlinear shows the source text and a translation paragraph by paragraph in Zotero 10's new PDF reader. It uses Google Translate by default (no API key required); you can also choose an OpenAI-compatible endpoint, Anthropic Claude, Google Gemini, or Ollama.
 settings-privacy-notice = Privacy note: when translation is enabled, paragraph text is sent to the translation service you choose. Do not translate documents containing sensitive information unless you trust that service.

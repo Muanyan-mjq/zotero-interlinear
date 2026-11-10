@@ -102,7 +102,7 @@ test("normalizeAppearance exposes the full appearance defaults", () => {
   assert.equal(settings.underline, false);
   assert.equal(settings.underlineColor, "");
   assert.equal(settings.ribbon, true);
-  assert.equal(settings.ribbonColor, "#c7354a");
+  assert.equal(settings.ribbonColor, "#2f6fdf");
 });
 
 test("normalizeAppearance keeps safe font families and rejects rule-breaking input", () => {
@@ -141,7 +141,7 @@ test("normalizeAppearance validates theme, background and accent colors", () => 
   assert.equal(normalizeAppearance({ underlineColor: "red" }).underlineColor, "red");
   assert.equal(normalizeAppearance({ underlineColor: "red;}" }).underlineColor, "");
   assert.equal(normalizeAppearance({ ribbonColor: "#123456" }).ribbonColor, "#123456");
-  assert.equal(normalizeAppearance({ ribbonColor: "x;}" }).ribbonColor, "#c7354a");
+  assert.equal(normalizeAppearance({ ribbonColor: "x;}" }).ribbonColor, "#2f6fdf");
 });
 
 test("reader CSS applies the configured font family, line height and spacing", () => {

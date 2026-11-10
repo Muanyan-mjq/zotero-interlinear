@@ -23,7 +23,7 @@ export const LINE_HEIGHT_MIN = 1;
 export const LINE_HEIGHT_MAX = 2.5;
 export const PARAGRAPH_SPACING_MIN = 0;
 export const PARAGRAPH_SPACING_MAX = 3;
-export const DEFAULT_RIBBON_COLOR = "#c7354a";
+export const DEFAULT_RIBBON_COLOR = "#2f6fdf";
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   fontSize: 16,

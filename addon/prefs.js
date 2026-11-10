@@ -42,4 +42,4 @@ pref("appearance.theme", "auto");
 pref("appearance.underline", false);
 pref("appearance.underlineColor", "");
 pref("appearance.ribbon", true);
-pref("appearance.ribbonColor", "#c7354a");
+pref("appearance.ribbonColor", "#2f6fdf");

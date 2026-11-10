@@ -34,7 +34,7 @@ appearance-underline-color-inherit-label = 跟随文字颜色
 appearance-ribbon-label = 显示左侧色带
 appearance-ribbon-color-label = 色带颜色
 appearance-ribbon-color-reset = 恢复默认
-appearance-ribbon-color-help = 色带用于标记每个译文块；点击色块选色，右侧按钮恢复默认红色。
+appearance-ribbon-color-help = 色带用于标记每个译文块；点击色块选色，右侧按钮恢复默认蓝色。
 
 settings-intro = Interlinear 在 Zotero 10 新 PDF 阅读模式中按段落显示原文与译文。默认使用 Google 翻译（无需密钥）；也可选择 OpenAI 兼容接口、Anthropic Claude、Google Gemini 或 Ollama。
 settings-privacy-notice = 隐私提示：启用翻译时，段落文本会发送到你选择的翻译服务。除非你信任该服务，请勿翻译包含敏感信息的文档。
