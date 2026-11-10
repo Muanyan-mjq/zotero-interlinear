@@ -781,10 +781,11 @@ function registerSettingsNav(doc: Document): void {
   }
 }
 
-function registerDirtyTracking(doc: Document, root: HTMLElement): void {
+function registerDirtyTracking(doc: Document): void {
+  // Sections are siblings of #interlinear-settings-root, so listen on the document.
   const mark = () => markDirty(doc);
-  root.addEventListener("change", mark);
-  root.addEventListener("input", mark);
+  doc.addEventListener("change", mark);
+  doc.addEventListener("input", mark);
 }
 
 function updateBackendVisibility(doc: Document): void {
@@ -1602,7 +1603,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   registerProjectLink(doc);
   registerShortcutRecorder(doc);
   registerSettingsNav(doc);
-  registerDirtyTracking(doc, root);
+  registerDirtyTracking(doc);
 
   hoverTranslate?.addEventListener("change", () => {
     if (hoverDelay) hoverDelay.disabled = !hoverTranslate.checked;

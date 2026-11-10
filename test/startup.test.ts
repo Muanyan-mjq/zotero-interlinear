@@ -917,6 +917,30 @@ describe("startup", function () {
     }
   });
 
+  it("should mark unsaved changes when a numeric field changes", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-font-size")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const fontSize = win?.document.getElementById(
+        "interlinear-appearance-font-size",
+      ) as HTMLInputElement | null;
+      const hint = win?.document.getElementById("interlinear-save-hint") as HTMLElement | null;
+      assert.exists(fontSize);
+      assert.exists(hint);
+      if (hint) hint.textContent = "";
+      if (fontSize) fontSize.value = "20";
+      fontSize?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
+      assert.ok((hint?.textContent || "").length > 0, "editing a field must mark unsaved");
+    } finally {
+      win?.close();
+    }
+  });
+
   it("should switch display modes without moving source nodes", async function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
