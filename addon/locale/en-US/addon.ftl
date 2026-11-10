@@ -311,3 +311,9 @@ chat-error-http-status = Chat request failed (HTTP { $status }).
 chat-error-network = Chat request failed (network or proxy): { $detail }
 chat-error-parse = The model service returned data that could not be parsed.
 chat-error-empty = The model returned an empty reply.
+
+unit-ms = ms
+unit-px = px
+unit-em = em
+unit-chars = chars
+unit-pages = pages

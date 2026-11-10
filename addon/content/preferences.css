@@ -10,6 +10,9 @@
 }
 
 #interlinear-settings-root .interlinear-actionbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -18,7 +21,8 @@
   margin: 2px 0 10px 0;
   border: 1px solid var(--interlinear-border);
   border-radius: 8px;
-  background: var(--interlinear-soft-fill);
+  background: Canvas;
+  color: CanvasText;
 }
 
 #interlinear-settings-root .interlinear-save-button {
@@ -314,4 +318,34 @@
 #interlinear-settings-root .interlinear-test-status[data-state="error"]::before {
   content: "✕ ";
   font-weight: 700;
+}
+
+/* Typography hierarchy: page title > section title > field label > help text. */
+#interlinear-settings-root h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.5em;
+  line-height: 1.25;
+}
+
+#interlinear-settings-root h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.15em;
+  line-height: 1.3;
+}
+
+#interlinear-settings-root label {
+  white-space: nowrap;
+}
+
+/* Inline unit suffix after numeric fields (ms / px / em / chars / pages). */
+#interlinear-settings-root .interlinear-unit {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Accessible focus ring for every interactive control in the pane. */
+#interlinear-settings-root :is(button, select, input, textarea, a[href]):focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
 }

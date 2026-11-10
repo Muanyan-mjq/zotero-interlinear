@@ -310,4 +310,9 @@ export type FluentMessageId =
   | 'toolbar-toggle-resume-title'
   | 'toolbar-toggle-running-title'
   | 'toolbar-toggle-show-title'
-  | 'toolbar-toggle-title';
+  | 'toolbar-toggle-title'
+  | 'unit-chars'
+  | 'unit-em'
+  | 'unit-ms'
+  | 'unit-pages'
+  | 'unit-px';

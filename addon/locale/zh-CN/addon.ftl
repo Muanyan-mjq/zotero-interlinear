@@ -311,3 +311,9 @@ chat-error-http-status = 聊天请求失败（HTTP { $status }）。
 chat-error-network = 聊天请求失败（网络或代理问题）：{ $detail }
 chat-error-parse = 模型服务返回了无法解析的数据。
 chat-error-empty = 模型未返回内容。
+
+unit-ms = 毫秒
+unit-px = 像素
+unit-em = em
+unit-chars = 字符
+unit-pages = 页

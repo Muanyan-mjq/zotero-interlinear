@@ -567,6 +567,16 @@ describe("startup", function () {
       assert.exists(ribbonColor);
       assert.exists(save);
       assert.equal(fontSize?.value, "16");
+      assert.ok(
+        (win?.document.getElementById("interlinear-appearance-font-size-unit")
+          ?.textContent || "").length > 0,
+        "font-size unit suffix must be populated",
+      );
+      assert.ok(
+        (win?.document.getElementById("interlinear-appearance-paragraph-spacing-unit")
+          ?.textContent || "").length > 0,
+        "paragraph-spacing unit suffix must be populated",
+      );
       assert.equal(color?.type, "color");
       assert.equal(color?.value, "#333333");
       assert.equal(colorInherit?.checked, true);
