@@ -22,6 +22,7 @@ import {
   SOURCE_LANGUAGES,
   TARGET_LANGUAGES,
   getAppearance,
+  getCachedFontDetection,
   getClaudeApiKey,
   getClaudeEndpoint,
   getClaudeModel,
@@ -34,6 +35,7 @@ import {
   getGeminiModel,
   getGeminiPrompt,
   getGeminiTemperature,
+  getFontFavorites,
   getGlossaryText,
   getGoogleBaseURL,
   getHoverDelayMs,
@@ -61,9 +63,12 @@ import {
   setClaudeModel,
   setClaudePrompt,
   setClaudeTemperature,
+  setCachedFontDetection,
+  clearCachedFontDetection,
   setEngine,
   setAppearance,
   setDisplayMode,
+  setFontFavorites,
   setGeminiApiKey,
   setGeminiBaseURL,
   setGeminiModel,
@@ -95,17 +100,33 @@ import {
 } from "../settings";
 import {
   DEFAULT_APPEARANCE,
-  FONT_CUSTOM_VALUE,
+  FONT_STACK_MAX_FALLBACKS,
+  buildFontStack,
   buildTranslationCSS,
   contrastRatio,
   isValidFontFamily,
   meetsContrastAA,
+  normalizeFontStack,
   normalizeHexInput,
+  parseFontStack,
   resolveEffectiveColor,
-  resolveFontSelection,
+  resolveTextDirection,
   type AppearanceSettings,
   type AppearanceTheme,
+  type FontGeneric,
+  type FontStack,
 } from "../appearance";
+import {
+  FONT_CANDIDATES,
+  FONT_SAMPLE_TEXT,
+  buildFontSections,
+  filterFontCandidates,
+  isFontDetected,
+  normalizeFontFavorites,
+  quoteFontName,
+  type FontGroup,
+  type FontMeasure,
+} from "../fontCatalog";
 import { buildDisplayModeCSS, normalizeDisplayMode } from "../displayMode";
 import { parseGlossary, serializeGlossary } from "../glossary";
 import {
@@ -171,20 +192,6 @@ const ACCENT_PRESETS: readonly ColorPreset[] = [
   { value: "#0ea5e9", nameKey: "color-name-sky" },
   { value: "#333333", nameKey: "color-name-ink" },
   { value: "#e8e8e8", nameKey: "color-name-silver" },
-];
-
-const FONT_OPTIONS: Array<{ labelKey: FluentKey; value: string }> = [
-  { labelKey: "appearance-font-option-inherit", value: "" },
-  {
-    labelKey: "appearance-font-option-sans",
-    value: "Arial, Helvetica, PingFang SC, Microsoft YaHei, sans-serif",
-  },
-  { labelKey: "appearance-font-option-serif", value: "Georgia, serif" },
-  {
-    labelKey: "appearance-font-option-mono",
-    value: "Consolas, Menlo, Courier New, monospace",
-  },
-  { labelKey: "appearance-font-option-custom", value: FONT_CUSTOM_VALUE },
 ];
 
 function getElement<T extends HTMLElement>(doc: Document, id: string): T | null {
@@ -732,7 +739,19 @@ function refreshColorUI(doc: Document): void {
   refreshAppearancePreview(doc);
 }
 
+function readFontStackForm(doc: Document): FontStack {
+  const state = fontUiStates.get(doc);
+  if (state) return normalizeFontStack(state.stack);
+  return parseFontStack(readInputText(doc, "interlinear-appearance-font-family"));
+}
+
 function readAppearanceForm(doc: Document): AppearanceSettings {
+  const fontStack = readFontStackForm(doc);
+  const direction = getElement<HTMLSelectElement>(
+    doc,
+    "interlinear-text-direction",
+  )?.value;
+  const sizeMode = getElement<HTMLSelectElement>(doc, "interlinear-font-size-mode")?.value;
   return {
     fontSize: readNumberInput(
       doc,
@@ -745,7 +764,27 @@ function readAppearanceForm(doc: Document): AppearanceSettings {
       "interlinear-appearance-color-inherit",
       "#333333",
     ),
-    fontFamily: readInputText(doc, "interlinear-appearance-font-family"),
+    fontFamily: buildFontStack(fontStack),
+    fontStack,
+    fontWeight: readNumberInput(
+      doc,
+      "interlinear-font-weight",
+      DEFAULT_APPEARANCE.fontWeight,
+    ),
+    fontStyle: readCheckbox(doc, "interlinear-font-italic") ? "italic" : "normal",
+    letterSpacing: readNumberInput(
+      doc,
+      "interlinear-letter-spacing",
+      DEFAULT_APPEARANCE.letterSpacing,
+    ),
+    fontSizeMode: sizeMode === "em" ? "em" : "px",
+    fontSizeEm: readNumberInput(
+      doc,
+      "interlinear-font-size-em",
+      DEFAULT_APPEARANCE.fontSizeEm,
+    ),
+    autoFontByLanguage: readCheckbox(doc, "interlinear-font-auto-language"),
+    textDirection: direction === "ltr" || direction === "rtl" ? direction : "auto",
     lineHeight: readNumberInput(
       doc,
       "interlinear-appearance-line-height",
@@ -817,6 +856,7 @@ function refreshAppearancePreview(doc: Document): void {
     "interlinear-translation",
     appearance,
     "reader",
+    { targetLanguage: getTargetLanguage() },
   )}\n${buildDisplayModeCSS(
     "interlinear-translation",
     "interlinear-source",
@@ -824,7 +864,10 @@ function refreshAppearancePreview(doc: Document): void {
   )}`;
   content.setAttribute("data-interlinear-display", mode);
   const block = shadow.querySelector<HTMLElement>(".interlinear-translation");
-  if (block) block.lang = getTargetLanguage();
+  if (block) {
+    block.lang = getTargetLanguage();
+    block.dir = resolveTextDirection(appearance.textDirection, getTargetLanguage());
+  }
 }
 
 function clearFontError(doc: Document): void {
@@ -841,39 +884,563 @@ function validateFontInput(doc: Document): void {
     : getString("appearance-font-family-invalid");
 }
 
-function initFontSelector(doc: Document): void {
-  const select = getElement<HTMLSelectElement>(doc, "interlinear-appearance-font-select");
-  const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
-  const customRow = getElement<HTMLElement>(doc, "interlinear-appearance-font-custom-row");
-  if (!select || !input) return;
-  const options = FONT_OPTIONS.map(({ labelKey, value }) => {
-    const option = doc.createElementNS(HTML_NS, "option") as HTMLOptionElement;
-    option.value = value;
-    option.textContent = getString(labelKey);
-    if (value && value !== FONT_CUSTOM_VALUE) option.style.fontFamily = value;
-    return option;
+type FontDetectionState = "idle" | "scanning" | "cached" | "live" | "failed";
+
+interface FontUiState {
+  stack: FontStack;
+  favorites: string[];
+  detected: Set<string> | null;
+  detectionState: FontDetectionState;
+  scanToken: number;
+  query: string;
+  showAll: boolean;
+}
+
+const fontUiStates = new WeakMap<Document, FontUiState>();
+const FONT_SCAN_CHUNK = 24;
+
+function fontGroupCssFamily(group: FontGroup): string {
+  if (group === "serif") return "serif";
+  if (group === "mono") return "monospace";
+  return "sans-serif";
+}
+
+function fontGroupLabel(group: FontGroup | "favorites"): string {
+  switch (group) {
+    case "favorites":
+      return getString("font-group-favorites");
+    case "sans":
+      return getString("font-group-sans");
+    case "serif":
+      return getString("font-group-serif");
+    case "mono":
+      return getString("font-group-mono");
+    case "zh":
+      return getString("font-group-zh");
+    case "ja-ko":
+      return getString("font-group-ja-ko");
+    default:
+      return getString("font-group-other");
+  }
+}
+
+function appendFontGroup(
+  doc: Document,
+  parent: ParentNode,
+  label: string,
+): HTMLElement {
+  const group = doc.createElementNS(HTML_NS, "div") as HTMLElement;
+  group.className = "interlinear-font-group";
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", label);
+  const title = doc.createElementNS(HTML_NS, "div") as HTMLElement;
+  title.className = "interlinear-font-group-label";
+  title.textContent = label;
+  group.append(title);
+  parent.append(group);
+  return group;
+}
+
+interface FontRowOptions {
+  label: string;
+  family: string;
+  generic?: FontGeneric;
+  sample: string;
+  cssFamily: string;
+  active: boolean;
+  favorite?: boolean;
+  undetected?: boolean;
+}
+
+function appendFontRow(
+  doc: Document,
+  parent: ParentNode,
+  options: FontRowOptions,
+): void {
+  const row = doc.createElementNS(HTML_NS, "div") as HTMLElement;
+  row.className = "interlinear-font-row";
+  if (options.family) row.dataset.family = options.family;
+  if (options.generic) row.dataset.generic = options.generic;
+  if (options.undetected) row.dataset.undetected = "true";
+  row.setAttribute("role", "option");
+  row.setAttribute("aria-selected", String(options.active));
+
+  const pick = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+  pick.type = "button";
+  pick.className = "interlinear-font-pick";
+  pick.dataset.action = "pick";
+  if (options.undetected) pick.title = getString("font-undetected");
+  const name = doc.createElementNS(HTML_NS, "span") as HTMLElement;
+  name.className = "interlinear-font-name";
+  name.textContent = options.label;
+  const sample = doc.createElementNS(HTML_NS, "span") as HTMLElement;
+  sample.className = "interlinear-font-sample";
+  sample.textContent = options.sample;
+  sample.style.fontFamily = options.cssFamily;
+  pick.append(name, sample);
+  row.append(pick);
+
+  if (options.family) {
+    const star = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+    star.type = "button";
+    star.className = "interlinear-icon-button interlinear-font-favorite";
+    star.dataset.action = "favorite";
+    star.setAttribute("aria-pressed", String(Boolean(options.favorite)));
+    const favoriteLabel = getString(
+      options.favorite ? "font-favorite-remove" : "font-favorite-add",
+      { args: { font: options.family } },
+    );
+    star.title = favoriteLabel;
+    star.setAttribute("aria-label", favoriteLabel);
+    star.textContent = options.favorite ? "★" : "☆";
+    row.append(star);
+
+    const add = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+    add.type = "button";
+    add.className = "interlinear-icon-button interlinear-font-fallback-add";
+    add.dataset.action = "fallback";
+    add.textContent = "+";
+    const addLabel = getString("font-fallback-add", { args: { font: options.family } });
+    add.title = addLabel;
+    add.setAttribute("aria-label", addLabel);
+    row.append(add);
+  }
+
+  parent.append(row);
+}
+
+function renderFontList(doc: Document): void {
+  const state = fontUiStates.get(doc);
+  const list = getElement<HTMLElement>(doc, "interlinear-font-list");
+  if (!state || !list) return;
+  const detected = state.detected && state.detected.size ? state.detected : null;
+  const candidates = filterFontCandidates({
+    query: state.query,
+    detected,
+    showAll: state.showAll,
+    favorites: state.favorites,
   });
-  select.replaceChildren(...options);
-  const syncCustomVisibility = () => {
-    if (customRow) customRow.hidden = select.value !== FONT_CUSTOM_VALUE;
-  };
-  select.value = resolveFontSelection(input.value);
-  syncCustomVisibility();
-  select.addEventListener("change", () => {
-    if (select.value !== FONT_CUSTOM_VALUE) {
-      input.value = select.value;
-      clearFontError(doc);
+  const sections = buildFontSections(candidates, state.favorites);
+  const fragment = doc.createDocumentFragment();
+
+  const defaults = appendFontGroup(doc, fragment, getString("font-group-defaults"));
+  appendFontRow(doc, defaults, {
+    label: getString("appearance-font-option-inherit"),
+    family: "",
+    sample: getString("font-sample-inherit"),
+    cssFamily: "inherit",
+    active:
+      !state.stack.primary && !state.stack.fallbacks.length && !state.stack.generic,
+  });
+  const genericRows: Array<{ generic: FontGeneric; labelKey: FluentKey }> = [
+    { generic: "sans-serif", labelKey: "appearance-font-option-sans" },
+    { generic: "serif", labelKey: "appearance-font-option-serif" },
+    { generic: "monospace", labelKey: "appearance-font-option-mono" },
+  ];
+  for (const row of genericRows) {
+    appendFontRow(doc, defaults, {
+      label: getString(row.labelKey),
+      family: "",
+      generic: row.generic,
+      sample: FONT_SAMPLE_TEXT.latin,
+      cssFamily: row.generic,
+      active:
+        !state.stack.primary &&
+        !state.stack.fallbacks.length &&
+        state.stack.generic === row.generic,
+    });
+  }
+
+  for (const section of sections) {
+    const group = appendFontGroup(doc, fragment, fontGroupLabel(section.group));
+    for (const candidate of section.fonts) {
+      const key = candidate.family.toLowerCase();
+      appendFontRow(doc, group, {
+        label: candidate.family,
+        family: candidate.family,
+        sample: FONT_SAMPLE_TEXT[candidate.script],
+        cssFamily: `${quoteFontName(candidate.family)}, ${fontGroupCssFamily(candidate.group)}`,
+        active: state.stack.primary.toLowerCase() === key,
+        favorite: state.favorites.some((favorite) => favorite.toLowerCase() === key),
+        undetected: detected ? !detected.has(key) : false,
+      });
     }
-    syncCustomVisibility();
-    markDirty(doc);
-    refreshAppearancePreview(doc);
-  });
-  input.addEventListener("input", () => {
-    validateFontInput(doc);
-    refreshAppearancePreview(doc);
-  });
-  input.addEventListener("blur", () => validateFontInput(doc));
+  }
+
+  if (!sections.length) {
+    const empty = doc.createElementNS(HTML_NS, "p") as HTMLElement;
+    empty.className = "interlinear-help interlinear-font-empty";
+    empty.textContent = getString("font-no-results");
+    fragment.append(empty);
+  }
+  list.replaceChildren(fragment);
+}
+
+function updateFontDetectionStatus(doc: Document, done = 0): void {
+  const state = fontUiStates.get(doc);
+  const status = getElement<HTMLElement>(doc, "interlinear-font-detection-status");
+  if (!state || !status) return;
+  status.dataset.state = state.detectionState;
+  switch (state.detectionState) {
+    case "scanning":
+      status.textContent = getString("font-detection-scanning", {
+        args: { done, total: FONT_CANDIDATES.length },
+      });
+      break;
+    case "cached":
+    case "live":
+      status.textContent =
+        state.detected && state.detected.size
+          ? getString(
+              state.detectionState === "live"
+                ? "font-detection-done"
+                : "font-detection-cached",
+              { args: { found: state.detected.size } },
+            )
+          : getString("font-detection-empty");
+      break;
+    case "failed":
+      status.textContent = getString("font-detection-failed");
+      break;
+    default:
+      status.textContent = "";
+  }
+}
+
+function createCanvasMeasure(doc: Document): FontMeasure | null {
+  try {
+    const canvas = doc.createElementNS(HTML_NS, "canvas") as HTMLCanvasElement;
+    const context = canvas.getContext("2d") as CanvasRenderingContext2D | null;
+    if (!context) return null;
+    return (family: string, text: string) => {
+      context.font = `normal 16px ${family}`;
+      return context.measureText(text).width;
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function startFontDetection(doc: Document, force = false): void {
+  const state = fontUiStates.get(doc);
+  if (!state) return;
+  if (!force) {
+    const cached = getCachedFontDetection();
+    if (cached) {
+      state.detected = new Set(cached);
+      state.detectionState = "cached";
+      renderFontList(doc);
+      updateFontDetectionStatus(doc);
+      return;
+    }
+  }
+  const measure = createCanvasMeasure(doc);
+  if (!measure) {
+    state.detected = null;
+    state.detectionState = "failed";
+    renderFontList(doc);
+    updateFontDetectionStatus(doc);
+    return;
+  }
+
+  const token = ++state.scanToken;
+  state.detected = null;
+  state.detectionState = "scanning";
+  renderFontList(doc);
+  updateFontDetectionStatus(doc, 0);
+
+  const detected: string[] = [];
+  let index = 0;
+  const step = () => {
+    if (fontUiStates.get(doc) !== state || state.scanToken !== token) return;
+    const end = Math.min(index + FONT_SCAN_CHUNK, FONT_CANDIDATES.length);
+    for (; index < end; index++) {
+      if (isFontDetected(FONT_CANDIDATES[index], measure)) {
+        detected.push(FONT_CANDIDATES[index].family);
+      }
+    }
+    updateFontDetectionStatus(doc, index);
+    if (index < FONT_CANDIDATES.length) {
+      const win = doc.defaultView;
+      if (win?.setTimeout) win.setTimeout(step, 0);
+      else step();
+      return;
+    }
+    state.detected = new Set(detected);
+    state.detectionState = detected.length ? "live" : "failed";
+    if (detected.length) setCachedFontDetection(detected);
+    else clearCachedFontDetection();
+    renderFontList(doc);
+    updateFontDetectionStatus(doc, index);
+  };
+  const win = doc.defaultView;
+  if (win?.setTimeout) win.setTimeout(step, 0);
+  else step();
+}
+
+function makeFontChip(
+  doc: Document,
+  kind: "primary" | "fallback",
+  name: string,
+  index: number,
+): HTMLElement {
+  const chip = doc.createElementNS(HTML_NS, "span") as HTMLElement;
+  chip.className = "interlinear-font-chip";
+  chip.dataset.index = String(index);
+  const label = doc.createElementNS(HTML_NS, "span") as HTMLElement;
+  label.className = "interlinear-font-chip-label";
+  label.textContent =
+    kind === "primary"
+      ? getString("font-chip-primary", { args: { font: name } })
+      : name;
+  chip.append(label);
+
+  const appendButton = (action: string, text: string, labelKey: FluentKey) => {
+    const button = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
+    button.type = "button";
+    button.className = "interlinear-icon-button";
+    button.dataset.action = action;
+    button.dataset.index = String(index);
+    button.textContent = text;
+    const labelText = getString(labelKey, { args: { font: name } });
+    button.title = labelText;
+    button.setAttribute("aria-label", labelText);
+    chip.append(button);
+    return button;
+  };
+
+  if (kind === "fallback") {
+    appendButton("move-up", "↑", "font-fallback-up").disabled = index === 0;
+    appendButton("move-down", "↓", "font-fallback-down");
+    appendButton("remove-fallback", "×", "font-fallback-remove");
+  } else {
+    appendButton("remove-primary", "×", "font-primary-remove");
+  }
+  return chip;
+}
+
+function syncFontStackUi(doc: Document, updateInput = true): void {
+  const state = fontUiStates.get(doc);
+  if (!state) return;
+  const stackHost = getElement<HTMLElement>(doc, "interlinear-font-stack");
+  if (stackHost) {
+    const chips: HTMLElement[] = [];
+    if (state.stack.primary) {
+      chips.push(makeFontChip(doc, "primary", state.stack.primary, -1));
+    }
+    state.stack.fallbacks.forEach((name, index) => {
+      chips.push(makeFontChip(doc, "fallback", name, index));
+    });
+    if (!chips.length) {
+      const empty = doc.createElementNS(HTML_NS, "span") as HTMLElement;
+      empty.className = "interlinear-font-stack-empty";
+      empty.textContent = state.stack.generic
+        ? getString("font-stack-generic-only", { args: { generic: state.stack.generic } })
+        : getString("font-stack-inherit");
+      chips.push(empty);
+    }
+    stackHost.replaceChildren(...chips);
+  }
+  const generic = getElement<HTMLSelectElement>(doc, "interlinear-font-generic");
+  if (generic) generic.value = state.stack.generic;
+  if (updateInput) {
+    const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
+    if (input) input.value = buildFontStack(state.stack);
+    clearFontError(doc);
+  }
+  renderFontList(doc);
+  refreshAppearancePreview(doc);
+}
+
+function setFontStack(doc: Document, next: Partial<FontStack>): void {
+  const state = fontUiStates.get(doc);
+  if (!state) return;
+  state.stack = normalizeFontStack({ ...state.stack, ...next });
+  syncFontStackUi(doc);
+  markDirty(doc);
+}
+
+function addFontFallback(doc: Document, family: string): void {
+  const state = fontUiStates.get(doc);
+  if (!state || !family) return;
+  const key = family.toLowerCase();
+  if (!state.stack.primary) {
+    setFontStack(doc, { primary: family });
+    return;
+  }
+  if (state.stack.primary.toLowerCase() === key) return;
+  if (state.stack.fallbacks.some((name) => name.toLowerCase() === key)) return;
+  if (state.stack.fallbacks.length >= FONT_STACK_MAX_FALLBACKS) return;
+  setFontStack(doc, { fallbacks: [...state.stack.fallbacks, family] });
+}
+
+function toggleFontFavorite(doc: Document, family: string): void {
+  const state = fontUiStates.get(doc);
+  if (!state || !family) return;
+  const key = family.toLowerCase();
+  const exists = state.favorites.some((name) => name.toLowerCase() === key);
+  state.favorites = exists
+    ? state.favorites.filter((name) => name.toLowerCase() !== key)
+    : normalizeFontFavorites([...state.favorites, family]);
+  setFontFavorites(state.favorites);
+  renderFontList(doc);
+}
+
+function syncFontSizeMode(doc: Document): void {
+  const mode = getElement<HTMLSelectElement>(doc, "interlinear-font-size-mode")?.value;
+  const em = getElement<HTMLInputElement>(doc, "interlinear-font-size-em");
+  if (em) em.disabled = mode !== "em";
+}
+
+function initFontControls(doc: Document): void {
+  const appearance = getAppearance();
+  const state: FontUiState = {
+    stack: normalizeFontStack(appearance.fontStack),
+    favorites: getFontFavorites(),
+    detected: null,
+    detectionState: "idle",
+    scanToken: 0,
+    query: "",
+    showAll: false,
+  };
+  fontUiStates.set(doc, state);
+
+  const setValue = (id: string, value: string) => {
+    const element = getElement<HTMLInputElement | HTMLSelectElement>(doc, id);
+    if (element) element.value = value;
+  };
+  setValue("interlinear-font-weight", String(appearance.fontWeight));
+  setValue("interlinear-letter-spacing", String(appearance.letterSpacing));
+  setValue("interlinear-font-size-mode", appearance.fontSizeMode);
+  setValue("interlinear-font-size-em", String(appearance.fontSizeEm));
+  setValue("interlinear-text-direction", appearance.textDirection);
+  const italic = getElement<HTMLInputElement>(doc, "interlinear-font-italic");
+  if (italic) italic.checked = appearance.fontStyle === "italic";
+  const autoLanguage = getElement<HTMLInputElement>(doc, "interlinear-font-auto-language");
+  if (autoLanguage) autoLanguage.checked = appearance.autoFontByLanguage;
+  syncFontSizeMode(doc);
+  syncFontStackUi(doc);
   validateFontInput(doc);
+
+  const search = getElement<HTMLInputElement>(doc, "interlinear-font-search");
+  if (search) {
+    search.placeholder = getString("font-search-placeholder");
+    search.addEventListener("input", () => {
+      state.query = search.value;
+      renderFontList(doc);
+    });
+  }
+  const showAll = getElement<HTMLInputElement>(doc, "interlinear-font-show-all");
+  showAll?.addEventListener("change", () => {
+    state.showAll = showAll.checked;
+    renderFontList(doc);
+  });
+  getElement<HTMLButtonElement>(doc, "interlinear-font-rescan")?.addEventListener(
+    "click",
+    () => {
+      clearCachedFontDetection();
+      startFontDetection(doc, true);
+    },
+  );
+
+  getElement<HTMLElement>(doc, "interlinear-font-list")?.addEventListener(
+    "click",
+    (event) => {
+      const button = (event.target as Element | null)?.closest?.(
+        "[data-action]",
+      ) as HTMLElement | null;
+      const row = button?.closest(".interlinear-font-row") as HTMLElement | null;
+      if (!button || !row) return;
+      const family = row.dataset.family || "";
+      const generic = row.dataset.generic as FontGeneric | undefined;
+      switch (button.dataset.action) {
+        case "favorite":
+          toggleFontFavorite(doc, family);
+          break;
+        case "fallback":
+          addFontFallback(doc, family);
+          break;
+        case "pick":
+          if (generic) setFontStack(doc, { primary: "", fallbacks: [], generic });
+          else if (family) setFontStack(doc, { primary: family });
+          else setFontStack(doc, { primary: "", fallbacks: [], generic: "" });
+          break;
+      }
+    },
+  );
+
+  getElement<HTMLElement>(doc, "interlinear-font-stack")?.addEventListener(
+    "click",
+    (event) => {
+      const button = (event.target as Element | null)?.closest?.(
+        "[data-action]",
+      ) as HTMLElement | null;
+      if (!button) return;
+      const index = Number(button.dataset.index);
+      const fallbacks = [...state.stack.fallbacks];
+      switch (button.dataset.action) {
+        case "remove-primary":
+          if (fallbacks.length) {
+            setFontStack(doc, { primary: fallbacks[0], fallbacks: fallbacks.slice(1) });
+          } else {
+            setFontStack(doc, { primary: "", fallbacks: [] });
+          }
+          break;
+        case "remove-fallback":
+          if (Number.isInteger(index) && index >= 0) {
+            fallbacks.splice(index, 1);
+            setFontStack(doc, { fallbacks });
+          }
+          break;
+        case "move-up":
+          if (Number.isInteger(index) && index > 0) {
+            [fallbacks[index - 1], fallbacks[index]] = [
+              fallbacks[index],
+              fallbacks[index - 1],
+            ];
+            setFontStack(doc, { fallbacks });
+          }
+          break;
+        case "move-down":
+          if (Number.isInteger(index) && index >= 0 && index < fallbacks.length - 1) {
+            [fallbacks[index], fallbacks[index + 1]] = [
+              fallbacks[index + 1],
+              fallbacks[index],
+            ];
+            setFontStack(doc, { fallbacks });
+          }
+          break;
+      }
+    },
+  );
+
+  getElement<HTMLSelectElement>(doc, "interlinear-font-generic")?.addEventListener(
+    "change",
+    (event) => {
+      const value = (event.target as HTMLSelectElement).value as FontGeneric;
+      setFontStack(doc, { generic: value });
+    },
+  );
+
+  const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
+  input?.addEventListener("input", () => {
+    validateFontInput(doc);
+    const value = input.value.trim();
+    if (value && !isValidFontFamily(value)) return;
+    state.stack = parseFontStack(value);
+    syncFontStackUi(doc, false);
+    markDirty(doc);
+  });
+  // Keep invalid text visible with its inline error; saving warns and keeps
+  // the last valid stack rather than silently discarding what was typed.
+  input?.addEventListener("blur", () => validateFontInput(doc));
+
+  getElement<HTMLSelectElement>(doc, "interlinear-font-size-mode")?.addEventListener(
+    "change",
+    () => syncFontSizeMode(doc),
+  );
+
+  startFontDetection(doc);
 }
 
 function initializeAppearanceControls(doc: Document): void {
@@ -887,7 +1454,7 @@ function initializeAppearanceControls(doc: Document): void {
     markDirty(doc);
   });
 
-  initFontSelector(doc);
+  initFontControls(doc);
   refreshColorUI(doc);
 }
 
@@ -1011,7 +1578,12 @@ function registerSecretToggles(doc: Document): void {
 
 function registerDirtyTracking(doc: Document): void {
   // Delegate on the document so every tab and every nested control is covered.
-  const mark = (event: Event) => markDirty(doc, event.target);
+  const mark = (event: Event) => {
+    // Browsing or searching the font catalog changes no saved setting.
+    const target = event.target as HTMLElement | null;
+    if (target?.id === "interlinear-font-search") return;
+    markDirty(doc, event.target);
+  };
   doc.addEventListener("change", mark);
   doc.addEventListener("input", mark);
 }
@@ -1118,8 +1690,35 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-color-reset", "appearance-color-reset"],
     ["interlinear-appearance-color-help", "appearance-color-help"],
     ["interlinear-appearance-font-family-label", "appearance-font-family-label"],
-    ["interlinear-appearance-font-custom-label", "appearance-font-custom-label"],
+    ["interlinear-font-advanced-label", "appearance-font-advanced-label"],
     ["interlinear-appearance-font-family-help", "appearance-font-family-help"],
+    ["interlinear-font-advanced-help", "appearance-font-advanced-help"],
+    ["interlinear-font-show-all-label", "font-show-all-label"],
+    ["interlinear-font-rescan", "font-rescan"],
+    ["interlinear-font-stack-label", "font-stack-label"],
+    ["interlinear-font-generic-label", "font-generic-label"],
+    ["interlinear-font-generic-none", "font-generic-none"],
+    ["interlinear-font-generic-sans", "font-generic-sans"],
+    ["interlinear-font-generic-serif", "font-generic-serif"],
+    ["interlinear-font-generic-mono", "font-generic-mono"],
+    ["interlinear-font-auto-language-label", "font-auto-language-label"],
+    ["interlinear-font-auto-language-help", "font-auto-language-help"],
+    ["interlinear-font-weight-label", "font-weight-label"],
+    ["interlinear-font-italic-label", "font-italic-label"],
+    ["interlinear-font-weight-help", "font-weight-help"],
+    ["interlinear-letter-spacing-label", "font-letter-spacing-label"],
+    ["interlinear-letter-spacing-help", "font-letter-spacing-help"],
+    ["interlinear-text-direction-label", "font-direction-label"],
+    ["interlinear-text-direction-auto", "font-direction-auto"],
+    ["interlinear-text-direction-ltr", "font-direction-ltr"],
+    ["interlinear-text-direction-rtl", "font-direction-rtl"],
+    ["interlinear-text-direction-help", "font-direction-help"],
+    ["interlinear-font-size-mode-label", "font-size-mode-label"],
+    ["interlinear-font-size-mode-px", "font-size-mode-px"],
+    ["interlinear-font-size-mode-em", "font-size-mode-em"],
+    ["interlinear-font-size-mode-help", "font-size-mode-help"],
+    ["interlinear-font-size-em-label", "font-size-em-label"],
+    ["interlinear-font-size-em-unit", "unit-em"],
     ["interlinear-appearance-line-height-label", "appearance-line-height-label"],
     ["interlinear-appearance-line-height-help", "appearance-line-height-help"],
     ["interlinear-appearance-paragraph-spacing-label", "appearance-paragraph-spacing-label"],
@@ -1201,6 +1800,7 @@ function fillStaticLabels(doc: Document): void {
     ["interlinear-max-errors-help", "settings-max-errors-help"],
     ["interlinear-appearance-font-size-unit", "unit-px"],
     ["interlinear-appearance-paragraph-spacing-unit", "unit-em"],
+    ["interlinear-letter-spacing-unit", "unit-em"],
     ["interlinear-skip-last-pages-unit", "unit-pages"],
     ["interlinear-request-gap-unit", "unit-ms"],
     ["interlinear-request-timeout-unit", "unit-ms"],
@@ -1316,31 +1916,16 @@ function saveSettings(doc: Document): string[] {
 
   const warnings: string[] = [];
   const appearance = readAppearanceForm(doc);
-  if (!isValidFontFamily(appearance.fontFamily)) {
-    // normalizeAppearance would silently turn an invalid stack into "inherit";
-    // keep the previous font instead and tell the user why.
-    appearance.fontFamily = getAppearance().fontFamily;
-    const fontInput = getElement<HTMLInputElement>(
-      doc,
-      "interlinear-appearance-font-family",
-    );
-    if (fontInput) fontInput.value = appearance.fontFamily;
-    const fontSelect = getElement<HTMLSelectElement>(
-      doc,
-      "interlinear-appearance-font-select",
-    );
-    if (fontSelect) {
-      fontSelect.value = resolveFontSelection(appearance.fontFamily);
-      const customRow = getElement<HTMLElement>(
-        doc,
-        "interlinear-appearance-font-custom-row",
-      );
-      if (customRow) customRow.hidden = fontSelect.value !== FONT_CUSTOM_VALUE;
-    }
-    clearFontError(doc);
+  const fontInput = getElement<HTMLInputElement>(
+    doc,
+    "interlinear-appearance-font-family",
+  );
+  if (fontInput?.value.trim() && !isValidFontFamily(fontInput.value)) {
+    // Invalid text never entered the stack, so the last valid font is saved.
     warnings.push(getString("appearance-font-family-invalid-save"));
   }
   setAppearance(appearance);
+  syncFontStackUi(doc, true);
   setDisplayMode(
     getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
       getDisplayMode(),
@@ -1831,8 +2416,8 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   }
   fillLanguageOptions(doc, "interlinear-source-language", SOURCE_LANGUAGES, getSourceLanguage());
   fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
-  initializeAppearanceControls(doc);
   initializeAppearancePreview(doc);
+  initializeAppearanceControls(doc);
   // Delegate on the document: the tab panels all live inside the page, but a
   // document-level listener also survives the pane being rebuilt.
   doc.addEventListener("input", () => refreshAppearancePreview(doc));

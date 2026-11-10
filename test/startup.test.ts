@@ -250,8 +250,11 @@ describe("startup", function () {
   it("should keep the previous font when an invalid custom stack is saved", async function () {
     this.timeout(10000);
     const fontPref = "extensions.zotero.interlinear.appearance.fontFamily";
+    const v2Pref = "extensions.zotero.interlinear.appearance.v2";
     const previous = Zotero.Prefs.get(fontPref, true);
+    const previousV2 = Zotero.Prefs.get(v2Pref, true);
     Zotero.Prefs.set(fontPref, "Georgia, serif", true);
+    Zotero.Prefs.clear(v2Pref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
     const byId = (id: string) =>
@@ -259,24 +262,18 @@ describe("startup", function () {
 
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("interlinear-appearance-font-select")) break;
+        if (win?.document.getElementById("interlinear-font-list")) break;
         await Zotero.Promise.delay(50);
       }
-      const select = win?.document.getElementById(
-        "interlinear-appearance-font-select",
-      ) as HTMLSelectElement | null;
       const input = byId("interlinear-appearance-font-family");
       const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement | null;
       const status = win?.document.getElementById(
         "interlinear-settings-status",
       ) as HTMLElement | null;
-      assert.exists(select);
       assert.exists(input);
       assert.exists(save);
       assert.exists(status);
 
-      if (select) select.value = "custom";
-      select?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
       if (input) input.value = "Arial; color: red";
       input?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
       input?.dispatchEvent(new (win as any).Event("blur", { bubbles: true }));
@@ -284,13 +281,14 @@ describe("startup", function () {
 
       assert.equal(Zotero.Prefs.get(fontPref, true), "Georgia, serif");
       assert.equal(input?.value, "Georgia, serif");
-      assert.equal(select?.value, "Georgia, serif");
       assert.equal(status?.dataset.state, "warning");
       assert.isNotEmpty((status?.textContent || "").trim());
     } finally {
       win?.close();
       if (previous === undefined) Zotero.Prefs.clear(fontPref, true);
       else Zotero.Prefs.set(fontPref, previous, true);
+      if (previousV2 === undefined) Zotero.Prefs.clear(v2Pref, true);
+      else Zotero.Prefs.set(v2Pref, previousV2, true);
     }
   });
 
@@ -775,14 +773,14 @@ describe("startup", function () {
         "#interlinear-appearance-color-presets .interlinear-color-preset",
       );
       assert.equal(colorPresets?.length, 8);
-      const fontSelect = win?.document.getElementById(
-        "interlinear-appearance-font-select",
-      ) as HTMLSelectElement | null;
-      assert.exists(fontSelect);
-      assert.ok((fontSelect?.options.length || 0) > 1);
-      if (fontSelect) fontSelect.value = "Georgia, serif";
-      fontSelect?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
-      assert.equal(fontFamily?.value, "Georgia, serif");
+      const fontStack = win?.document.getElementById(
+        "interlinear-font-stack",
+      ) as HTMLElement | null;
+      assert.exists(fontStack);
+      if (fontFamily) fontFamily.value = "Georgia, serif";
+      fontFamily?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
+      fontFamily?.dispatchEvent(new (win as any).Event("blur", { bubbles: true }));
+      assert.include(fontStack?.textContent || "", "Georgia");
 
       if (fontSize) fontSize.value = "20";
       if (colorInherit) colorInherit.checked = false;
@@ -1024,8 +1022,11 @@ describe("startup", function () {
     }
   });
 
-  it("should offer a font selector with a custom stack reveal and validation", async function () {
-    this.timeout(10000);
+  it("should offer a searchable font list, stack builder and validation", async function () {
+    this.timeout(15000);
+    const favoritesPref = "extensions.zotero.interlinear.appearance.fontFavorites";
+    const previousFavorites = Zotero.Prefs.get(favoritesPref, true);
+    Zotero.Prefs.clear(favoritesPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     assert.exists(win);
     const byId = (id: string) =>
@@ -1034,32 +1035,39 @@ describe("startup", function () {
       el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (win?.document.getElementById("interlinear-appearance-font-select")) break;
+        if (win?.document.getElementById("interlinear-font-list")) break;
         await Zotero.Promise.delay(50);
       }
-      const select = win?.document.getElementById(
-        "interlinear-appearance-font-select",
-      ) as HTMLSelectElement | null;
+      const list = win?.document.getElementById("interlinear-font-list") as HTMLElement | null;
+      const stack = win?.document.getElementById("interlinear-font-stack") as HTMLElement | null;
+      const search = byId("interlinear-font-search");
+      const showAll = byId("interlinear-font-show-all");
       const input = byId("interlinear-appearance-font-family");
-      const customRow = win?.document.getElementById(
-        "interlinear-appearance-font-custom-row",
-      ) as HTMLElement | null;
       const error = win?.document.getElementById(
         "interlinear-appearance-font-family-error",
       ) as HTMLElement | null;
-      assert.exists(select);
+      assert.exists(list);
+      assert.exists(stack);
+      assert.exists(search);
+      assert.exists(showAll);
       assert.exists(input);
-      assert.exists(customRow);
       assert.exists(error);
-
-      if (select) select.value = "Georgia, serif";
-      fire(select, "change");
-      assert.equal(input?.value, "Georgia, serif");
-      assert.equal(customRow?.hidden, true);
-
-      if (select) select.value = "custom";
-      fire(select, "change");
-      assert.equal(customRow?.hidden, false);
+      assert.isAtLeast(
+        list?.querySelectorAll(".interlinear-font-row").length || 0,
+        4,
+        "font list should render at least the pinned defaults",
+      );
+      const candidateRows =
+        list?.querySelectorAll(".interlinear-font-row[data-family]").length || 0;
+      assert.isAtLeast(
+        candidateRows,
+        1,
+        `font list should render catalog rows; total=${
+          list?.querySelectorAll(".interlinear-font-row").length
+        } status=${
+          win?.document.getElementById("interlinear-font-detection-status")?.textContent
+        } groups=${list?.querySelectorAll(".interlinear-font-group").length}`,
+      );
 
       if (input) input.value = "Arial; color: red";
       fire(input, "input");
@@ -1070,8 +1078,83 @@ describe("startup", function () {
       fire(input, "input");
       fire(input, "blur");
       assert.equal(error?.textContent, "");
+      assert.include(stack?.textContent || "", "Georgia");
+
+      const row = list?.querySelector(".interlinear-font-row[data-family]") as HTMLElement | null;
+      const family = row?.dataset.family || "";
+      assert.isNotEmpty(family);
+      (row?.querySelector('[data-action="pick"]') as HTMLElement | null)?.click();
+      assert.include(stack?.textContent || "", family);
+
+      const refreshed = Array.from(
+        list?.querySelectorAll<HTMLElement>(".interlinear-font-row[data-family]") || [],
+      ).find((entry) => entry.dataset.family === family);
+      (refreshed?.querySelector('[data-action="favorite"]') as HTMLElement | null)?.click();
+      assert.include(Zotero.Prefs.get(favoritesPref, true) || "", family);
     } finally {
       win?.close();
+      if (previousFavorites === undefined) Zotero.Prefs.clear(favoritesPref, true);
+      else Zotero.Prefs.set(favoritesPref, previousFavorites, true);
+    }
+  });
+
+  it("should detect installed fonts and cache the measurement result", async function () {
+    this.timeout(40000);
+    const detectionPref = "extensions.zotero.interlinear.appearance.fontDetection";
+    const favoritesPref = "extensions.zotero.interlinear.appearance.fontFavorites";
+    const previousDetection = Zotero.Prefs.get(detectionPref, true);
+    const previousFavorites = Zotero.Prefs.get(favoritesPref, true);
+    Zotero.Prefs.clear(detectionPref, true);
+    Zotero.Prefs.clear(favoritesPref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-font-list")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const list = win?.document.getElementById("interlinear-font-list") as HTMLElement | null;
+      const status = win?.document.getElementById(
+        "interlinear-font-detection-status",
+      ) as HTMLElement | null;
+      assert.exists(list);
+      assert.exists(status);
+      for (let attempt = 0; attempt < 300; attempt++) {
+        const state = status?.dataset.state;
+        if (state === "live" || state === "failed") break;
+        await Zotero.Promise.delay(100);
+      }
+      assert.include(["live", "failed"], status?.dataset.state, "font scan should finish");
+      assert.isNotEmpty((status?.textContent || "").trim());
+
+      if (status?.dataset.state === "live") {
+        const raw = Zotero.Prefs.get(detectionPref, true) as string | undefined;
+        assert.isString(raw);
+        const cache = JSON.parse(raw as string);
+        assert.equal(cache.version, 1);
+        assert.isAtLeast(cache.fonts.length, 1);
+        assert.notInclude(cache.fonts, "__InterlinearNoSuchFont__");
+        assert.equal(
+          list?.querySelectorAll(".interlinear-font-row[data-family]").length,
+          cache.fonts.length,
+          "the list must show exactly the detected catalog fonts",
+        );
+        const showAll = win?.document.getElementById(
+          "interlinear-font-show-all",
+        ) as HTMLInputElement | null;
+        if (showAll) showAll.checked = true;
+        showAll?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
+        assert.exists(
+          list?.querySelector('.interlinear-font-row[data-undetected="true"]'),
+          "the show-all fallback must mark fonts the scan did not detect",
+        );
+      }
+    } finally {
+      win?.close();
+      if (previousDetection === undefined) Zotero.Prefs.clear(detectionPref, true);
+      else Zotero.Prefs.set(detectionPref, previousDetection, true);
+      if (previousFavorites === undefined) Zotero.Prefs.clear(favoritesPref, true);
+      else Zotero.Prefs.set(favoritesPref, previousFavorites, true);
     }
   });
 

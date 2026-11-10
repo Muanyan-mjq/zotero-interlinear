@@ -788,43 +788,199 @@
           </html:div>
           <html:div class="interlinear-field">
             <html:label
-              id="interlinear-appearance-font-family-label"
-              for="interlinear-appearance-font-select"
+              id="interlinear-font-size-mode-label"
+              for="interlinear-font-size-mode"
               class="interlinear-field-label"
             ></html:label>
             <html:div class="interlinear-field-control">
-              <html:select
-                id="interlinear-appearance-font-select"
-                class="interlinear-select"
-              ></html:select>
+              <html:select id="interlinear-font-size-mode" class="interlinear-select">
+                <html:option id="interlinear-font-size-mode-px" value="px"></html:option>
+                <html:option id="interlinear-font-size-mode-em" value="em"></html:option>
+              </html:select>
+              <html:label
+                id="interlinear-font-size-em-label"
+                for="interlinear-font-size-em"
+                class="interlinear-sr-only"
+              ></html:label>
+              <html:input
+                id="interlinear-font-size-em"
+                type="number"
+                min="0.9"
+                max="1.2"
+                step="0.01"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span id="interlinear-font-size-em-unit" class="interlinear-unit"></html:span>
+            </html:div>
+            <html:p id="interlinear-font-size-mode-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field interlinear-field-stacked">
+            <html:label
+              id="interlinear-appearance-font-family-label"
+              for="interlinear-font-search"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-font-toolbar">
+              <html:input
+                id="interlinear-font-search"
+                type="search"
+                class="interlinear-input"
+              />
+              <html:label class="interlinear-check-row interlinear-check-inline">
+                <html:input
+                  id="interlinear-font-show-all"
+                  type="checkbox"
+                  class="interlinear-checkbox"
+                />
+                <html:span
+                  id="interlinear-font-show-all-label"
+                  class="interlinear-check-label"
+                ></html:span>
+              </html:label>
+            </html:div>
+            <html:div class="interlinear-font-detection-row">
+              <html:span
+                id="interlinear-font-detection-status"
+                class="interlinear-inline-status"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+              <html:button
+                id="interlinear-font-rescan"
+                type="button"
+                class="interlinear-button interlinear-button-small"
+              ></html:button>
+            </html:div>
+            <html:div
+              id="interlinear-font-list"
+              class="interlinear-font-list"
+              role="listbox"
+              aria-labelledby="interlinear-appearance-font-family-label"
+            ></html:div>
+            <html:p
+              id="interlinear-appearance-font-family-help"
+              class="interlinear-help"
+            ></html:p>
+          </html:div>
+          <html:div class="interlinear-field interlinear-field-stacked">
+            <html:label
+              id="interlinear-font-stack-label"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div id="interlinear-font-stack" class="interlinear-font-stack"></html:div>
+            <html:div class="interlinear-font-generic-row">
+              <html:label
+                id="interlinear-font-generic-label"
+                for="interlinear-font-generic"
+                class="interlinear-field-label"
+              ></html:label>
+              <html:select id="interlinear-font-generic" class="interlinear-select">
+                <html:option id="interlinear-font-generic-none" value=""></html:option>
+                <html:option id="interlinear-font-generic-sans" value="sans-serif"></html:option>
+                <html:option id="interlinear-font-generic-serif" value="serif"></html:option>
+                <html:option id="interlinear-font-generic-mono" value="monospace"></html:option>
+              </html:select>
             </html:div>
           </html:div>
-          <html:div
-            id="interlinear-appearance-font-custom-row"
-            class="interlinear-field"
-            hidden="true"
-          >
+          <html:div class="interlinear-field interlinear-field-stacked">
             <html:label
-              id="interlinear-appearance-font-custom-label"
+              id="interlinear-font-advanced-label"
               for="interlinear-appearance-font-family"
               class="interlinear-field-label"
             ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-appearance-font-family"
-                type="text"
-                class="interlinear-input"
-              />
-            </html:div>
+            <html:input
+              id="interlinear-appearance-font-family"
+              type="text"
+              class="interlinear-input"
+            />
             <html:span
               id="interlinear-appearance-font-family-error"
               class="interlinear-inline-error"
             ></html:span>
+            <html:p id="interlinear-font-advanced-help" class="interlinear-help"></html:p>
           </html:div>
-          <html:p
-            id="interlinear-appearance-font-family-help"
-            class="interlinear-help"
-          ></html:p>
+          <html:div class="interlinear-check-row">
+            <html:input
+              id="interlinear-font-auto-language"
+              type="checkbox"
+              class="interlinear-checkbox"
+            />
+            <html:label
+              id="interlinear-font-auto-language-label"
+              for="interlinear-font-auto-language"
+              class="interlinear-check-label"
+            ></html:label>
+          </html:div>
+          <html:p id="interlinear-font-auto-language-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-font-weight-label"
+              for="interlinear-font-weight"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-font-weight" class="interlinear-select">
+                <html:option id="interlinear-font-weight-100" value="100"></html:option>
+                <html:option id="interlinear-font-weight-200" value="200"></html:option>
+                <html:option id="interlinear-font-weight-300" value="300"></html:option>
+                <html:option id="interlinear-font-weight-400" value="400"></html:option>
+                <html:option id="interlinear-font-weight-500" value="500"></html:option>
+                <html:option id="interlinear-font-weight-600" value="600"></html:option>
+                <html:option id="interlinear-font-weight-700" value="700"></html:option>
+                <html:option id="interlinear-font-weight-800" value="800"></html:option>
+                <html:option id="interlinear-font-weight-900" value="900"></html:option>
+              </html:select>
+              <html:label class="interlinear-check-row interlinear-check-inline">
+                <html:input
+                  id="interlinear-font-italic"
+                  type="checkbox"
+                  class="interlinear-checkbox"
+                />
+                <html:span
+                  id="interlinear-font-italic-label"
+                  class="interlinear-check-label"
+                ></html:span>
+              </html:label>
+            </html:div>
+            <html:p id="interlinear-font-weight-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-letter-spacing-label"
+              for="interlinear-letter-spacing"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-letter-spacing"
+                type="number"
+                min="-0.05"
+                max="0.3"
+                step="0.01"
+                class="interlinear-input interlinear-input-number"
+              />
+              <html:span
+                id="interlinear-letter-spacing-unit"
+                class="interlinear-unit"
+              ></html:span>
+            </html:div>
+            <html:p id="interlinear-letter-spacing-help" class="interlinear-help"></html:p>
+          </html:div>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-text-direction-label"
+              for="interlinear-text-direction"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-text-direction" class="interlinear-select">
+                <html:option id="interlinear-text-direction-auto" value="auto"></html:option>
+                <html:option id="interlinear-text-direction-ltr" value="ltr"></html:option>
+                <html:option id="interlinear-text-direction-rtl" value="rtl"></html:option>
+              </html:select>
+            </html:div>
+            <html:p id="interlinear-text-direction-help" class="interlinear-help"></html:p>
+          </html:div>
           <html:div class="interlinear-field">
             <html:label
               id="interlinear-appearance-line-height-label"

@@ -35,7 +35,7 @@ import { isFailureText } from "./translationFailure";
 import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { CancellationToken } from "./cancellationToken";
-import { buildTranslationCSS } from "./appearance";
+import { buildTranslationCSS, resolveTextDirection } from "./appearance";
 import { buildDisplayModeCSS, DISPLAY_MODES, type DisplayMode } from "./displayMode";
 import {
   cleanupReadingLayout,
@@ -479,7 +479,9 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 function installStyles(doc: Document): void {
   const appearance = getAppearance();
   const css = `
-${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader")}
+${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader", {
+  targetLanguage: getTargetLanguage(),
+})}
 ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraphSpacing)}
     #sdt-content[data-interlinear-hidden="true"] .${TRANSLATION_CLASS} {
       display: none;
@@ -669,7 +671,15 @@ export function refreshTranslationStyles(): void {
     try {
       if (reader.type !== "pdf") continue;
       const doc = getSDTDocument(reader);
-      if (doc?.querySelector("#sdt-content")) installStyles(doc);
+      if (doc?.querySelector("#sdt-content")) {
+        installStyles(doc);
+        const direction = translationDirection();
+        for (const block of Array.from(
+          doc.querySelectorAll(`.${TRANSLATION_CLASS}`),
+        ) as HTMLElement[]) {
+          block.dir = direction;
+        }
+      }
     } catch (error) {
       Zotero.logError(error as Error);
     }
@@ -789,20 +799,27 @@ function collectParagraphs(
   return paragraphs;
 }
 
+function translationDirection(): "ltr" | "rtl" {
+  return resolveTextDirection(getAppearance().textDirection, getTargetLanguage());
+}
+
 function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTMLDivElement | null {
   if (paragraph.block?.ownerDocument === doc && paragraph.block.parentNode) {
+    paragraph.block.dir = translationDirection();
     return paragraph.block;
   }
 
   const source = paragraph.sourceElement;
   if (source.ownerDocument !== doc || !source.parentNode) return null;
 
+  const direction = translationDirection();
   const sibling = source.nextElementSibling as HTMLDivElement | null;
   if (
     sibling?.classList.contains(TRANSLATION_CLASS) &&
     sibling.dataset.sourceRefPath === paragraph.refPath
   ) {
     source.classList.add(SOURCE_CELL_CLASS);
+    sibling.dir = direction;
     paragraph.block = sibling;
     if (paragraph.translation && sibling.dataset.state !== "done") {
       setBlockState(sibling, "done", paragraph.translation);
@@ -813,6 +830,7 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
   const block = doc.createElement("div");
   block.className = TRANSLATION_CLASS;
   block.lang = getTargetLanguage();
+  block.dir = direction;
   block.dataset.sourceRefPath = paragraph.refPath;
   if (paragraph.pageIndex !== undefined) {
     block.dataset.sourcePage = String(paragraph.pageIndex + 1);

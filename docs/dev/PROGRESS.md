@@ -1021,3 +1021,69 @@
 5. 用键盘聚焦标签，按 ←/→/Home/End：焦点与选中态同步；Tab 键可到达保存按钮。
 6. 把窗口缩到约 600px：标签可横向滚动、不溢出；状态文字不被截断，操作区换行到第二行。
 7. 切换 Zotero 浅/深主题：保存按钮、状态图标、标签下划线与文字对比度可读。
+
+## Step 2：字体系统重做（P1）
+
+### 起点与接手范围
+
+- Claude Code 完成了 `src/appearance.ts` 的字体模型、CSS 构造器，以及 XHTML 里的字号模式/字重/斜体/行距/方向等控件骨架；`src/modules/preferenceScript.ts` 的 `readAppearanceForm` 在替换后一度编译失败，字体列表/检测/字体栈 UI 全部未完成。
+- 本步补齐：纯字体目录与检测模块、收藏与检测缓存、搜索式字体列表、字体栈构建器、始终可见的高级 CSS 输入、自动语言字体栈、字重/斜体/字距/相对字号、文字方向、阅读器 `dir` 属性、缓存键回归测试。
+- 默认值仍为“继承阅读器字体”，因此默认 CSS 输出与 Step 1 前一致；只有用户显式选择字体或字重等属性时才追加声明。
+
+### 字体目录与检测（纯函数）
+
+- 新增 `src/fontCatalog.ts`（无 import，供 Node 类型剥离直接加载）：232 个候选字体，覆盖 Windows/macOS/Linux 的 Latin、简体/繁体中文、日文、韩文、阿拉伯、希伯来、泰文、天城文、等宽与系统别名；每个候选带 `group`（sans/serif/mono/zh/ja-ko/other）与 `script`。
+- 检测方式：`canvas.measureText` 对同一段文字分别测量 `monospace`、`serif`、`sans-serif` 三个基线，与候选字体宽度比较；差值 > 0.5px 视为已安装。这是 Firefox 115 没有本地字体枚举 API 时的替代方案，不依赖指纹接口。
+- 检测按 24 个候选一块、`setTimeout(0)` 分片执行，不阻塞设置页；结果写入 `appearance.fontDetection` 缓存（版本 1、30 天 TTL、最多 512 条），再次打开直接使用缓存；“重新扫描”强制重测。
+- “显示全部候选”开关在检测不可用或被防指纹策略抹平时仍可浏览/选择全部字体；未检测到的行加 `data-undetected="true"` 与警告图标，只警告不阻止保存。
+- 字体名验证与 `appearance.ts` 规则一致（`\p{L}\p{N}` 开头、字母/数字/空格/点/下划线/连字符、≤80 字符、拒绝 `url()`/`expression`/控制字符）；因 Node 单测无法解析无扩展名 TS import，`fontCatalog.ts` 内联了一份同规则验证器，并在单测里用 `appearance.ts` 的验证器交叉核对全部候选。
+
+### 字体 UI
+
+- 搜索框 + 显示全部 + 检测状态（`role=status`，`aria-live=polite`）+ 重新扫描。
+- 列表按“阅读器默认 / 收藏 / 无衬线 / 衬线 / 等宽 / 中文 / 日韩 / 其他”分组；每行用自身字体渲染样张（CJK 用中文/日文/韩文样张），行内提供“设为主字体 / 收藏 / 加入回退”。
+- 顶部固定项：继承阅读器字体、系统无衬线、系统衬线、系统等宽。
+- 字体栈：主字体 + 最多 6 个有序回退 + 一个 generic 兜底；chip 支持上移/下移/移除，修改后立即写入高级输入并刷新预览。
+- 高级 CSS `font-family` 输入始终可见且可编辑；非法内容保留在输入框中并显示行内错误，保存时给出黄色 warning、保留上一份有效字体，不清空用户输入。
+- 收藏写入 `appearance.fontFavorites`（最多 24 个、去重、大小写不敏感），收藏操作立即持久化但不把设置页标脏。
+
+### 文本属性与方向
+
+- 字重 100–900（默认 400）、斜体开关、字距 −0.05–0.3em（默认 0）、字号模式 px（10–32，默认 16）或 em 比例（0.9–1.2，默认 1）。
+- 文字方向 auto/ltr/rtl：auto 按目标语言判断 RTL（ar/he/fa/ur 等）；阅读器译文块写入 `dir` 属性，CSS 使用 `text-align: start`，切换设置后对已打开的阅读器同步更新 `dir`。
+- 目标语言专属默认字体栈（autoFontByLanguage，默认开）：CJK/阿拉伯/希伯来/泰文/天城文各给跨平台栈；用户显式选择的字体栈优先于语言默认栈。
+
+### 缓存键
+
+- 抽出 `src/translationCacheKey.ts`（无 import 纯函数），缓存键只含引擎标记、itemKey、源文本长度/哈希、目标语言；新增 Node 回归测试，断言外观字段从未进入缓存模块（源码扫描），并验证相同翻译输入键稳定、四类输入变化会改变键。
+- 因此改字体/颜色/字距/方向不会触发重新翻译，只重新应用 CSS。
+
+### 改动文件
+
+`src/fontCatalog.ts`（新）、`src/translationCacheKey.ts`（新）、`src/appearance.ts`、`src/settings.ts`、`src/bilingualReader.ts`、`src/translationCache.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/fontCatalog.node.test.mjs`（新）、`test/translationCacheKey.node.test.mjs`（新）、`test/startup.test.ts`、`package.json`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过（修掉两处 `no-control-regex`，等价改用 `\p{Cc}`，未放宽验证）。
+- `npm run test:unit`：149 pass / 0 fail（字体目录 13 项 + 缓存键 5 项为新增）。
+- `npm run test:review`（Zotero headless，独立 profile）：52 pass / 0 fail。新增用例覆盖：非法高级字体保存保留旧值并 warning、字体列表/搜索/收藏/字体栈、字体检测与缓存、显示全部时未检测字体标记。
+- 检测可靠性记录（Gecko 115 / Windows / headless Zotero）：232 个候选中测得 40 个，列表行数与缓存条目数完全一致；虚构字体 `__InterlinearNoSuchFont__` 未出现；常用 Arial/Georgia/Consolas/微软拼音字体族按预期被识别。若用户开启 `privacy.resistFingerprinting` 导致测量被抹平，界面会显示检测失败/空结果，但仍可通过“显示全部候选”手选。
+
+### 不确定项 / 未目视验证
+
+- 未在真实 Zotero 设置窗口中目视字体列表高度、滚动与 sticky 分组标题；headless 只断言 DOM 与状态。
+- `canvas.measureText` 在开启防指纹的 Gecko 中可能让所有字体宽度相同，检测会返回空；该场景只做了降级设计，未在开启 `privacy.resistFingerprinting=true` 的 Zotero 中实测。
+- 列表样张是否真的以对应字体渲染，取决于系统是否安装该字体；未安装时浏览器回退到 generic，属预期行为。
+- 字体栈最多 6 个回退是硬限制，超出时“加入回退”按钮无反馈（当前实现直接忽略），是否需要提示留待 Step 8 评估。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 打开设置→外观：字体列表应自动扫描并显示检测状态；等待结束后列表只显示已装字体，点击“显示全部候选”能看到未装字体且带 `?` 警告标记。
+2. 搜索 `Georgia`：列表过滤到对应行，行内样张用 Georgia 渲染；清空搜索恢复分组列表。
+3. 点击某字体的星标：该字体出现在“收藏”分组顶部；关闭再打开设置页后收藏仍在。
+4. 点击某字体行：主字体 chip 出现，高级输入同步为 CSS 栈；用 `+` 加两个回退，再用 ↑/↓/× 调整/删除，预览即时变化。
+5. 在高级输入里输入 `Arial; color: red`：出现行内错误；点保存后出现黄色警告、字体保留上一份有效值，输入框回填有效值。
+6. 字重选 700、勾选斜体、字距 0.1、字号模式 em 1.1：预览与已打开阅读器的译文块同步变化；改回默认后样式恢复。
+7. 目标语言切到阿拉伯语（或手动把方向设为 RTL）：译文块文字右对齐、标点位置正确；切回中文/英文恢复 LTR。
+8. 修改任意字体/颜色设置后，已翻译的文档不应重新请求翻译；观察网络面板或缓存命中状态确认。

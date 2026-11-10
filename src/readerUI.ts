@@ -187,7 +187,9 @@ function buildExportHTML(doc: Document, title: string): string {
     color: inherit;
     text-decoration: none;
   }
-  ${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "print")}
+  ${buildTranslationCSS(TRANSLATION_CLASS, getAppearance(), "print", {
+    targetLanguage: getTargetLanguage(),
+  })}
   .${TRANSLATION_CLASS}[data-state="done"]::before {
     content: "";
   }

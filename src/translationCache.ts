@@ -1,7 +1,11 @@
+import {
+  buildLegacyTranslationCacheKey,
+  buildTranslationCacheKey,
+} from "./translationCacheKey";
+
 const BASE = "extensions.zotero.interlinear";
 const DEFAULT_TARGET_LANG = "zh-CN";
 const CACHE_PREFIX = `${BASE}.cache.v4.`;
-const LEGACY_CACHE_PREFIX = `${BASE}.cache.v3.`;
 const CACHE_INDEX_KEY = `${CACHE_PREFIX}index`;
 
 // Long translations do not belong in preferences indefinitely. Keep the
@@ -39,31 +43,13 @@ function prefClear(key: string): void {
   }
 }
 
-function hash(text: string): string {
-  let result = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    result = Math.imul(result ^ text.charCodeAt(i), 16777619);
-  }
-  return (result >>> 0).toString(16);
-}
-
-function safeItemKey(itemKey: string): string {
-  return itemKey.replace(/[^a-z0-9_-]/giu, "_").slice(0, 64) || "reader";
-}
-
-function safeLanguage(targetLang: string): string {
-  return targetLang.replace(/[^a-z0-9-]/giu, "_").slice(0, 24) || "und";
-}
-
 function cacheKey(
   itemKey: string,
   sourceText: string,
   engineTag: string,
   targetLang: string,
 ): string {
-  return `${CACHE_PREFIX}${hash(engineTag)}.${safeItemKey(itemKey)}.${sourceText.length}.${hash(
-    sourceText,
-  )}.${safeLanguage(targetLang)}`;
+  return buildTranslationCacheKey({ itemKey, sourceText, engineTag, targetLanguage: targetLang });
 }
 
 function legacyCacheKey(
@@ -72,9 +58,12 @@ function legacyCacheKey(
   engineTag: string,
   targetLang: string,
 ): string {
-  return `${LEGACY_CACHE_PREFIX}${hash(engineTag)}.${itemKey}.${hash(
+  return buildLegacyTranslationCacheKey({
+    itemKey,
     sourceText,
-  )}.${safeLanguage(targetLang)}`;
+    engineTag,
+    targetLanguage: targetLang,
+  });
 }
 
 function getCacheIndex(): CacheIndexEntry[] {

@@ -1,9 +1,17 @@
 import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  buildFontStack,
   normalizeAppearance,
+  parseFontStack,
   type AppearanceSettings,
 } from "./appearance";
+import {
+  FONT_DETECTION_CACHE_MAX_FONTS,
+  FONT_DETECTION_CACHE_VERSION,
+  normalizeFontFavorites,
+  parseFontDetectionCache,
+} from "./fontCatalog";
 import {
   DEFAULT_CLAUDE_ENDPOINT,
   normalizeClaudeEndpoint,
@@ -140,6 +148,11 @@ const APPEARANCE_UNDERLINE_PREF = `${BASE}.appearance.underline`;
 const APPEARANCE_UNDERLINE_COLOR_PREF = `${BASE}.appearance.underlineColor`;
 const APPEARANCE_RIBBON_PREF = `${BASE}.appearance.ribbon`;
 const APPEARANCE_RIBBON_COLOR_PREF = `${BASE}.appearance.ribbonColor`;
+const APPEARANCE_V2_PREF = `${BASE}.appearance.v2`;
+const APPEARANCE_SCHEMA_PREF = `${BASE}.appearance.schema`;
+const APPEARANCE_SCHEMA_VERSION = 2;
+const FONT_FAVORITES_PREF = `${BASE}.appearance.fontFavorites`;
+const FONT_DETECTION_PREF = `${BASE}.appearance.fontDetection`;
 const DISPLAY_MODE_PREF = `${BASE}.displayMode`;
 const GLOSSARY_PREF = `${BASE}.glossary`;
 
@@ -523,6 +536,17 @@ export function getShortcutSpec(): ShortcutSpec | null {
 }
 
 export function getAppearance(): AppearanceSettings {
+  const stored = getRawStringPref(APPEARANCE_V2_PREF);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        return normalizeAppearance(parsed as Partial<AppearanceSettings>);
+      }
+    } catch (_) {
+      // Fall through to the legacy per-field prefs.
+    }
+  }
   return normalizeAppearance({
     fontSize: getNumberPref(APPEARANCE_FONT_SIZE_PREF, 16, FONT_SIZE_MIN, FONT_SIZE_MAX),
     color: getRawStringPref(APPEARANCE_COLOR_PREF),
@@ -539,7 +563,14 @@ export function getAppearance(): AppearanceSettings {
 }
 
 export function setAppearance(input: Partial<AppearanceSettings>): void {
-  const settings = normalizeAppearance({ ...getAppearance(), ...input });
+  const merged = { ...getAppearance(), ...input };
+  // A caller that only changes the CSS font-family string still gets a
+  // structured stack, so the next read and the stack UI agree.
+  if (input.fontFamily !== undefined && input.fontStack === undefined) {
+    merged.fontStack = parseFontStack(input.fontFamily);
+    merged.fontFamily = buildFontStack(merged.fontStack);
+  }
+  const settings = normalizeAppearance(merged);
   setNumberPref(APPEARANCE_FONT_SIZE_PREF, settings.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX);
   setStringPref(APPEARANCE_COLOR_PREF, settings.color);
   setStringPref(APPEARANCE_FONT_FAMILY_PREF, settings.fontFamily);
@@ -561,6 +592,45 @@ export function setAppearance(input: Partial<AppearanceSettings>): void {
   setStringPref(APPEARANCE_UNDERLINE_COLOR_PREF, settings.underlineColor);
   setBoolPref(APPEARANCE_RIBBON_PREF, settings.ribbon);
   setStringPref(APPEARANCE_RIBBON_COLOR_PREF, settings.ribbonColor);
+  setStringPref(APPEARANCE_V2_PREF, JSON.stringify(settings));
+  setNumberPref(APPEARANCE_SCHEMA_PREF, APPEARANCE_SCHEMA_VERSION, 1, 99);
+}
+
+export function getFontFavorites(): string[] {
+  const stored = getRawStringPref(FONT_FAVORITES_PREF);
+  if (!stored) return [];
+  try {
+    return normalizeFontFavorites(JSON.parse(stored));
+  } catch (_) {
+    return [];
+  }
+}
+
+export function setFontFavorites(value: readonly string[]): void {
+  setStringPref(FONT_FAVORITES_PREF, JSON.stringify(normalizeFontFavorites(value)));
+}
+
+export function getCachedFontDetection(): string[] | null {
+  return parseFontDetectionCache(getRawStringPref(FONT_DETECTION_PREF));
+}
+
+export function setCachedFontDetection(fonts: readonly string[]): void {
+  setStringPref(
+    FONT_DETECTION_PREF,
+    JSON.stringify({
+      version: FONT_DETECTION_CACHE_VERSION,
+      at: Date.now(),
+      fonts: fonts.slice(0, FONT_DETECTION_CACHE_MAX_FONTS),
+    }),
+  );
+}
+
+export function clearCachedFontDetection(): void {
+  try {
+    (Zotero.Prefs as any).clear(FONT_DETECTION_PREF, true);
+  } catch (_) {
+    // The preference may already have been removed.
+  }
 }
 
 export function getDisplayMode(): DisplayMode {
