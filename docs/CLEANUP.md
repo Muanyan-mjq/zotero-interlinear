@@ -41,7 +41,7 @@
 | 项 | 现状与建议 |
 | --- | --- |
 | 内部 `bilingual*` 命名 | `src/bilingualReader.ts` 文件名、`cleanupBilingualReader`、`renderBilingualToolbarButtons`、`toggleBilingualReading`、`isBilingualRunning` 等仍带旧名。它们不面向用户，重命名会波及 `src/` 与 `test/startup.test.ts` 的大量导入，收益低、回归面大。建议保留；只在 README/发布说明里继续保留旧项目署名。 |
-| `.github/workflows/release.yml` | 调用 `npm run release`，但 `package.json` 没有 `release` 脚本；同一仓库的 `ci.yml` 已包含 `[release]` 触发的发布流程。建议 Step 4 删除该冗余工作流，或改成 `zotero-plugin release` 并明确用途。 |
+| `.github/workflows/release.yml` | 已解决（Step 4）：补齐 `"release": "zotero-plugin release"` 脚本，手动 dispatch 路径恢复可用；`ci.yml` 的 `[release]` 流程不变。 |
 | `.github/workflows/issue-bot.yml` | 模板自带的 issue bot，依赖外部 reusable workflow。对个人新仓库可用但不是必需；保留不会影响构建。 |
 | `@types/chai` | `chai@6` 自带类型，`@types/chai` 可能冗余；但它不参与 `npm run build` 的类型检查（`tsconfig` 只含 `src`/`typings`），删不删只影响编辑器/集成测试类型提示。按“不动依赖”原则保留。 |
 | `prettier` | 没有 npm script 调用它，但 `.prettierignore`、VSCode 推荐扩展和 `package.json` 的 `prettier` 配置都在用；保留。 |
@@ -56,7 +56,7 @@
 | 用户可见链接 | `package.json` 的 `repository` / `homepage`、设置页 `PROJECT_URL`、`test/startup.test.ts` 断言均已指向 `https://github.com/Muanyan-mjq/zotero-interlinear`。 |
 | 旧项目链接 | 仅保留在 README 的 “Based on quillamio/bilingual-reader”、`CHANGELOG.md` 历史条目、`docs/` 历史记录、`src/providers/openai*.ts` 的 PR #20 改编署名、`package.json` 的 `contributors`。这些属于必须保留的署名，不删除。 |
 | 旧更新地址 | 当前 `addon/manifest.json` 的 `update_url` 是 `__updateURL__` 占位符，由 `zotero-plugin.config.ts` 基于新仓库 URL 生成；仓库内没有硬编码旧更新地址。 |
-| 旧偏好命名空间 | `src/settings.ts` 的 `LEGACY_BASE = "extensions.zotero.bilingualreader"` 与 `migrateLegacyPreferences()` 是旧用户数据迁移逻辑，必须保留；对应测试也在 `test/startup.test.ts`。 |
+| 旧偏好命名空间 | `src/settings.ts` 的 `LEGACY_BASE = "extensions.zotero.bilingualreader"` 与 `migrateLegacyPreferences()` 是旧用户数据迁移逻辑，必须保留；测试只使用新前缀，无迁移专项测试。 |
 | 模板 URL | `your-github-name/repo-name`、`zotero-chinese.com`、`udn.realityripple.com`、模板 badge 等只存在于 `doc/` 两份模板 README，随 A 表删除。 |
 | 模板示例代码 | 已在 step 10 删除，当前 `src/modules/` 只剩真正使用的 `preferenceScript.ts`。 |
 
@@ -100,17 +100,49 @@
 
 共删除约 937 行；每类均通过 `npm run build`、`npm run lint:check`、`npm run test:unit`，无变红回退。第 4 类触及阅读器主路径，额外跑了 `npm run test:review`（38 pass）。medium 项未做自动删除。
 
-## Step 4：独立化计划（非功能改动）
+## Step 4：独立化执行结果（已完成，`58e1ecc`）
 
-- `package.json` 元数据已指向新仓库；核对 `repository` / `homepage` / `bugs`（当前无 `bugs`，可补）、`author`、`contributors`。
-- README 中英双语重写：安装、功能、开发、已知限制（仅 Zotero 10 桌面版、依赖阅读模式内部 API）、上游署名。保留 “Based on quillamio/bilingual-reader, AGPL-3.0-or-later”。
-- 检查 `update.json`/`update-beta.json` 生成逻辑、`ci.yml` 发布步骤与 `release.yml` 的 `npm run release` 缺口；确保 xpi 名称与 `.scaffold/build/interlinear.xpi` 一致。
-- 新增 `NOTICE.md`（或 README 小节）记录上游 PR #19/#20 等改编来源。
-- 审计 `.gitignore`（`.env`、`.scaffold/`、日志）、提交中的密钥/绝对路径/个人信息；只记录，不改写历史。
+- `package.json`：补充 `bugs` 指向新仓库 issues；`repository` / `homepage` / `author` / `contributors` 此前已指向新仓库并保留上游署名，未改动。
+- 发布流程缺口：`release.yml`（手动 dispatch）调用的 `npm run release` 在仓库里从未存在过（上游模板契约缺失）。按“只修指针、不删工作流”原则，新增 `"release": "zotero-plugin release"` 脚本（scaffold CLI 自带 `release` 命令），手动发布路径恢复可用；`ci.yml` 的 `[release]` 提交触发发布流程保持不变，两条路径并存。
+- 更新地址核验：构建产物 `.scaffold/build/update.json` 的 `update_link` 已指向 `Muanyan-mjq/zotero-interlinear` 的 v0.5.1 xpi；`addon/manifest.json` 用 `__updateURL__` 占位符由配置生成；`test/startup.test.ts:169` 的项目链接断言已是新仓库。
+- 新增 `NOTICE.md`：记录上游 quillamio/bilingual-reader（AGPL）、PR #20（daxiaxiong88，OpenAI 兼容后端）、PR #19（分段标记规则）、zotero-plugin-template / Make It Red 模板来源与图标作者；README 中英两处署名小节均链接到它。
+- README：已是中英双语且覆盖功能/安装/开发/限制/署名，仅修正图标表两处事实错误（icon16 实为阅读助手侧栏底部图标；icon32 是工具栏内联 data URL 图标的生成源）。
+- `.gitignore` 审计：`.env`、`.scaffold`、`build`、`logs`、`node_modules` 均已覆盖；跟踪中的 `.env.example` 只有占位符，无真实密钥；根目录 `Zotero Translation Icon.png` 为有意跟踪的图标源文件。无需改动。
+- 密钥/绝对路径/个人信息扫描结论同 Step 1 G 表：未发现泄露项，不改写历史。
 
-## Step 5：验收计划
+## Step 5：验收结果（2026-11-10，已完成）
 
-- 全量 `npm run build`、`npm run lint:check`、`npm run test:unit`；`npm run test:review` 能跑则跑，不能跑明确写“没跑”。
-- 对比清理前后 xpi 大小（基线 122,527 字节）。
-- grep 旧插件 ID、旧偏好前缀、旧仓库 URL（署名除外），列出剩余项及理由。
-- 人工验证清单写入本文件；最终对话报告不超过 15 行。
+验证（最终工作树）：
+
+- `npm run build`：通过（tsc + 生产打包）。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：76 pass / 0 fail。
+- `npm test`：已跑（设置 `ZOTERO_PLUGIN_ZOTERO_BIN_PATH` 与 `ZOTERO_PLUGIN_KILL_COMMAND` 防误杀本机 Zotero），38 pass / 0 fail。
+- `npm run test:review`：38 pass / 0 fail（Step 3 第 4 类后跑过；最终状态与当时仅差元数据/文档，且 `npm test` 已在最终状态覆盖同一套集成测试）。
+
+xpi 体积：清理前 122,527 字节 → 清理后 120,731 字节（−1,796 字节，约 −1.5%）。
+
+残留 grep（署名除外）：
+
+- 旧插件 ID（`bilingual-reader@` / `@quillamio`）：`src/`、`addon/`、`test/`、`scripts/`、`.github/` 零残留。
+- 旧偏好前缀 `extensions.zotero.bilingualreader`：仅 `src/settings.ts:43` 的迁移常量（必须保留）与 `NOTICE.md` 说明文字。
+- 旧仓库 URL：仅 README / NOTICE / 文件头 PR 署名 / `package.json contributors` / `docs/` 历史记录。
+- 模板 URL（`your-github-name`、`zotero-chinese.com` 等）：随 `doc/` 删除，零残留。
+
+“待我决定”清单（均未动，建议保留）：
+
+- 内部 `bilingual*` 命名（文件名与函数名）：不面向用户，重命名回归面大。
+- `.github/workflows/issue-bot.yml`：模板 issue bot，无害。
+- `@types/chai`、`prettier`：依赖不动原则；prettier 仍被编辑器配置使用。
+- `typings/prefs.d.ts`：scaffold 生成文件，保留避免噪声 diff。
+- `docs/ANALYSIS.md`、`docs/PROGRESS.md` 等历史文档：历史证据。
+- `favicon@0.5x.png` 备用图标、`.vscode/toolkit.code-snippets`：无害备用。
+
+人工验证清单（需在 Zotero 10 实机执行）：
+
+1. 安装 `.scaffold/build/interlinear.xpi`，确认插件管理器显示 Interlinear 0.5.1 且图标正常。
+2. 打开英文 PDF → 阅读模式，左键工具栏图标开启对照，确认译文在原文下方、左侧色带为默认蓝色 `#2f6fdf`（老用户已存偏好则保持其原色）。
+3. 右键图标菜单：重新翻译、取消、四种显示模式循环、导出 PDF、阅读助手、设置均可用。
+4. 设置页修改任一颜色/字体并保存，重开阅读器确认生效；各后端“测试连接”就地显示结果。
+5. 悬停单段与快捷键单段翻译在未开启全文对照时可用。
+6. 若曾用旧版 Bilingual Reader：先卸载旧版，再启动本插件验证迁移（偏好与缓存复制到新命名空间，旧数据不删）。
