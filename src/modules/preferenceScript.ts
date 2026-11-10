@@ -95,11 +95,14 @@ import {
 } from "../settings";
 import {
   DEFAULT_APPEARANCE,
+  FONT_CUSTOM_VALUE,
   buildTranslationCSS,
   contrastRatio,
+  isValidFontFamily,
   meetsContrastAA,
   normalizeHexInput,
   resolveEffectiveColor,
+  resolveFontSelection,
   type AppearanceSettings,
   type AppearanceTheme,
 } from "../appearance";
@@ -169,13 +172,18 @@ const ACCENT_PRESETS: readonly ColorPreset[] = [
   { value: "#e8e8e8", nameKey: "color-name-silver" },
 ];
 
-const FONT_PRESETS: Array<{ labelKey: FluentKey; value: string }> = [
-  { labelKey: "appearance-font-preset-inherit", value: "" },
-  { labelKey: "appearance-font-preset-georgia", value: "Georgia, serif" },
-  { labelKey: "appearance-font-preset-times", value: "Times New Roman, serif" },
-  { labelKey: "appearance-font-preset-arial", value: "Arial, sans-serif" },
-  { labelKey: "appearance-font-preset-yahei", value: "Microsoft YaHei, sans-serif" },
-  { labelKey: "appearance-font-preset-simsun", value: "SimSun, serif" },
+const FONT_OPTIONS: Array<{ labelKey: FluentKey; value: string }> = [
+  { labelKey: "appearance-font-option-inherit", value: "" },
+  {
+    labelKey: "appearance-font-option-sans",
+    value: "Arial, Helvetica, PingFang SC, Microsoft YaHei, sans-serif",
+  },
+  { labelKey: "appearance-font-option-serif", value: "Georgia, serif" },
+  {
+    labelKey: "appearance-font-option-mono",
+    value: "Consolas, Menlo, Courier New, monospace",
+  },
+  { labelKey: "appearance-font-option-custom", value: FONT_CUSTOM_VALUE },
 ];
 
 function getElement<T extends HTMLElement>(doc: Document, id: string): T | null {
@@ -692,53 +700,53 @@ function refreshAppearancePreview(doc: Document): void {
   if (block) block.lang = getTargetLanguage();
 }
 
-function fontPresetKey(value: string): string {
-  return value.toLowerCase().replace(/\s+/gu, "");
+function clearFontError(doc: Document): void {
+  const error = getElement<HTMLElement>(doc, "interlinear-appearance-font-family-error");
+  if (error) error.textContent = "";
 }
 
-function syncFontPresetState(doc: Document): void {
+function validateFontInput(doc: Document): void {
   const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
-  const container = getElement<HTMLElement>(
-    doc,
-    "interlinear-appearance-font-family-presets",
-  );
-  if (!container) return;
-  const current = fontPresetKey((input?.value || "").trim());
-  const buttons = Array.from(
-    container.querySelectorAll(".interlinear-font-preset"),
-  ) as HTMLElement[];
-  for (const button of buttons) {
-    button.dataset.active = String(fontPresetKey(button.dataset.value || "") === current);
-  }
+  const error = getElement<HTMLElement>(doc, "interlinear-appearance-font-family-error");
+  if (!input || !error) return;
+  error.textContent = isValidFontFamily(input.value)
+    ? ""
+    : getString("appearance-font-family-invalid");
 }
 
-function renderFontPresets(doc: Document): void {
-  const container = getElement<HTMLElement>(
-    doc,
-    "interlinear-appearance-font-family-presets",
-  );
+function initFontSelector(doc: Document): void {
+  const select = getElement<HTMLSelectElement>(doc, "interlinear-appearance-font-select");
   const input = getElement<HTMLInputElement>(doc, "interlinear-appearance-font-family");
-  if (!container || !input) return;
-  const label = getString("appearance-font-preset-title");
-  container.title = label;
-  container.setAttribute("aria-label", label);
-  const buttons = FONT_PRESETS.map(({ labelKey, value }) => {
-    const button = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
-    button.type = "button";
-    button.className = "interlinear-font-preset";
-    button.dataset.value = value;
-    button.textContent = getString(labelKey);
-    button.addEventListener("click", () => {
-      input.value = value;
-      syncFontPresetState(doc);
-      markDirty(doc);
-    });
-    return button;
+  const customRow = getElement<HTMLElement>(doc, "interlinear-appearance-font-custom-row");
+  if (!select || !input) return;
+  const options = FONT_OPTIONS.map(({ labelKey, value }) => {
+    const option = doc.createElementNS(HTML_NS, "option") as HTMLOptionElement;
+    option.value = value;
+    option.textContent = getString(labelKey);
+    if (value && value !== FONT_CUSTOM_VALUE) option.style.fontFamily = value;
+    return option;
   });
-  container.replaceChildren(...buttons);
-  input.addEventListener("input", () => syncFontPresetState(doc));
-  input.addEventListener("change", () => syncFontPresetState(doc));
-  syncFontPresetState(doc);
+  select.replaceChildren(...options);
+  const syncCustomVisibility = () => {
+    if (customRow) customRow.hidden = select.value !== FONT_CUSTOM_VALUE;
+  };
+  select.value = resolveFontSelection(input.value);
+  syncCustomVisibility();
+  select.addEventListener("change", () => {
+    if (select.value !== FONT_CUSTOM_VALUE) {
+      input.value = select.value;
+      clearFontError(doc);
+    }
+    syncCustomVisibility();
+    markDirty(doc);
+    refreshAppearancePreview(doc);
+  });
+  input.addEventListener("input", () => {
+    validateFontInput(doc);
+    refreshAppearancePreview(doc);
+  });
+  input.addEventListener("blur", () => validateFontInput(doc));
+  validateFontInput(doc);
 }
 
 function initializeAppearanceControls(doc: Document): void {
@@ -752,7 +760,7 @@ function initializeAppearanceControls(doc: Document): void {
     markDirty(doc);
   });
 
-  renderFontPresets(doc);
+  initFontSelector(doc);
   refreshColorUI(doc);
 }
 
@@ -893,6 +901,7 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-color-reset", "appearance-color-reset"],
     ["interlinear-appearance-color-help", "appearance-color-help"],
     ["interlinear-appearance-font-family-label", "appearance-font-family-label"],
+    ["interlinear-appearance-font-custom-label", "appearance-font-custom-label"],
     ["interlinear-appearance-font-family-help", "appearance-font-family-help"],
     ["interlinear-appearance-line-height-label", "appearance-line-height-label"],
     ["interlinear-appearance-line-height-help", "appearance-line-height-help"],

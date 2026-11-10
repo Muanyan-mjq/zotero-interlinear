@@ -614,15 +614,13 @@ describe("startup", function () {
         "#interlinear-appearance-color-presets .interlinear-color-preset",
       );
       assert.equal(colorPresets?.length, 8);
-      const fontPresets = win?.document.querySelectorAll(
-        "#interlinear-appearance-font-family-presets .interlinear-font-preset",
-      );
-      assert.ok((fontPresets?.length || 0) > 1);
-      const georgiaPreset = Array.from(fontPresets || []).find(
-        (button) => (button as HTMLElement).dataset.value === "Georgia, serif",
-      ) as HTMLButtonElement | undefined;
-      assert.exists(georgiaPreset);
-      georgiaPreset?.click();
+      const fontSelect = win?.document.getElementById(
+        "interlinear-appearance-font-select",
+      ) as HTMLSelectElement | null;
+      assert.exists(fontSelect);
+      assert.ok((fontSelect?.options.length || 0) > 1);
+      if (fontSelect) fontSelect.value = "Georgia, serif";
+      fontSelect?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
       assert.equal(fontFamily?.value, "Georgia, serif");
 
       if (fontSize) fontSize.value = "20";
@@ -853,6 +851,57 @@ describe("startup", function () {
         /min-width/u,
         "target language label needs a min-width so it cannot wrap",
       );
+    } finally {
+      win?.close();
+    }
+  });
+
+  it("should offer a font selector with a custom stack reveal and validation", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    const fire = (el: HTMLElement | null, type: string) =>
+      el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-font-select")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const select = win?.document.getElementById(
+        "interlinear-appearance-font-select",
+      ) as HTMLSelectElement | null;
+      const input = byId("interlinear-appearance-font-family");
+      const customRow = win?.document.getElementById(
+        "interlinear-appearance-font-custom-row",
+      ) as HTMLElement | null;
+      const error = win?.document.getElementById(
+        "interlinear-appearance-font-family-error",
+      ) as HTMLElement | null;
+      assert.exists(select);
+      assert.exists(input);
+      assert.exists(customRow);
+      assert.exists(error);
+
+      if (select) select.value = "Georgia, serif";
+      fire(select, "change");
+      assert.equal(input?.value, "Georgia, serif");
+      assert.equal(customRow?.hidden, true);
+
+      if (select) select.value = "custom";
+      fire(select, "change");
+      assert.equal(customRow?.hidden, false);
+
+      if (input) input.value = "Arial; color: red";
+      fire(input, "input");
+      fire(input, "blur");
+      assert.notEqual(error?.textContent, "");
+
+      if (input) input.value = "Georgia, serif";
+      fire(input, "input");
+      fire(input, "blur");
+      assert.equal(error?.textContent, "");
     } finally {
       win?.close();
     }

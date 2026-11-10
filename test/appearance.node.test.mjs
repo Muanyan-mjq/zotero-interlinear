@@ -4,16 +4,20 @@ import test from "node:test";
 import {
   CONTRAST_AA_MIN,
   DEFAULT_APPEARANCE,
+  FONT_CUSTOM_VALUE,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  FONT_STACK_PRESETS,
   buildTranslationCSS,
   contrastRatio,
   hexToRgb,
   isValidColor,
+  isValidFontFamily,
   meetsContrastAA,
   normalizeAppearance,
   normalizeHexInput,
   resolveEffectiveColor,
+  resolveFontSelection,
 } from "../src/appearance.ts";
 
 test("normalizeAppearance falls back to defaults for missing input", () => {
@@ -295,4 +299,41 @@ test("resolveEffectiveColor resolves inherit to the light/dark palette", () => {
 test("resolveEffectiveColor leaves auto-inherit empty so the preview shows a checkerboard", () => {
   assert.equal(resolveEffectiveColor("", "auto", "color"), "");
   assert.equal(resolveEffectiveColor("", "auto", "background"), "");
+});
+test("FONT_STACK_PRESETS covers inherit plus cross-platform sans/serif/mono stacks", () => {
+  assert.ok(FONT_STACK_PRESETS.includes(""));
+  assert.ok(FONT_STACK_PRESETS.includes("Georgia, serif"));
+  assert.ok(FONT_STACK_PRESETS.some((v) => /sans-serif$/u.test(v)));
+  assert.ok(FONT_STACK_PRESETS.some((v) => /monospace$/u.test(v)));
+  for (const value of FONT_STACK_PRESETS) {
+    assert.equal(normalizeAppearance({ fontFamily: value }).fontFamily, value);
+  }
+});
+
+test("resolveFontSelection maps empty input to inherit", () => {
+  assert.equal(resolveFontSelection(""), "");
+  assert.equal(resolveFontSelection("   "), "");
+});
+
+test("resolveFontSelection matches a preset ignoring case and whitespace", () => {
+  assert.equal(resolveFontSelection("Georgia, serif"), "Georgia, serif");
+  assert.equal(resolveFontSelection("georgia,serif"), "Georgia, serif");
+  assert.equal(
+    resolveFontSelection("Arial, Helvetica, PingFang SC, Microsoft YaHei, sans-serif"),
+    "Arial, Helvetica, PingFang SC, Microsoft YaHei, sans-serif",
+  );
+});
+
+test("resolveFontSelection flags an unmatched non-empty stack as custom", () => {
+  assert.equal(resolveFontSelection("Comic Sans MS, cursive"), FONT_CUSTOM_VALUE);
+});
+
+test("isValidFontFamily accepts empty and safe stacks but rejects CSS-breaking tokens", () => {
+  assert.equal(isValidFontFamily(""), true);
+  assert.equal(isValidFontFamily("   "), true);
+  assert.equal(isValidFontFamily("Georgia, serif"), true);
+  assert.equal(isValidFontFamily("Comic Sans MS, cursive"), true);
+  assert.equal(isValidFontFamily("Arial; color: red"), false);
+  assert.equal(isValidFontFamily('Font "Name"'), false);
+  assert.equal(isValidFontFamily("Arial}"), false);
 });

@@ -274,34 +274,6 @@
   opacity: 0.8;
 }
 
-#interlinear-settings-root .interlinear-font-presets {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-left: 10px;
-}
-
-#interlinear-settings-root .interlinear-font-preset {
-  padding: 2px 9px;
-  border: 1px solid var(--interlinear-border);
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-#interlinear-settings-root .interlinear-font-preset:hover {
-  background: var(--interlinear-soft-fill);
-}
-
-#interlinear-settings-root .interlinear-font-preset[data-active="true"] {
-  border-color: currentColor;
-  background: var(--interlinear-soft-fill);
-  font-weight: 600;
-}
-
 #interlinear-settings-root .interlinear-test-status {
   max-width: 620px;
   margin-left: 10px;

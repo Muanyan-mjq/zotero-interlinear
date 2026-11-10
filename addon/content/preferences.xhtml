@@ -630,6 +630,22 @@
   <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-font-family-label"
+      for="interlinear-appearance-font-select"
+      style="min-width: 180px"
+    ></html:label>
+    <html:select
+      id="interlinear-appearance-font-select"
+      style="width: 240px; padding: 4px 8px"
+    ></html:select>
+  </hbox>
+  <hbox
+    id="interlinear-appearance-font-custom-row"
+    align="center"
+    style="margin-bottom: 4px"
+    hidden="true"
+  >
+    <html:label
+      id="interlinear-appearance-font-custom-label"
       for="interlinear-appearance-font-family"
       style="min-width: 180px"
     ></html:label>
@@ -639,8 +655,8 @@
       style="width: 240px; padding: 4px 6px"
     />
     <html:span
-      id="interlinear-appearance-font-family-presets"
-      class="interlinear-font-presets"
+      id="interlinear-appearance-font-family-error"
+      class="interlinear-color-error"
     ></html:span>
   </hbox>
   <html:p

@@ -142,6 +142,36 @@ function normalizeFontFamily(raw: unknown): string {
     .join(", ");
 }
 
+/** Empty (inherit) or a stack of tokens that cannot break out of a CSS declaration. */
+export function isValidFontFamily(value: string): boolean {
+  const trimmed = value.trim();
+  return !trimmed || FONT_FAMILY.test(trimmed);
+}
+
+export const FONT_CUSTOM_VALUE = "custom";
+
+// Firefox 115 has no reliable local-font enumeration API, so the selector offers
+// curated cross-platform stacks (each ending in a generic family) plus custom.
+export const FONT_STACK_PRESETS: readonly string[] = [
+  "",
+  "Arial, Helvetica, PingFang SC, Microsoft YaHei, sans-serif",
+  "Georgia, serif",
+  "Consolas, Menlo, Courier New, monospace",
+];
+
+function fontFamilyKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/gu, "");
+}
+
+/** Select-option value for a stored stack: matching preset, inherit (""), or custom. */
+export function resolveFontSelection(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const key = fontFamilyKey(trimmed);
+  const match = FONT_STACK_PRESETS.find((preset) => fontFamilyKey(preset) === key);
+  return match !== undefined ? match : FONT_CUSTOM_VALUE;
+}
+
 function clampNumber(raw: unknown, fallback: number, min: number, max: number): number {
   const value = Number(raw);
   if (!Number.isFinite(value)) return fallback;
