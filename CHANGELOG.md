@@ -26,8 +26,36 @@ reproduced here.
   interaction, appearance, glossary, advanced) with roving keyboard focus and
   arrow-key navigation. The save bar and tab strip stay fixed while scrolling.
 - Show/hide buttons for OpenAI-compatible, Claude, and Gemini API keys.
+- Font system: detects installed fonts without a dependency by measuring 232
+  candidates, offers a searchable grouped list with favorites, a stack builder
+  with up to six fallbacks, automatic per-language stacks, weight/style/spacing
+  controls, px or relative font size, and automatic RTL direction.
+- Color system: a custom HSV picker with alpha, RGB/HSL/HEX inputs, a 5×8
+  palette, recent colors, saved colors, copy/paste, nine color roles with
+  theme/single/split modes, WCAG contrast checks in both schemes, and a
+  separate light/dark preview toggle.
+- Text decoration (underline/overline/strikethrough with style, thickness,
+  offset, skip-ink and color), paragraph dividers, ribbon position/width/style/
+  radius/gap, and block layout (padding, radius, border, indents, alignment,
+  max width, opacity, source gap and source dimming).
+- Six built-in appearance presets plus named presets, JSON import/export with
+  strict validation, and a full appearance reset with undo.
+- Translation scope toggles for body, headings, captions, list items and margin
+  notes.
+- Show/hide and layout-cycle shortcuts with conflict warnings, a hover modifier
+  (none/Alt/Ctrl), and auto-translate on open (off/cache-only/always).
+- Selection popup and chat pane can follow the translation font/size; popup
+  width is configurable. Export can match the reader or use print-specific
+  light styling.
+- Right-click or double-click a translation block to retranslate it or copy the
+  translation/source.
 
 ### Changed
+
+- Appearance now persists a versioned `appearance.v2` JSON structure while
+  continuing to write the legacy per-field preferences.
+- Advanced appearance groups (decoration, divider, ribbon, block layout,
+  interface/export) start collapsed so the default page stays short.
 
 - The main reader toolbar button is now a show/hide/pause toggle with
   independent state per reader; layouts are switched by the dedicated
