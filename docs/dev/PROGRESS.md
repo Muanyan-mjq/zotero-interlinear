@@ -815,3 +815,37 @@
 6. 保存后重开设置。预期：预览呈现的值 = 刚保存的值（预览与保存共用 `readAppearanceForm`）。
 7. 确认预览样式没有泄漏到偏好页其它区域（导航/其它 section 排版不受 `#sdt-content` 规则影响）。
 8. 切换 Zotero 中英文与浅/深主题。预期：预览标题/帮助本地化，演示段落与系统色对比度可读。
+
+## Step D：设置页字体排版与布局（D1/D2/D3）
+
+### 做了什么
+- **D1 修复语言行溢出与标签换行**：原文/译文语言原本共用一个 hbox（标签 180px + 两个 220px 下拉 + 间距，总宽 ≥650px），在 ~600px 宽度下「译文语言」标签换行并出现右缘截断。拆成两个独立 hbox，各含 `min-width:180px` 标签 + 220px 下拉，与其它行一致。先写集成用例断言两个下拉的 `parentElement` 不同且译文标签带 `min-width`，看其失败后再改。
+- **D2 字体选择器下拉**：把旧的字体预设圆点按钮换成一个 `select#interlinear-appearance-font-select`，选项为：继承、系统无衬线、衬线（Georgia）、等宽、自定义…。自定义项选中时展开隐藏行（`#interlinear-appearance-font-custom-row`），其中 `#interlinear-appearance-font-family` 文本输入仍是唯一持久化值，并在 input/blur 时用 `isValidFontFamily` 做内联错误提示（`#interlinear-appearance-font-family-error`），不合法的 CSS 分词不写偏好。**Gecko 字体枚举结论**：Firefox 115 无 `queryLocalFonts`（Chromium 专有、需权限），Zotero 也未向插件暴露枚举 API，**不确定** → 按任务约定改用精选跨平台字体堆栈列表，不枚举本机字体。纯函数先行（TDD）：`appearance.ts` 新增 `FONT_CUSTOM_VALUE`、`FONT_STACK_PRESETS`（继承 + 跨平台 sans/serif/mono，全部通过 `normalizeFontFamily`）、`resolveFontSelection`（把已存堆栈映射回匹配预设/继承/自定义）、`isValidFontFamily`（空或安全分词为真）；新增 5 个 Node 用例先红后绿。每个预设选项用自身字体渲染（`option.style.fontFamily`），**在 Gecko 下拉菜单内的效果未目视验证**。
+- **D3 排版/单位/焦点/粘性保存栏/a11y**：`preferences.css` 新增：①顶部操作栏 `position: sticky; top:0; z-index:3; background: Canvas; color: CanvasText`，滚动时保存按钮保持可达且不透明；②统一 `:focus-visible` 焦点环（button/select/input/textarea/a[href]，`outline: 2px solid Highlight; offset:2px`）；③标题层级（h2 1.5em / h3 1.15em）；④字段 label `white-space: nowrap` 防换行；⑤`.interlinear-unit` 行内单位后缀样式。xhtml 为 6 个数字输入补单位后缀 span：字号(px)、段距(em)、跳过末页(pages)、请求间隔(ms)、请求超时(ms)、最大字符(chars)；Fluent 新增 `unit-ms/px/em/chars/pages`（en/zh），`fillStaticLabels` 补 6 条映射。导航 chip 本就是 `<button>`，键盘可操作，焦点环由统一规则覆盖。**两栏网格**：现有「固定 `min-width:180px` 标签 + 弹性控件」已等同两列布局，未整体改写为 CSS grid（XUL `hbox` 与 grid 兼容性未验证、且无法目视验证，保守不冒险）。
+- **清洁**：删除被下拉取代的字体预设按钮相关代码（`fontPresetKey`/`syncFontPresetState`/`renderFontPresets`、`FONT_PRESETS`、`.interlinear-font-presets`/`.interlinear-font-preset` CSS、旧 `appearance-font-preset-*` Fluent 键），无遗留死代码。
+
+### 改动文件
+- 修改：`src/appearance.ts`（字体预设纯函数）、`src/modules/preferenceScript.ts`（`initFontSelector`/`validateFontInput`/`clearFontError`、`fillStaticLabels` 单位与自定义标签映射、`fillAppearanceLabels`）、`addon/content/preferences.xhtml`（语言两行、字体下拉 + 自定义行、6 个单位后缀 span）、`addon/content/preferences.css`（粘性操作栏、焦点环、标题层级、label 不换行、单位样式、删除旧预设样式）、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`（+5 用例）、`test/startup.test.ts`（语言行回归用例、字体选择器用例、单位后缀断言、保存用例改用下拉）、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。新增 FTL 键后先 `npx zotero-plugin build` 重新生成 typings。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**131 pass / 0 fail**（新增字体选择纯函数 5 个）。
+- `npm run test:review`（Zotero headless 独立 profile）：**47 pass / 0 fail**。新增/更新用例验证：语言两下拉分属不同父行且译文标签带 min-width；字体下拉选 Georgia 写入隐藏输入、选「自定义」展开自定义行、非法堆栈失焦报错、合法后清空错误；单位后缀非空；原保存用例改用下拉后仍正确保存 `Georgia, serif` 并生成对应 CSS。
+
+### 不确定项 / 未目视验证
+- 粘性保存栏在 Zotero 偏好页实际滚动容器（可能是 richlistbox/browser 而非文档滚动）中是否真正吸顶：**未目视验证**；若不生效仅退化为普通操作栏，无功能损失。
+- `option.style.fontFamily` 让每个字体选项以自身字体显示，在 Gecko 原生下拉菜单中的实际效果：**未目视验证**（部分平台忽略 option 字体）。
+- `label { white-space: nowrap }` 在超长本地化标签或极窄窗口下可能撑宽行：**未目视验证**；当前字段标签均较短。
+- `Highlight`/`Canvas`/`CanvasText` 系统色在浅/深主题下的对比与观感：**未目视验证**。
+- 未整体改为 CSS grid 两栏（保守），现有 hbox + min-width 标签已达两列效果。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 设置→服务。预期：原文语言、译文语言各占一行，标签不换行、右缘无截断；窗口缩到 ~600px 也不横向溢出。
+2. 设置→译文外观→字体。预期：下拉含「继承/系统无衬线/衬线(Georgia)/等宽/自定义…」；选预设立即改变预览；选「自定义…」出现输入行。
+3. 自定义输入 `Arial; color:red` 后失焦。预期：出现红色内联提示、不写入非法值；改成 `Georgia, serif` 提示消失。
+4. 数字输入右侧显示单位（像素/em/毫秒/字符/页）。预期：中英文各自本地化（如「像素」「毫秒」）。
+5. 设置页滚动。预期：顶部保存栏吸顶，始终可点保存；底部保存按钮仍可用。
+6. 键盘 Tab 遍历。预期：按钮/下拉/输入/导航 chip 均有清晰焦点环，Enter/Space 可激活导航 chip 滚动到对应区块。
+7. 切换浅/深主题。预期：粘性栏背景不透明、文字可读、焦点环可见。
+8. 打开/关闭「自定义」后再保存重开。预期：已存字体正确回显到下拉（匹配预设或回落到自定义并展开输入）。
