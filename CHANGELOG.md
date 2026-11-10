@@ -22,6 +22,10 @@ reproduced here.
   low-contrast warning.
 - Settings navigation, a sticky save bar, a global unsaved-changes hint, unit
   suffixes on numeric fields, clearer heading levels, and keyboard focus rings.
+- The settings pane is now split into five tabs (translation service, display &
+  interaction, appearance, glossary, advanced) with roving keyboard focus and
+  arrow-key navigation. The save bar and tab strip stay fixed while scrolling.
+- Show/hide buttons for OpenAI-compatible, Claude, and Gemini API keys.
 
 ### Changed
 
@@ -33,13 +37,22 @@ reproduced here.
   the live preview.
 - Retranslate/cancel/export/settings remain in the toolbar context menu;
   connection tests report running, success, warning, or failure in place.
+- Saving an invalid custom font keeps the previous font and reports a warning
+  instead of silently falling back to "inherit".
+- The custom heading was removed from the pane; Zotero's own pane title is the
+  single page heading, with the plugin icon and summary below it.
 
 ### Fixed
 
+- Settings CSS now reaches every section. All sections are wrapped inside the
+  `#interlinear-settings-root` scope again, so cards, fields, color controls,
+  status indicators, focus rings, and the sticky bar are actually styled.
 - Unsaved-change hints now appear for every settings field, not only fields
   with a dedicated handler.
 - The target-language label no longer wraps or clips in a narrow preferences
   window.
+- Tab switching now hides sections it does not own while still letting the
+  engine-select logic show only the active provider card.
 
 ## [0.5.1] - 2026-11-10
 

@@ -174,6 +174,157 @@ describe("startup", function () {
     }
   });
 
+  it("should switch the settings pane between five tabs", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) => win?.document.getElementById(id) as HTMLElement | null;
+    const isHidden = (id: string) => byId(id)?.hidden ?? true;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (byId("interlinear-settings-root")?.dataset.initialized === "true") break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const tabs = Array.from(
+        win?.document.querySelectorAll(".interlinear-tab") || [],
+      ) as HTMLElement[];
+      assert.equal(tabs.length, 5);
+      assert.equal(
+        tabs.filter((tab) => tab.getAttribute("aria-selected") === "true").length,
+        1,
+      );
+      assert.isFalse(isHidden("interlinear-service-section"));
+      assert.isTrue(isHidden("interlinear-appearance-section"));
+
+      const root = byId("interlinear-settings-root");
+      assert.isTrue(
+        root?.contains(byId("interlinear-appearance-section")) ?? false,
+        "every section must live inside the scoped root so preferences.css applies",
+      );
+      const card = win?.document.querySelector(
+        "#interlinear-google-section .interlinear-card",
+      ) as HTMLElement | null;
+      assert.exists(card);
+      // The stylesheet is injected as a processing instruction and can lag a
+      // tick behind the pane markup; wait until it actually reaches the card.
+      let cardStyle: CSSStyleDeclaration | null = null;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        cardStyle = card && win ? win.getComputedStyle(card) : null;
+        if (Number.parseFloat(cardStyle?.borderTopWidth || "0") > 0) break;
+        await Zotero.Promise.delay(50);
+      }
+      assert.isAbove(
+        Number.parseFloat(cardStyle?.borderTopWidth || "0"),
+        0,
+        "the settings CSS must reach the section cards",
+      );
+
+      byId("interlinear-tab-appearance")?.click();
+      assert.equal(
+        byId("interlinear-tab-appearance")?.getAttribute("aria-selected"),
+        "true",
+      );
+      assert.isFalse(isHidden("interlinear-appearance-section"));
+      assert.isTrue(isHidden("interlinear-service-section"));
+
+      byId("interlinear-tab-display")?.click();
+      assert.isFalse(isHidden("interlinear-display-mode-section"));
+      assert.isFalse(isHidden("interlinear-interaction-section"));
+
+      byId("interlinear-tab-advanced")?.click();
+      assert.isFalse(isHidden("interlinear-page-section"));
+      assert.isFalse(isHidden("interlinear-speed-section"));
+      assert.isFalse(isHidden("interlinear-cache-section"));
+      assert.isFalse(isHidden("interlinear-about-section"));
+
+      byId("interlinear-tab-service")?.click();
+      assert.isFalse(isHidden("interlinear-google-section"));
+      assert.isTrue(isHidden("interlinear-openai-section"));
+    } finally {
+      win?.close();
+    }
+  });
+
+  it("should keep the previous font when an invalid custom stack is saved", async function () {
+    this.timeout(10000);
+    const fontPref = "extensions.zotero.interlinear.appearance.fontFamily";
+    const previous = Zotero.Prefs.get(fontPref, true);
+    Zotero.Prefs.set(fontPref, "Georgia, serif", true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-font-select")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const select = win?.document.getElementById(
+        "interlinear-appearance-font-select",
+      ) as HTMLSelectElement | null;
+      const input = byId("interlinear-appearance-font-family");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement | null;
+      const status = win?.document.getElementById(
+        "interlinear-settings-status",
+      ) as HTMLElement | null;
+      assert.exists(select);
+      assert.exists(input);
+      assert.exists(save);
+      assert.exists(status);
+
+      if (select) select.value = "custom";
+      select?.dispatchEvent(new (win as any).Event("change", { bubbles: true }));
+      if (input) input.value = "Arial; color: red";
+      input?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
+      input?.dispatchEvent(new (win as any).Event("blur", { bubbles: true }));
+      save?.click();
+
+      assert.equal(Zotero.Prefs.get(fontPref, true), "Georgia, serif");
+      assert.equal(input?.value, "Georgia, serif");
+      assert.equal(select?.value, "Georgia, serif");
+      assert.equal(status?.dataset.state, "warning");
+      assert.isNotEmpty((status?.textContent || "").trim());
+    } finally {
+      win?.close();
+      if (previous === undefined) Zotero.Prefs.clear(fontPref, true);
+      else Zotero.Prefs.set(fontPref, previous, true);
+    }
+  });
+
+  it("should reveal and hide API keys in the settings pane", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-openai-api-key")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const input = win?.document.getElementById(
+        "interlinear-openai-api-key",
+      ) as HTMLInputElement | null;
+      const toggle = win?.document.querySelector(
+        '.interlinear-secret-toggle[data-target="interlinear-openai-api-key"]',
+      ) as HTMLButtonElement | null;
+      assert.exists(input);
+      assert.exists(toggle);
+      assert.equal(input?.type, "password");
+      assert.isNotEmpty((toggle?.textContent || "").trim());
+
+      toggle?.click();
+      assert.equal(input?.type, "text");
+      assert.equal(toggle?.getAttribute("aria-pressed"), "true");
+      toggle?.click();
+      assert.equal(input?.type, "password");
+      assert.equal(toggle?.getAttribute("aria-pressed"), "false");
+    } finally {
+      win?.close();
+    }
+  });
+
   it("should render every reader toolbar icon once without post-render DOM rewrites", function () {
     const modePref = "extensions.zotero.interlinear.displayMode";
     const previousMode = Zotero.Prefs.get(modePref, true);
@@ -856,10 +1007,17 @@ describe("startup", function () {
         target?.parentElement,
         "source and target languages must not share one wide row",
       );
-      assert.match(
-        targetLabel?.getAttribute("style") || "",
-        /min-width/u,
-        "target language label needs a min-width so it cannot wrap",
+      const targetStyle =
+        targetLabel && win ? win.getComputedStyle(targetLabel) : null;
+      assert.equal(
+        targetStyle?.whiteSpace,
+        "nowrap",
+        "target language label must not wrap",
+      );
+      assert.isTrue(
+        !!target?.closest(".interlinear-field") &&
+          target.closest(".interlinear-field") !== source?.closest(".interlinear-field"),
+        "target language select must sit in its own field row",
       );
     } finally {
       win?.close();
@@ -2340,7 +2498,9 @@ describe("reader toggle", function () {
   it("reveals hidden translations on Alt-click without re-requesting done blocks", async function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
+    const displayModePref = "extensions.zotero.interlinear.displayMode";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousDisplayMode = Zotero.Prefs.get(displayModePref, true);
     const previousRequest = Zotero.HTTP.request;
     const { doc, content, elements } = makeDoc(["Alt reveal paragraph"]);
     const reader = makeReader(doc, 2147483627);
@@ -2349,6 +2509,9 @@ describe("reader toggle", function () {
     try {
       clearTranslationCache();
       Zotero.Prefs.set(enginePref, "google", true);
+      // The reveal path re-applies the saved layout; pin it so a profile left
+      // in another mode by an earlier run cannot change the expected value.
+      Zotero.Prefs.set(displayModePref, "top-bottom", true);
       (Zotero.HTTP as any).request = async () => {
         requests += 1;
         return { status: 200, response: [[["揭示译文。", "", null, null]]] };
@@ -2372,6 +2535,8 @@ describe("reader toggle", function () {
       (Zotero.HTTP as any).request = previousRequest;
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
       else Zotero.Prefs.set(enginePref, previousEngine, true);
+      if (previousDisplayMode === undefined) Zotero.Prefs.clear(displayModePref, true);
+      else Zotero.Prefs.set(displayModePref, previousDisplayMode, true);
     }
   });
 

@@ -40,14 +40,13 @@ Requires **Zotero 10 (desktop)**. See [Acknowledgements](#acknowledgements) if y
 
 ## Configuration
 
-Open **Edit → Settings → Interlinear**. The page has a jump menu, an appearance live preview, and a save bar that stays visible while you scroll; modified fields show an unsaved-changes hint:
+Open **Edit → Settings → Interlinear**. The page uses five tabs; the save bar and tab strip stay visible while you scroll, and modified fields show an unsaved-changes hint:
 
-- **Service** — pick a backend and fill in its endpoint, model, and API key; choose source and target languages. Each backend has a **Test connection** button that reports running, success, or the actual failure reason in place.
-- **Display** — default layout, hover translation (on/off and dwell delay), and the single-paragraph shortcut.
+- **Translation service** — pick a backend and fill in its endpoint, model, and API key; choose source and target languages. Each backend has a **Test connection** button that reports running, success, or the actual failure reason in place.
+- **Display & interaction** — default layout, hover translation (on/off and dwell delay), and the single-paragraph shortcut.
 - **Appearance** — live preview plus everything listed under Features above; colors use a picker plus preset swatches, with a "follow theme" option.
-- **Scope** — skip trailing pages (e.g. references), plus speed and reliability knobs: concurrency, request gap, request size limits, timeout, and the consecutive-failure pause threshold.
 - **Glossary** — import/export term files.
-- **Maintenance** — translation cache usage and cleanup.
+- **Advanced** — skip trailing pages (e.g. references), speed and reliability knobs (concurrency, request gap, request size limits, timeout, consecutive-failure pause threshold), translation cache usage and cleanup, plus version and project links.
 
 > **Privacy note.** Translating sends paragraph text to the service you choose. API keys are stored as plaintext in Zotero preferences; they are never written to logs or cache keys. Do not translate sensitive documents with a service you do not trust.
 

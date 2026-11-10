@@ -916,3 +916,53 @@
 ### 未完成 / 需人工补拍
 - 三张 README 截图仅留占位注释，实际截图需在干净 Zotero 10 profile 中人工拍摄后放入 `docs/images/` 并替换注释为图片链接。
 - README 中「保存栏滚动时保持可见」依据 CSS `position: sticky` 实现，实际吸顶效果**未目视验证**（见 Step D）。
+
+## Step G：设置页重做（五标签页、样式作用域修复、功能补全）
+
+### 做了什么
+- **根因修复：整页 CSS 从未生效**。`preferences.css` 全部规则以 `#interlinear-settings-root` 为作用域，但该 groupbox 只包住标题、保存栏和导航；所有功能区块都是它的兄弟节点，因此卡片、字段、颜色控件、状态点、焦点环等样式在真实页面里全部落空。现在把整个设置页（hero、隐私提示、保存栏、标签栏、全部 section、页脚）收进 `#interlinear-settings-root`，并用 `.interlinear-page` 统一宽度与内边距；集成用例新增 `root.contains(appearance-section)` 与卡片 `border-top-width > 0` 断言，防止回退。
+- **五标签页**：服务 / 显示与交互 / 译文外观 / 术语表 / 高级。`SETTINGS_TABS` + `data-tab` + `data-engine` 统一控制可见性：section 必须属于当前标签，provider section 还必须是当前引擎。标签支持鼠标、`ArrowLeft/Right`、`Home/End` 与 roving tabindex；切换后滚动到该标签第一个可见 section，并遵守 `prefers-reduced-motion`。
+- **信息架构**：原 11 个区块按用途重新分组。服务页含后端、语言、当前 provider；显示页含布局与单段翻译；外观页含实时预览、排版和颜色；术语表独立；高级页含范围、速度、缓存、关于与项目链接。保存栏与标签栏合并为一个 sticky 容器，滚动时一起吸顶。
+- **视觉重做**：统一卡片、字段两栏网格（154px 标签 + 弹性控件）、帮助文字、按钮/输入/下拉、状态点、警告徽标、颜色控件与预览；状态颜色只用于圆点/徽标，正文始终用 `CanvasText`，保证深色主题可读。所有交互控件有 `:focus-visible` 焦点环；窄窗口（≤640px）字段改为单列；减少动态效果时关闭过渡。
+- **功能补全**：
+  - 自定义字体非法时不再静默回退为「继承」：保存时保留上一字体、回填输入框与下拉、清空内联错误，并在保存状态显示黄色警告（新增 FTL 键 `appearance-font-family-invalid-save`）。
+  - OpenAI 兼容 / Claude / Gemini 的 API 密钥新增「显示 / 隐藏」按钮（`aria-pressed`），避免盲输。
+  - 移除设置页里重复的 `h2 Interlinear`：Zotero 自己会在 pane 顶部插入 h1，保留它作为唯一页面标题；插件图标与简介放在其下。版本号移入页脚 `Interlinear v0.5.1 · AGPL-3.0-or-later · 基于 quillamio/bilingual-reader`。
+  - 删除旧 `settings-nav-*` 与 `interlinear-save-bottom` 相关代码/文案，避免双份维护。
+- **测试**：新增 3 个集成用例（五标签切换与 CSS 生效、非法字体保存保留旧值、API 密钥显示/隐藏）；语言行用例从「内联 min-width」改为「独立 field 行 + 标签不换行」，与新的网格布局一致。
+
+### 改动文件
+- 重写：`addon/content/preferences.xhtml`、`addon/content/preferences.css`。
+- 修改：`src/modules/preferenceScript.ts`、`src/hooks.ts`（品牌图标插入 hero slot）、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/startup.test.ts`、`README.md`、`README-zh-CN.md`、`CHANGELOG.md`、`docs/dev/PROGRESS.md`、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**131 pass / 0 fail**。
+- `npm run test:review`（Zotero headless 独立 profile）：**51 pass / 0 fail**。
+- 另用 `.scaffold/ui-preview.html`（静态近似页，非构建产物）在 Playwright 下以 900px 宽分别截图浅色与深色主题，检查卡片、字段对齐、标签、颜色控件与警告的布局；截图在本地 `.scaffold/`，未纳入仓库。
+
+### 对 Step E「待我决定」的回应
+1. 导出流程仍使用阻塞式 `alert`/`confirm`：**未改**，属于阅读器侧交互，不在本次设置页范围内。
+2. 非法自定义字体保存时静默回退：**已修复**（保留旧字体 + 警告）。
+3. 重复加载的监听器叠加：`registerPrefsScripts` 仍以 `root.dataset.initialized` 提前返回，同一文档不会重复注册；未额外改造 pane 生命周期。
+4. 版本号：仍为 0.5.1，未在本步改动版本策略。
+
+### 不确定项 / 未目视验证
+- 真实 Zotero 设置窗口中的最终观感**未截图**：headless 测试只断言 DOM、计算样式与交互，Playwright 截图基于静态近似页，不能完全代表 Zotero 的 XUL 布局与滚动容器。
+- `position: sticky` 在 Zotero 偏好页实际滚动容器中的吸顶效果**未目视验证**；若不生效，保存栏与标签栏会退化为普通顶部栏，功能不受影响。
+- `color-mix()`、`text-wrap: pretty/balance`、`accent-color` 在 Zotero 10 的 Gecko 中按标准支持，但**未逐项真机确认**；不支持的声明会被忽略，不会破坏布局。
+- 标签切换调用 `scrollIntoView({behavior:"smooth"})`，在部分 XUL 滚动容器中可能只滚动到 section 顶部；已加 `scroll-margin-top:112px` 预留 sticky 高度。
+- 深色主题依赖 `Canvas`/`CanvasText` 系统色；状态色只用于小圆点/徽标，正文对比度按系统色保证，但**未在真实 Zotero 深色主题下目视**。
+- 未在真实 Zotero 中测试键盘 Tab 顺序与标签箭头键；集成测试只覆盖 DOM 结构与可见性。
+
+### 需要手动在 Zotero 里验证的清单
+1. 打开设置→Interlinear：确认只有一个页面标题（Zotero 的 h1），下方是插件图标 + 简介、隐私提示、保存栏和五个标签。
+2. 点击五个标签：每次只显示对应 section；服务页只显示当前引擎的 provider 卡片；标签切换后页面滚动到该标签开头；←/→/Home/End 可切换标签。
+3. 滚动设置页：保存栏与标签栏吸顶且背景不透明；修改任意字段出现「有未保存的更改」，保存后消失。
+4. 服务页：切换五种后端，确认 provider 卡片随之切换；点「测试连接」确认状态点与文字；点密钥旁的「显示 / 隐藏」切换明文，焦点回到输入框。
+5. 外观页：改字号、字体、行高、段距、主题、四个颜色控件，确认预览即时更新；「跟随主题」时预览为棋盘格而非挤压文字；对比度低于 4.5 时出现警告。
+6. 字体选择「自定义…」输入 `Arial; color: red` 后保存：确认弹出黄色警告、字体保留原值、输入框回填，而不是静默变成「继承」。
+7. 高级页：确认范围、速度、缓存、关于与 GitHub 链接都在；缓存统计与清除可用。
+8. 窄窗口（约 600px）：字段变单列、标签不换行、页面无横向滚动；键盘 Tab 遍历所有控件有清晰焦点环。
+9. 切换 Zotero 浅/深主题与中英文：确认卡片、帮助文字、状态点、警告与页脚均可读，无残留英文/中文。

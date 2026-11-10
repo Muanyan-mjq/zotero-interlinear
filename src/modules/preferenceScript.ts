@@ -128,6 +128,7 @@ import {
   testGoogleConnection,
   testOpenAIConnection,
 } from "../providers";
+import { version as addonVersion } from "../../package.json";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -576,11 +577,13 @@ function refreshColorUI(doc: Document): void {
         preview.dataset.inherit = "false";
         preview.textContent = "";
         preview.title = effective;
+        preview.setAttribute("aria-label", effective);
       } else {
         preview.style.backgroundColor = "";
         preview.dataset.inherit = "true";
-        preview.textContent = inheritLabel;
+        preview.textContent = "";
         preview.title = inheritLabel;
+        preview.setAttribute("aria-label", inheritLabel);
       }
     }
     const picker = getElement<HTMLInputElement>(doc, config.base);
@@ -764,18 +767,134 @@ function initializeAppearanceControls(doc: Document): void {
   refreshColorUI(doc);
 }
 
-function registerSettingsNav(doc: Document): void {
-  const buttons = Array.from(
-    doc.querySelectorAll(".interlinear-nav-button"),
+type SettingsTab = "service" | "display" | "appearance" | "glossary" | "advanced";
+
+const SETTINGS_TABS: readonly SettingsTab[] = [
+  "service",
+  "display",
+  "appearance",
+  "glossary",
+  "advanced",
+];
+
+function isSettingsTab(value: string | undefined): value is SettingsTab {
+  return SETTINGS_TABS.includes(value as SettingsTab);
+}
+
+function activeSettingsTab(doc: Document): SettingsTab {
+  const tabs = getElement<HTMLElement>(doc, "interlinear-settings-tabs");
+  const value = tabs?.dataset.activeTab;
+  return isSettingsTab(value) ? value : "service";
+}
+
+/** Sections live in one tab each; provider sections additionally follow the engine. */
+function syncSectionVisibility(doc: Document): void {
+  const tab = activeSettingsTab(doc);
+  const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
+  const sections = Array.from(
+    doc.querySelectorAll(".interlinear-section[data-tab]"),
   ) as HTMLElement[];
+  for (const section of sections) {
+    const tabMatches = section.dataset.tab === tab;
+    const engineMatches = !section.dataset.engine || section.dataset.engine === engine;
+    section.hidden = !(tabMatches && engineMatches);
+  }
+}
+
+function firstVisibleSection(doc: Document, tab: SettingsTab): HTMLElement | null {
+  return doc.querySelector<HTMLElement>(
+    `.interlinear-section[data-tab="${tab}"]:not([hidden])`,
+  );
+}
+
+function setActiveTab(
+  doc: Document,
+  tab: SettingsTab,
+  options: { focus?: boolean; scroll?: boolean } = {},
+): void {
+  const container = getElement<HTMLElement>(doc, "interlinear-settings-tabs");
+  if (!container) return;
+  container.dataset.activeTab = tab;
+  const buttons = Array.from(
+    container.querySelectorAll(".interlinear-tab"),
+  ) as HTMLButtonElement[];
+  for (const button of buttons) {
+    const selected = button.dataset.tab === tab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    if (selected && options.focus) button.focus();
+  }
+  syncSectionVisibility(doc);
+  if (options.scroll) {
+    const section = firstVisibleSection(doc, tab);
+    if (section) {
+      const media = doc.defaultView
+        ? doc.defaultView.matchMedia("(prefers-reduced-motion: reduce)")
+        : null;
+      const reduced = media ? media.matches : false;
+      try {
+        section.scrollIntoView({
+          behavior: reduced ? "auto" : "smooth",
+          block: "start",
+        });
+      } catch (_) {
+        section.scrollIntoView();
+      }
+    }
+  }
+}
+
+function registerSettingsTabs(doc: Document): void {
+  const container = getElement<HTMLElement>(doc, "interlinear-settings-tabs");
+  if (!container) return;
+  container.setAttribute("aria-label", getString("settings-tabs-label"));
+  const buttons = Array.from(
+    container.querySelectorAll(".interlinear-tab"),
+  ) as HTMLButtonElement[];
   for (const button of buttons) {
     button.addEventListener("click", () => {
-      const target = getElement<HTMLElement>(doc, button.dataset.target || "");
-      if (!target) return;
+      const tab = button.dataset.tab;
+      if (isSettingsTab(tab)) setActiveTab(doc, tab, { scroll: true });
+    });
+    button.addEventListener("keydown", (event) => {
+      const keyEvent = event as KeyboardEvent;
+      const index = buttons.indexOf(button);
+      let nextIndex: number | null = null;
+      if (keyEvent.key === "ArrowRight") nextIndex = (index + 1) % buttons.length;
+      else if (keyEvent.key === "ArrowLeft") {
+        nextIndex = (index - 1 + buttons.length) % buttons.length;
+      } else if (keyEvent.key === "Home") nextIndex = 0;
+      else if (keyEvent.key === "End") nextIndex = buttons.length - 1;
+      if (nextIndex === null) return;
+      keyEvent.preventDefault();
+      const next = buttons[nextIndex];
+      const tab = next?.dataset.tab;
+      if (isSettingsTab(tab)) setActiveTab(doc, tab, { focus: true });
+    });
+  }
+  setActiveTab(doc, "service");
+}
+
+function registerSecretToggles(doc: Document): void {
+  const show = getString("settings-show-secret");
+  const hide = getString("settings-hide-secret");
+  for (const button of Array.from(
+    doc.querySelectorAll(".interlinear-secret-toggle"),
+  ) as HTMLButtonElement[]) {
+    const target = getElement<HTMLInputElement>(doc, button.dataset.target || "");
+    if (!target) continue;
+    button.textContent = show;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => {
+      const reveal = target.type === "password";
+      target.type = reveal ? "text" : "password";
+      button.textContent = reveal ? hide : show;
+      button.setAttribute("aria-pressed", String(reveal));
+      target.focus();
       try {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        target.setSelectionRange(target.value.length, target.value.length);
       } catch (_) {
-        target.scrollIntoView();
+        // Selection is a nicety; some input types reject it.
       }
     });
   }
@@ -786,20 +905,6 @@ function registerDirtyTracking(doc: Document): void {
   const mark = () => markDirty(doc);
   doc.addEventListener("change", mark);
   doc.addEventListener("input", mark);
-}
-
-function updateBackendVisibility(doc: Document): void {
-  const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
-  const ollamaSection = getElement<HTMLElement>(doc, "interlinear-ollama-section");
-  const googleSection = getElement<HTMLElement>(doc, "interlinear-google-section");
-  const openaiSection = getElement<HTMLElement>(doc, "interlinear-openai-section");
-  const claudeSection = getElement<HTMLElement>(doc, "interlinear-claude-section");
-  const geminiSection = getElement<HTMLElement>(doc, "interlinear-gemini-section");
-  if (ollamaSection) ollamaSection.hidden = engine !== "ollama";
-  if (googleSection) googleSection.hidden = engine !== "google";
-  if (openaiSection) openaiSection.hidden = engine !== "openai";
-  if (claudeSection) claudeSection.hidden = engine !== "claude";
-  if (geminiSection) geminiSection.hidden = engine !== "gemini";
 }
 
 function fillProviderLabels(doc: Document): void {
@@ -892,6 +997,8 @@ function fillLanguageOptions(
 function fillAppearanceLabels(doc: Document): void {
   const entries: Array<[string, Parameters<typeof getString>[0]]> = [
     ["interlinear-appearance-title", "appearance-title"],
+    ["interlinear-appearance-type-title", "appearance-type-title"],
+    ["interlinear-appearance-colors-title", "appearance-colors-title"],
     ["interlinear-appearance-preview-label", "appearance-preview-label"],
     ["interlinear-appearance-preview-help", "appearance-preview-help"],
     ["interlinear-appearance-font-size-label", "appearance-font-size-label"],
@@ -960,13 +1067,12 @@ function fillAppearanceLabels(doc: Document): void {
 function fillStaticLabels(doc: Document): void {
   const entries: Array<[string, Parameters<typeof getString>[0]]> = [
     ["interlinear-service-title", "settings-service-title"],
-    ["interlinear-nav-title", "settings-nav-title"],
-    ["interlinear-nav-service", "settings-nav-service"],
-    ["interlinear-nav-display", "settings-nav-display"],
-    ["interlinear-nav-appearance", "settings-nav-appearance"],
-    ["interlinear-nav-scope", "settings-nav-scope"],
-    ["interlinear-nav-glossary", "settings-nav-glossary"],
-    ["interlinear-nav-maintenance", "settings-nav-maintenance"],
+    ["interlinear-tab-service", "settings-tab-service"],
+    ["interlinear-tab-display", "settings-tab-display"],
+    ["interlinear-tab-appearance", "settings-tab-appearance"],
+    ["interlinear-tab-glossary", "settings-tab-glossary"],
+    ["interlinear-tab-advanced", "settings-tab-advanced"],
+    ["interlinear-about-title", "settings-about-title"],
     ["interlinear-page-title", "settings-page-title"],
     ["interlinear-skip-last-label", "settings-skip-last-label"],
     ["interlinear-skip-last-help", "settings-skip-last-help"],
@@ -991,7 +1097,6 @@ function fillStaticLabels(doc: Document): void {
     ["interlinear-request-timeout-unit", "unit-ms"],
     ["interlinear-max-chars-unit", "unit-chars"],
     ["interlinear-save", "settings-save"],
-    ["interlinear-save-bottom", "settings-save"],
     ["interlinear-cache-title", "settings-cache-title"],
     ["interlinear-clear-cache", "settings-clear-cache"],
     ["interlinear-cache-help", "settings-cache-help"],
@@ -1100,7 +1205,33 @@ function saveSettings(doc: Document): void {
     readNumberInput(doc, "interlinear-request-timeout", DEFAULT_REQUEST_TIMEOUT_MS),
   );
 
-  setAppearance(readAppearanceForm(doc));
+  const warnings: string[] = [];
+  const appearance = readAppearanceForm(doc);
+  if (!isValidFontFamily(appearance.fontFamily)) {
+    // normalizeAppearance would silently turn an invalid stack into "inherit";
+    // keep the previous font instead and tell the user why.
+    appearance.fontFamily = getAppearance().fontFamily;
+    const fontInput = getElement<HTMLInputElement>(
+      doc,
+      "interlinear-appearance-font-family",
+    );
+    if (fontInput) fontInput.value = appearance.fontFamily;
+    const fontSelect = getElement<HTMLSelectElement>(
+      doc,
+      "interlinear-appearance-font-select",
+    );
+    if (fontSelect) {
+      fontSelect.value = resolveFontSelection(appearance.fontFamily);
+      const customRow = getElement<HTMLElement>(
+        doc,
+        "interlinear-appearance-font-custom-row",
+      );
+      if (customRow) customRow.hidden = fontSelect.value !== FONT_CUSTOM_VALUE;
+    }
+    clearFontError(doc);
+    warnings.push(getString("appearance-font-family-invalid-save"));
+  }
+  setAppearance(appearance);
   setDisplayMode(
     getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
       getDisplayMode(),
@@ -1116,15 +1247,15 @@ function saveSettings(doc: Document): void {
   const normalizedShortcut = normalizeShortcut(rawShortcut);
   setShortcut(normalizedShortcut);
   if (shortcutInput) shortcutInput.value = normalizedShortcut;
+  if (!shortcutValid) warnings.push(getString("interaction-shortcut-invalid"));
   refreshTranslationStyles();
   refreshDisplayModes();
+  refreshAppearancePreview(doc);
 
   setStatus(
     doc,
-    shortcutValid
-      ? getString("settings-saved")
-      : getString("interaction-shortcut-invalid"),
-    shortcutValid ? "success" : "warning",
+    warnings.length ? warnings.join(" ") : getString("settings-saved"),
+    warnings.length ? "warning" : "success",
   );
   setSaveHint(doc, "");
 }
@@ -1589,20 +1720,26 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   fillAppearanceLabels(doc);
   fillProviderLabels(doc);
   fillStaticLabels(doc);
+  const footerNote = getElement<HTMLElement>(doc, "interlinear-footer-note");
+  if (footerNote) {
+    footerNote.textContent = getString("settings-footer-note", {
+      args: { version: addonVersion },
+    });
+  }
   fillLanguageOptions(doc, "interlinear-source-language", SOURCE_LANGUAGES, getSourceLanguage());
   fillLanguageOptions(doc, "interlinear-target-language", TARGET_LANGUAGES, getTargetLanguage());
   initializeAppearanceControls(doc);
   initializeAppearancePreview(doc);
-  // The form sections are siblings of #interlinear-settings-root, so delegate on
-  // the document to catch input/change from every appearance field.
+  // Delegate on the document: the tab panels all live inside the page, but a
+  // document-level listener also survives the pane being rebuilt.
   doc.addEventListener("input", () => refreshAppearancePreview(doc));
   doc.addEventListener("change", () => refreshAppearancePreview(doc));
   refreshAppearancePreview(doc);
-  updateBackendVisibility(doc);
   updateCacheStatus(doc);
   registerProjectLink(doc);
   registerShortcutRecorder(doc);
-  registerSettingsNav(doc);
+  registerSettingsTabs(doc);
+  registerSecretToggles(doc);
   registerDirtyTracking(doc);
 
   hoverTranslate?.addEventListener("change", () => {
@@ -1610,16 +1747,14 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   });
 
   engine?.addEventListener("change", () => {
-    updateBackendVisibility(doc);
+    syncSectionVisibility(doc);
     setStatus(doc, getString("settings-engine-pending"), "warning");
     markDirty(doc);
   });
 
-  for (const id of ["interlinear-save", "interlinear-save-bottom"]) {
-    getElement<HTMLButtonElement>(doc, id)?.addEventListener("click", () => {
-      saveSettings(doc);
-    });
-  }
+  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
+    saveSettings(doc);
+  });
 
   getElement<HTMLButtonElement>(doc, "interlinear-test-ollama")?.addEventListener(
     "click",
