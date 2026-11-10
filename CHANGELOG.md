@@ -10,8 +10,9 @@ reproduced here.
 
 ## [0.5.1] - 2026-11-10
 
-First release as **Interlinear**, an independent project based on
-quillamio/bilingual-reader (see [NOTICE.md](NOTICE.md)).
+First release as **Interlinear**, an independent project. Upstream attribution
+is recorded in [NOTICE.md](NOTICE.md); the entries below describe what changed
+relative to the upstream plugin.
 
 ### Added
 
