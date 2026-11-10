@@ -826,6 +826,38 @@ describe("startup", function () {
     }
   });
 
+  it("should give source and target languages separate rows so labels do not wrap", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-source-language")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const source = win?.document.getElementById("interlinear-source-language");
+      const target = win?.document.getElementById("interlinear-target-language");
+      const targetLabel = win?.document.getElementById(
+        "interlinear-target-language-label",
+      ) as HTMLElement | null;
+      assert.exists(source);
+      assert.exists(target);
+      assert.exists(targetLabel);
+      assert.notEqual(
+        source?.parentElement,
+        target?.parentElement,
+        "source and target languages must not share one wide row",
+      );
+      assert.match(
+        targetLabel?.getAttribute("style") || "",
+        /min-width/u,
+        "target language label needs a min-width so it cannot wrap",
+      );
+    } finally {
+      win?.close();
+    }
+  });
+
   it("should switch display modes without moving source nodes", async function () {
     this.timeout(10000);
     const enginePref = "extensions.zotero.interlinear.engine";
