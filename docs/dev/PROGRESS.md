@@ -740,3 +740,43 @@
 6. 隐藏状态下把鼠标停在未翻译段落。预期：不触发悬停自动翻译；但划词弹窗仍可用；按快捷键或 Alt 点击某段会先揭示译文再翻译该段。
 7. 打开两个 PDF 标签各自切换。预期：两个阅读器开关状态互不影响；关闭再重开同一 PDF 后按钮回到未翻译初始态。
 8. 在左右分栏模式下加一条高亮，再隐藏/显示译文。预期：高亮矩形始终覆盖原文文字、位置不偏移，批注侧栏可正常跳转。
+
+## Step B：可复用颜色控件（文字/背景/下划线/色带）
+
+### 做了什么
+- **纯函数先行（TDD）**：`src/appearance.ts` 新增 `normalizeHexInput`（接受 `#RGB`/`#RRGGBB`，可省略 `#`，统一展开并转成大写 6 位；非法返回 null）、`hexToRgb`、WCAG 相对亮度与 `contrastRatio`（非 hex 输入返回 null，结果保留两位小数）、`meetsContrastAA`（阈值常量 `CONTRAST_AA_MIN = 4.5`）、`resolveEffectiveColor(stored, theme, role)`（显式值优先；继承时 light/dark 解析为调色板色，auto 返回空串以便预览显示棋盘格）。`readerColors` 重构为复用 `resolveEffectiveColor`，行为不变。先写 8 个 Node 用例看其失败再实现，appearance 单测共 27 个全绿。
+- **可复用控件**：`preferenceScript.ts` 用 `ColorControlConfig` 表 + `initColorControl(doc, config)` 统一构建 4 个颜色控件（文字/背景/下划线/色带），删除旧的 `setColorControl`/`bindInheritToggle`/`renderColorPresets` 与通用 `COLOR_PRESETS`。**取色器（`input type=color`）仍是唯一持久化来源**：`readColorControl` 不变，保存读 `picker.value`，十六进制输入只是双向同步的显示层。
+  - **真实颜色预览方块**：每个控件一个 `…-preview`，`refreshColorUI` 用 `resolveEffectiveColor` 解析当前表单态（取色器值 + 继承勾选 + 主题）得到有效色；有效色为空（auto+继承）时显示棋盘格 + 「继承 / 透明」文字说明，否则填实色。下划线继承时跟随文字有效色；色带恒为已存值。
+  - **继承禁用 + 说明**：继承选项单独成行（`…-inherit-row`），勾选时禁用取色器、十六进制输入与全部预设，并显示一行解释文字（`…-inherit-help`，Fluent）。
+  - **十六进制双向同步**：输入合法值即时归一化并写回取色器（小写 `#rrggbb`）、显示层转大写、解除继承；非法值不写取色器，失焦时显示内联错误（`…-error`）并回退到取色器当前值，**不写偏好**。校验全部走 `normalizeHexInput`。
+  - **预设分用途**：文字 8 色（保持集成断言）、背景 6 色、强调色（下划线/色带）8 色；每个预设是实心圆点，`title`/`aria-label` 为「本地化颜色名 (hex)」，选中态用 `data-active` + outline 环标记，禁用态降透明度。容器标题按用途取 `appearance-text/background/accent-preset-title`。
+  - **统一恢复默认**：每个控件一个 `…-reset` 按钮（色带沿用原 id `interlinear-appearance-ribbon-color-reset`），文字/背景/下划线重置为继承（空值），色带重置为默认蓝 `#2f6fdf`。
+  - **非阻塞对比度警告**：`interlinear-appearance-contrast-warning`，仅当文字与背景都为显式值且 `contrastRatio < 4.5` 时显示带比值的通知（Fluent 变量 `{ $ratio }`），否则隐藏；不弹窗、不阻断保存。
+  - **主题联动**：主题下拉 `change` 即时 `refreshColorUI`，继承态预览随浅/深主题解析。
+- **标记与样式**：`preferences.xhtml` 4 个颜色块改为 `html:div.interlinear-color-control` 卡片（主行：标签/预览/取色器/十六进制/恢复默认；继承行；预设；错误；帮助），背景块后新增对比度警告元素。`preferences.css` 全部作用域于 `#interlinear-settings-root`，新增预览（含 `repeating-conic-gradient` 棋盘格）、十六进制（等宽大写）、恢复默认按钮、继承说明、内联错误、对比度警告与预设选中环/禁用样式，复用既有 CSS 变量。
+- **Fluent en/zh 同步**：新增 `appearance-color-reset`、`appearance-color-hex-label`、`appearance-color-hex-invalid`、`appearance-color-preview-inherit`、`appearance-contrast-warning`（含 `$ratio`）、三个继承说明、三个预设容器标题、16 个 `color-name-*`；移除被取代的 `appearance-color-preset-title` 与 `appearance-ribbon-color-reset`，并澄清四个颜色帮助文案提到十六进制与恢复默认。`fillAppearanceLabels` 补齐 reset/inherit-help 映射，色带 reset 改指共享键。
+
+### 改动文件
+- 修改：`src/appearance.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/appearance.node.test.mjs`（+8 用例）、`test/startup.test.ts`（外观用例补新元素只读断言 + 新增 1 个交互用例）、`typings/i10n.d.ts`（构建生成）。
+
+### 测试结果
+- `npm run build`：通过。新增 FTL 键后先 `npx zotero-plugin build` 重新生成 typings 再 tsc。
+- `npm run lint:check`：通过，无告警。
+- `npm run test:unit`：**126 pass / 0 fail**（appearance 27 个，含新增 8 个纯函数用例）。
+- `npm run test:review`（Zotero headless 独立 profile）：**44 pass / 0 fail**。新增交互用例在真实 Zotero 偏好窗口验证：合法 hex 同步到取色器并解除继承、非法 hex 失焦报错并回退并不改取色器、恢复默认回到继承禁用态、`#777777`/`#ffffff`（4.48:1）触发对比度警告而 `#000000`/`#ffffff`（21:1）清除、主题切深色时继承文字预览解析为 `rgb(232,232,232)`、切回 auto 恢复棋盘格。原外观保存用例仍绿（取色器为唯一持久化来源，直接设 `picker.value` 后保存读值不变）。
+
+### 不确定项 / 未目视验证
+- 预览棋盘格 + 「继承 / 透明」文字在真实浅/深主题下的可读性、预设选中环与卡片间距观感：**未目视验证**（headless 只断言 `data-inherit`、内联背景色与文案）。
+- `repeating-conic-gradient` 在 Zotero（Firefox 115 内核）渲染：API 自 Firefox 83 起支持，理论可用，但**未目视验证**实际棋盘格效果。
+- 十六进制输入 `text-transform: uppercase` 仅为视觉大写，值本身已归一化为大写；与取色器小写 `#rrggbb` 并存属预期（保存读小写取色器值）。
+- 对比度警告只对 hex 颜色计算；若历史偏好里存了命名色/rgb（非 hex），`contrastRatio` 返回 null 因而不警告——保守行为，非 bug。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置→译文外观。预期：四个颜色各成一张卡片，含预览方块、取色器、十六进制框、恢复默认按钮；继承选项单独成行并带说明。
+2. 文字颜色默认「跟随主题」勾选。预期：取色器/十六进制/预设均禁用，预览显示棋盘格 + 「继承 / 透明」；把主题切到深色，预览变为深主题文字色（浅灰）。
+3. 取消继承，在十六进制框输入 `#abc`。预期：取色器同步为 `#AABBCC`、预览显示该实色、对应预设若匹配则出现选中环；输入 `zzz` 后失焦，出现红色内联错误并回退到上一个合法值，偏好不被改写。
+4. 点某颜色「恢复默认」。预期：文字/背景/下划线回到继承禁用态，色带回到默认蓝。
+5. 文字设 `#777777`、背景设 `#ffffff`（均取消继承）。预期：出现非阻塞对比度警告（约 4.48:1，低于 4.5）；把文字改 `#000000` 警告消失；保存不被阻断。
+6. 点预设圆点。预期：取色器与十六进制同步、继承解除、选中环标记当前色；悬停有放大、title 显示「颜色名 (hex)」。
+7. 保存后重开设置。预期：显示值 = 存储值 = 有效色一致；切主题再切回，继承预览正确解析。
+8. 切换 Zotero 浅/深主题与中英文语言。预期：卡片、棋盘格、警告、预设名案均正确本地化且对比度可读。

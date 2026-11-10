@@ -2,12 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CONTRAST_AA_MIN,
   DEFAULT_APPEARANCE,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   buildTranslationCSS,
+  contrastRatio,
+  hexToRgb,
   isValidColor,
+  meetsContrastAA,
   normalizeAppearance,
+  normalizeHexInput,
+  resolveEffectiveColor,
 } from "../src/appearance.ts";
 
 test("normalizeAppearance falls back to defaults for missing input", () => {
@@ -228,4 +234,65 @@ test("print CSS keeps an explicitly configured ribbon color", () => {
     "print",
   );
   assert.match(css, /border-left: 2\.2pt solid #123456 !important;/u);
+});
+
+test("normalizeHexInput expands short hex and uppercases six-digit hex", () => {
+  assert.equal(normalizeHexInput("#abc"), "#AABBCC");
+  assert.equal(normalizeHexInput("abc"), "#AABBCC");
+  assert.equal(normalizeHexInput("#AABBCC"), "#AABBCC");
+  assert.equal(normalizeHexInput("#aabbcc"), "#AABBCC");
+  assert.equal(normalizeHexInput("  #fff  "), "#FFFFFF");
+  assert.equal(normalizeHexInput("123"), "#112233");
+});
+
+test("normalizeHexInput rejects anything that is not #RGB or #RRGGBB", () => {
+  for (const value of ["", "#12345", "#aabbccdd", "red", "rgb(1,2,3)", "#gggggg", "12345", "#12"]) {
+    assert.equal(normalizeHexInput(value), null, value);
+  }
+});
+
+test("hexToRgb parses normalized hex into channels and rejects non-hex", () => {
+  assert.deepEqual(hexToRgb("#ff0000"), { r: 255, g: 0, b: 0 });
+  assert.deepEqual(hexToRgb("#00ff00"), { r: 0, g: 255, b: 0 });
+  assert.deepEqual(hexToRgb("abc"), { r: 170, g: 187, b: 204 });
+  assert.equal(hexToRgb("red"), null);
+  assert.equal(hexToRgb(""), null);
+});
+
+test("contrastRatio computes WCAG ratios and returns null for non-hex input", () => {
+  assert.equal(contrastRatio("#000000", "#ffffff"), 21);
+  assert.equal(contrastRatio("#ffffff", "#ffffff"), 1);
+  assert.equal(contrastRatio("#777777", "#777777"), 1);
+  assert.equal(contrastRatio("#000000", "#ffffff"), contrastRatio("#ffffff", "#000000"));
+  assert.equal(contrastRatio("red", "#ffffff"), null);
+  assert.equal(contrastRatio("", ""), null);
+});
+
+test("meetsContrastAA uses the 4.5:1 normal-text threshold", () => {
+  assert.equal(CONTRAST_AA_MIN, 4.5);
+  assert.equal(meetsContrastAA(21), true);
+  assert.equal(meetsContrastAA(4.5), true);
+  assert.equal(meetsContrastAA(4.49), false);
+  assert.equal(meetsContrastAA(1), false);
+  // #767676 on white clears AA (~4.54); #777777 on white just misses it (~4.48).
+  assert.equal(meetsContrastAA(contrastRatio("#767676", "#ffffff")), true);
+  assert.equal(meetsContrastAA(contrastRatio("#777777", "#ffffff")), false);
+});
+
+test("resolveEffectiveColor prefers an explicit value over the theme palette", () => {
+  assert.equal(resolveEffectiveColor("#ff0000", "dark", "color"), "#ff0000");
+  assert.equal(resolveEffectiveColor("#123456", "light", "background"), "#123456");
+});
+
+test("resolveEffectiveColor resolves inherit to the light/dark palette", () => {
+  assert.equal(resolveEffectiveColor("", "dark", "color"), "#e8e8e8");
+  assert.equal(resolveEffectiveColor("", "dark", "background"), "#2b2b2b");
+  assert.equal(resolveEffectiveColor("", "light", "color"), "#222");
+  assert.equal(resolveEffectiveColor("", "light", "background"), "#f6f6f6");
+  assert.equal(resolveEffectiveColor("   ", "light", "color"), "#222");
+});
+
+test("resolveEffectiveColor leaves auto-inherit empty so the preview shows a checkerboard", () => {
+  assert.equal(resolveEffectiveColor("", "auto", "color"), "");
+  assert.equal(resolveEffectiveColor("", "auto", "background"), "");
 });

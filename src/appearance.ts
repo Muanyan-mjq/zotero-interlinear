@@ -61,6 +61,76 @@ function normalizeOptionalColor(raw: unknown): string {
   return isValidColor(value) ? value : "";
 }
 
+export const CONTRAST_AA_MIN = 4.5;
+
+const HEX_INPUT = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/iu;
+
+/** Normalize a typed #RGB / #RRGGBB token to uppercase #RRGGBB, or null if invalid. */
+export function normalizeHexInput(raw: string): string | null {
+  const match = raw.trim().match(HEX_INPUT);
+  if (!match) return null;
+  const hex = match[1];
+  const expanded =
+    hex.length === 3 ? hex.split("").map((part) => part + part).join("") : hex;
+  return `#${expanded.toUpperCase()}`;
+}
+
+export function hexToRgb(value: string): { r: number; g: number; b: number } | null {
+  const hex = normalizeHexInput(value);
+  if (!hex) return null;
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
+
+function channelLuminance(channel: number): number {
+  const c = channel / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(rgb: { r: number; g: number; b: number }): number {
+  return (
+    0.2126 * channelLuminance(rgb.r) +
+    0.7152 * channelLuminance(rgb.g) +
+    0.0722 * channelLuminance(rgb.b)
+  );
+}
+
+/** WCAG contrast ratio of two hex colors (2 decimals), or null if either is not hex. */
+export function contrastRatio(foreground: string, background: string): number | null {
+  const fg = hexToRgb(foreground);
+  const bg = hexToRgb(background);
+  if (!fg || !bg) return null;
+  const l1 = relativeLuminance(fg);
+  const l2 = relativeLuminance(bg);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return Math.round(((lighter + 0.05) / (darker + 0.05)) * 100) / 100;
+}
+
+export function meetsContrastAA(ratio: number): boolean {
+  return ratio >= CONTRAST_AA_MIN;
+}
+
+const THEME_PALETTE: Record<AppearanceTheme, { color: string; background: string }> = {
+  dark: { color: "#e8e8e8", background: "#2b2b2b" },
+  light: { color: "#222", background: "#f6f6f6" },
+  auto: { color: "", background: "" },
+};
+
+/** Effective reader color for previews: explicit wins, inherit resolves to the theme palette. */
+export function resolveEffectiveColor(
+  stored: string,
+  theme: AppearanceTheme,
+  role: "color" | "background",
+): string {
+  const trimmed = stored.trim();
+  if (trimmed) return trimmed;
+  return THEME_PALETTE[theme][role];
+}
+
 function normalizeFontFamily(raw: unknown): string {
   if (typeof raw !== "string") return "";
   const trimmed = raw.trim();
@@ -122,15 +192,9 @@ function points(px: number): number {
 }
 
 function readerColors(settings: AppearanceSettings): { color: string; background: string } {
-  const palette =
-    settings.theme === "dark"
-      ? { color: "#e8e8e8", background: "#2b2b2b" }
-      : settings.theme === "light"
-        ? { color: "#222", background: "#f6f6f6" }
-        : { color: "", background: "" };
   return {
-    color: settings.color || palette.color,
-    background: settings.background || palette.background,
+    color: resolveEffectiveColor(settings.color, settings.theme, "color"),
+    background: resolveEffectiveColor(settings.background, settings.theme, "background"),
   };
 }
 

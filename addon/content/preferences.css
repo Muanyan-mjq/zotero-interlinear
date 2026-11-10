@@ -102,6 +102,7 @@
 }
 
 #interlinear-settings-root .interlinear-color-preset {
+  position: relative;
   width: 18px;
   height: 18px;
   min-width: 18px;
@@ -113,6 +114,135 @@
 
 #interlinear-settings-root .interlinear-color-preset:hover {
   transform: scale(1.15);
+}
+
+#interlinear-settings-root .interlinear-color-preset[data-active="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+#interlinear-settings-root .interlinear-color-preset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#interlinear-settings-root .interlinear-color-preset:disabled:hover {
+  transform: none;
+}
+
+#interlinear-settings-root .interlinear-color-control {
+  margin: 0 0 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: 8px;
+}
+
+#interlinear-settings-root .interlinear-color-row {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+#interlinear-settings-root .interlinear-color-label {
+  min-width: 160px;
+  font-weight: 600;
+}
+
+#interlinear-settings-root .interlinear-color-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 5px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+#interlinear-settings-root .interlinear-color-preview[data-inherit="true"] {
+  background-image: repeating-conic-gradient(#cccccc 0% 25%, #ffffff 0% 50%);
+  background-size: 10px 10px;
+  color: #333333;
+}
+
+#interlinear-settings-root .interlinear-color-hex {
+  width: 92px;
+  padding: 4px 6px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+#interlinear-settings-root .interlinear-color-hex:disabled {
+  opacity: 0.4;
+}
+
+#interlinear-settings-root .interlinear-color-reset {
+  padding: 3px 10px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+#interlinear-settings-root .interlinear-color-reset:hover {
+  background: var(--interlinear-soft-fill);
+}
+
+#interlinear-settings-root .interlinear-color-inherit-row {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 6px 0;
+}
+
+#interlinear-settings-root .interlinear-color-inherit-help {
+  margin-left: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+#interlinear-settings-root .interlinear-color-control .interlinear-color-presets {
+  display: flex;
+  margin: 4px 0;
+}
+
+#interlinear-settings-root .interlinear-color-error {
+  display: block;
+  margin: 2px 0;
+  font-size: 12px;
+  color: var(--interlinear-error);
+}
+
+#interlinear-settings-root .interlinear-color-error:empty {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-color-help {
+  margin: 4px 0 0 0;
+  max-width: 760px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+#interlinear-settings-root .interlinear-contrast-warning {
+  margin: 0 0 10px 0;
+  max-width: 760px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--interlinear-warning);
+}
+
+#interlinear-settings-root .interlinear-contrast-warning:empty {
+  display: none;
 }
 
 #interlinear-settings-root .interlinear-font-presets {

@@ -93,7 +93,15 @@ import {
   setTargetLanguage,
   type TranslationEngine,
 } from "../settings";
-import { DEFAULT_APPEARANCE, type AppearanceSettings } from "../appearance";
+import {
+  DEFAULT_APPEARANCE,
+  contrastRatio,
+  meetsContrastAA,
+  normalizeHexInput,
+  resolveEffectiveColor,
+  type AppearanceSettings,
+  type AppearanceTheme,
+} from "../appearance";
 import { parseGlossary, serializeGlossary } from "../glossary";
 import {
   pickGlossaryFile,
@@ -123,16 +131,41 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 type StatusState = "info" | "success" | "warning" | "error" | "running";
 type FluentKey = Parameters<typeof getString>[0];
 
-const COLOR_PRESETS = [
-  "#c7354a",
-  "#2f6fdf",
-  "#1f8a4c",
-  "#d97706",
-  "#7c3aed",
-  "#333333",
-  "#f6f6f6",
-  "#ffffff",
-] as const;
+interface ColorPreset {
+  value: string;
+  nameKey: FluentKey;
+}
+
+const TEXT_PRESETS: readonly ColorPreset[] = [
+  { value: "#333333", nameKey: "color-name-ink" },
+  { value: "#000000", nameKey: "color-name-black" },
+  { value: "#5b6470", nameKey: "color-name-slate" },
+  { value: "#c7354a", nameKey: "color-name-red" },
+  { value: "#2f6fdf", nameKey: "color-name-blue" },
+  { value: "#1f8a4c", nameKey: "color-name-green" },
+  { value: "#d97706", nameKey: "color-name-amber" },
+  { value: "#7c3aed", nameKey: "color-name-violet" },
+];
+
+const BACKGROUND_PRESETS: readonly ColorPreset[] = [
+  { value: "#ffffff", nameKey: "color-name-white" },
+  { value: "#f6f6f6", nameKey: "color-name-light" },
+  { value: "#faf7f0", nameKey: "color-name-paper" },
+  { value: "#fdf6e3", nameKey: "color-name-cream" },
+  { value: "#2b2b2b", nameKey: "color-name-dark" },
+  { value: "#1e1e1e", nameKey: "color-name-charcoal" },
+];
+
+const ACCENT_PRESETS: readonly ColorPreset[] = [
+  { value: "#2f6fdf", nameKey: "color-name-blue" },
+  { value: "#c7354a", nameKey: "color-name-red" },
+  { value: "#1f8a4c", nameKey: "color-name-green" },
+  { value: "#d97706", nameKey: "color-name-amber" },
+  { value: "#7c3aed", nameKey: "color-name-violet" },
+  { value: "#0ea5e9", nameKey: "color-name-sky" },
+  { value: "#333333", nameKey: "color-name-ink" },
+  { value: "#e8e8e8", nameKey: "color-name-silver" },
+];
 
 const FONT_PRESETS: Array<{ labelKey: FluentKey; value: string }> = [
   { labelKey: "appearance-font-preset-inherit", value: "" },
@@ -229,23 +262,6 @@ function resolveColorForPicker(doc: Document, value: string, fallback: string): 
   }
 }
 
-function setColorControl(
-  doc: Document,
-  inputId: string,
-  inheritId: string | null,
-  raw: string,
-  fallback: string,
-): void {
-  const input = getElement<HTMLInputElement>(doc, inputId);
-  const inherit = inheritId ? getElement<HTMLInputElement>(doc, inheritId) : null;
-  const hasValue = !!raw.trim();
-  if (inherit) inherit.checked = !hasValue;
-  if (input) {
-    input.value = resolveColorForPicker(doc, raw, fallback);
-    input.disabled = !!inherit && !hasValue;
-  }
-}
-
 function readColorControl(
   doc: Document,
   inputId: string,
@@ -259,45 +275,323 @@ function readColorControl(
   return inheritId ? "" : fallback;
 }
 
-function bindInheritToggle(doc: Document, inputId: string, inheritId: string): void {
-  const inherit = getElement<HTMLInputElement>(doc, inheritId);
-  const input = getElement<HTMLInputElement>(doc, inputId);
-  inherit?.addEventListener("change", () => {
-    if (input) input.disabled = !!inherit.checked;
-  });
+type ColorRole = "color" | "background" | "underline" | "ribbon";
+
+interface ColorControlConfig {
+  base: string;
+  role: ColorRole;
+  presets: readonly ColorPreset[];
+  presetTitleKey: FluentKey;
+  fallback: string;
+  resetValue: string;
+  hasInherit: boolean;
 }
 
-function renderColorPresets(
+const COLOR_CONTROLS: readonly ColorControlConfig[] = [
+  {
+    base: "interlinear-appearance-color",
+    role: "color",
+    presets: TEXT_PRESETS,
+    presetTitleKey: "appearance-text-preset-title",
+    fallback: "#333333",
+    resetValue: "",
+    hasInherit: true,
+  },
+  {
+    base: "interlinear-appearance-background",
+    role: "background",
+    presets: BACKGROUND_PRESETS,
+    presetTitleKey: "appearance-background-preset-title",
+    fallback: "#f6f6f6",
+    resetValue: "",
+    hasInherit: true,
+  },
+  {
+    base: "interlinear-appearance-underline-color",
+    role: "underline",
+    presets: ACCENT_PRESETS,
+    presetTitleKey: "appearance-accent-preset-title",
+    fallback: "#333333",
+    resetValue: "",
+    hasInherit: true,
+  },
+  {
+    base: "interlinear-appearance-ribbon-color",
+    role: "ribbon",
+    presets: ACCENT_PRESETS,
+    presetTitleKey: "appearance-accent-preset-title",
+    fallback: DEFAULT_APPEARANCE.ribbonColor,
+    resetValue: DEFAULT_APPEARANCE.ribbonColor,
+    hasInherit: false,
+  },
+];
+
+function inheritIdFor(config: ColorControlConfig): string | null {
+  return config.hasInherit ? `${config.base}-inherit` : null;
+}
+
+function storedColor(doc: Document, config: ColorControlConfig): string {
+  return readColorControl(doc, config.base, inheritIdFor(config), "");
+}
+
+function syncHexFromPicker(doc: Document, config: ColorControlConfig): void {
+  const picker = getElement<HTMLInputElement>(doc, config.base);
+  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
+  if (picker && hex) hex.value = picker.value.toUpperCase();
+}
+
+function setControlDisabled(
   doc: Document,
-  containerId: string,
-  inputId: string,
-  inheritId: string | null,
+  config: ColorControlConfig,
+  disabled: boolean,
 ): void {
-  const container = getElement<HTMLElement>(doc, containerId);
-  if (!container) return;
-  const label = getString("appearance-color-preset-title");
-  container.title = label;
-  container.setAttribute("aria-label", label);
-  const buttons = COLOR_PRESETS.map((color) => {
+  const picker = getElement<HTMLInputElement>(doc, config.base);
+  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
+  const container = getElement<HTMLElement>(doc, `${config.base}-presets`);
+  if (picker) picker.disabled = disabled;
+  if (hex) hex.disabled = disabled;
+  if (container) {
+    for (const button of Array.from(container.querySelectorAll("button"))) {
+      (button as HTMLButtonElement).disabled = disabled;
+    }
+  }
+}
+
+function clearHexError(doc: Document, config: ColorControlConfig): void {
+  updateStatus(getElement<HTMLElement>(doc, `${config.base}-error`), "", "info");
+}
+
+function applyStoredToControl(
+  doc: Document,
+  config: ColorControlConfig,
+  stored: string,
+): void {
+  const picker = getElement<HTMLInputElement>(doc, config.base);
+  const inherit = config.hasInherit
+    ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
+    : null;
+  const hasValue = !!stored.trim();
+  if (inherit) inherit.checked = !hasValue;
+  if (picker) picker.value = resolveColorForPicker(doc, stored, config.fallback);
+  syncHexFromPicker(doc, config);
+  setControlDisabled(doc, config, !!inherit && !hasValue);
+  clearHexError(doc, config);
+}
+
+function renderControlPresets(doc: Document, config: ColorControlConfig): void {
+  const container = getElement<HTMLElement>(doc, `${config.base}-presets`);
+  const picker = getElement<HTMLInputElement>(doc, config.base);
+  if (!container || !picker) return;
+  const title = getString(config.presetTitleKey);
+  container.title = title;
+  container.setAttribute("aria-label", title);
+  const buttons = config.presets.map((preset) => {
     const button = doc.createElementNS(HTML_NS, "button") as HTMLButtonElement;
     button.type = "button";
     button.className = "interlinear-color-preset";
-    button.style.backgroundColor = color;
-    button.title = color;
-    button.setAttribute("aria-label", color);
+    button.style.backgroundColor = preset.value;
+    button.dataset.value = preset.value;
+    const name = getString(preset.nameKey);
+    button.title = `${name} (${preset.value})`;
+    button.setAttribute("aria-label", `${name} (${preset.value})`);
     button.addEventListener("click", () => {
-      const input = getElement<HTMLInputElement>(doc, inputId);
-      if (input) {
-        input.value = color;
-        input.disabled = false;
-      }
-      const inherit = inheritId ? getElement<HTMLInputElement>(doc, inheritId) : null;
+      picker.value = preset.value.toLowerCase();
+      const inherit = config.hasInherit
+        ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
+        : null;
       if (inherit) inherit.checked = false;
+      setControlDisabled(doc, config, false);
+      syncHexFromPicker(doc, config);
+      clearHexError(doc, config);
+      refreshColorUI(doc);
       markDirty(doc);
     });
     return button;
   });
   container.replaceChildren(...buttons);
+}
+
+function initColorControl(doc: Document, config: ColorControlConfig): void {
+  const picker = getElement<HTMLInputElement>(doc, config.base);
+  if (!picker) return;
+  const inherit = config.hasInherit
+    ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
+    : null;
+  const hex = getElement<HTMLInputElement>(doc, `${config.base}-hex`);
+  const reset = getElement<HTMLButtonElement>(doc, `${config.base}-reset`);
+
+  const appearance = getAppearance();
+  const stored =
+    config.role === "color"
+      ? appearance.color
+      : config.role === "background"
+        ? appearance.background
+        : config.role === "underline"
+          ? appearance.underlineColor
+          : appearance.ribbonColor;
+  applyStoredToControl(doc, config, stored);
+  renderControlPresets(doc, config);
+
+  if (hex) {
+    hex.setAttribute("aria-label", getString("appearance-color-hex-label"));
+    hex.placeholder = "#RRGGBB";
+    hex.maxLength = 7;
+    hex.spellcheck = false;
+    hex.addEventListener("input", () => {
+      const normalized = normalizeHexInput(hex.value);
+      if (!normalized) return;
+      picker.value = normalized.toLowerCase();
+      hex.value = normalized;
+      if (inherit) inherit.checked = false;
+      setControlDisabled(doc, config, false);
+      clearHexError(doc, config);
+      refreshColorUI(doc);
+      markDirty(doc);
+    });
+    hex.addEventListener("blur", () => {
+      const normalized = normalizeHexInput(hex.value);
+      if (normalized) {
+        hex.value = normalized;
+        clearHexError(doc, config);
+        return;
+      }
+      if (hex.value.trim() !== "") {
+        updateStatus(
+          getElement<HTMLElement>(doc, `${config.base}-error`),
+          getString("appearance-color-hex-invalid"),
+          "error",
+        );
+      }
+      hex.value = picker.value.toUpperCase();
+    });
+  }
+
+  picker.addEventListener("input", () => {
+    if (inherit) inherit.checked = false;
+    setControlDisabled(doc, config, false);
+    syncHexFromPicker(doc, config);
+    clearHexError(doc, config);
+    refreshColorUI(doc);
+    markDirty(doc);
+  });
+
+  inherit?.addEventListener("change", () => {
+    setControlDisabled(doc, config, inherit.checked);
+    if (!inherit.checked) syncHexFromPicker(doc, config);
+    clearHexError(doc, config);
+    refreshColorUI(doc);
+    markDirty(doc);
+  });
+
+  reset?.addEventListener("click", () => {
+    applyStoredToControl(doc, config, config.resetValue);
+    refreshColorUI(doc);
+    markDirty(doc);
+  });
+}
+
+function currentTheme(doc: Document): AppearanceTheme {
+  return (
+    (getElement<HTMLSelectElement>(doc, "interlinear-appearance-theme")
+      ?.value as AppearanceTheme) || "auto"
+  );
+}
+
+function effectivePreviewColor(
+  doc: Document,
+  config: ColorControlConfig,
+  theme: AppearanceTheme,
+): string {
+  const stored = storedColor(doc, config);
+  switch (config.role) {
+    case "color":
+      return resolveEffectiveColor(stored, theme, "color");
+    case "background":
+      return resolveEffectiveColor(stored, theme, "background");
+    case "underline": {
+      if (stored.trim()) return stored;
+      const text = readColorControl(
+        doc,
+        "interlinear-appearance-color",
+        "interlinear-appearance-color-inherit",
+        "",
+      );
+      return resolveEffectiveColor(text, theme, "color");
+    }
+    case "ribbon":
+      return stored.trim() || DEFAULT_APPEARANCE.ribbonColor;
+  }
+}
+
+function refreshContrastWarning(doc: Document): void {
+  const warning = getElement<HTMLElement>(
+    doc,
+    "interlinear-appearance-contrast-warning",
+  );
+  if (!warning) return;
+  const text = readColorControl(
+    doc,
+    "interlinear-appearance-color",
+    "interlinear-appearance-color-inherit",
+    "",
+  );
+  const background = readColorControl(
+    doc,
+    "interlinear-appearance-background",
+    "interlinear-appearance-background-inherit",
+    "",
+  );
+  const ratio =
+    text.trim() && background.trim() ? contrastRatio(text, background) : null;
+  if (ratio !== null && !meetsContrastAA(ratio)) {
+    updateStatus(
+      warning,
+      getString("appearance-contrast-warning", { args: { ratio } }),
+      "warning",
+    );
+  } else {
+    updateStatus(warning, "", "info");
+  }
+}
+
+function refreshColorUI(doc: Document): void {
+  const theme = currentTheme(doc);
+  const inheritLabel = getString("appearance-color-preview-inherit");
+  for (const config of COLOR_CONTROLS) {
+    const preview = getElement<HTMLElement>(doc, `${config.base}-preview`);
+    if (preview) {
+      const effective = effectivePreviewColor(doc, config, theme);
+      if (effective.trim()) {
+        preview.style.backgroundColor = effective;
+        preview.dataset.inherit = "false";
+        preview.textContent = "";
+        preview.title = effective;
+      } else {
+        preview.style.backgroundColor = "";
+        preview.dataset.inherit = "true";
+        preview.textContent = inheritLabel;
+        preview.title = inheritLabel;
+      }
+    }
+    const picker = getElement<HTMLInputElement>(doc, config.base);
+    const inherit = config.hasInherit
+      ? getElement<HTMLInputElement>(doc, `${config.base}-inherit`)
+      : null;
+    const activeValue = inherit?.checked ? "" : (picker?.value || "").toLowerCase();
+    const container = getElement<HTMLElement>(doc, `${config.base}-presets`);
+    if (container) {
+      for (const button of Array.from(
+        container.querySelectorAll(".interlinear-color-preset"),
+      )) {
+        const element = button as HTMLElement;
+        element.dataset.active = String(
+          activeValue !== "" &&
+            (element.dataset.value || "").toLowerCase() === activeValue,
+        );
+      }
+    }
+  }
+  refreshContrastWarning(doc);
 }
 
 function fontPresetKey(value: string): string {
@@ -350,70 +644,18 @@ function renderFontPresets(doc: Document): void {
 }
 
 function initializeAppearanceControls(doc: Document): void {
-  const appearance = getAppearance();
-  const colorControls: Array<{
-    inputId: string;
-    inheritId: string | null;
-    presetsId: string;
-    raw: string;
-    fallback: string;
-  }> = [
-    {
-      inputId: "interlinear-appearance-color",
-      inheritId: "interlinear-appearance-color-inherit",
-      presetsId: "interlinear-appearance-color-presets",
-      raw: appearance.color,
-      fallback: "#333333",
-    },
-    {
-      inputId: "interlinear-appearance-background",
-      inheritId: "interlinear-appearance-background-inherit",
-      presetsId: "interlinear-appearance-background-presets",
-      raw: appearance.background,
-      fallback: "#f6f6f6",
-    },
-    {
-      inputId: "interlinear-appearance-underline-color",
-      inheritId: "interlinear-appearance-underline-color-inherit",
-      presetsId: "interlinear-appearance-underline-color-presets",
-      raw: appearance.underlineColor,
-      fallback: "#333333",
-    },
-    {
-      inputId: "interlinear-appearance-ribbon-color",
-      inheritId: null,
-      presetsId: "interlinear-appearance-ribbon-color-presets",
-      raw: appearance.ribbonColor,
-      fallback: DEFAULT_APPEARANCE.ribbonColor,
-    },
-  ];
-  for (const control of colorControls) {
-    setColorControl(
-      doc,
-      control.inputId,
-      control.inheritId,
-      control.raw,
-      control.fallback,
-    );
-    if (control.inheritId) {
-      bindInheritToggle(doc, control.inputId, control.inheritId);
-    }
-    renderColorPresets(doc, control.presetsId, control.inputId, control.inheritId);
-  }
+  for (const config of COLOR_CONTROLS) initColorControl(doc, config);
 
-  getElement<HTMLButtonElement>(
+  getElement<HTMLSelectElement>(
     doc,
-    "interlinear-appearance-ribbon-color-reset",
-  )?.addEventListener("click", () => {
-    const input = getElement<HTMLInputElement>(
-      doc,
-      "interlinear-appearance-ribbon-color",
-    );
-    if (input) input.value = DEFAULT_APPEARANCE.ribbonColor;
+    "interlinear-appearance-theme",
+  )?.addEventListener("change", () => {
+    refreshColorUI(doc);
     markDirty(doc);
   });
 
   renderFontPresets(doc);
+  refreshColorUI(doc);
 }
 
 function registerSettingsNav(doc: Document): void {
@@ -547,6 +789,8 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-font-size-help", "appearance-font-size-help"],
     ["interlinear-appearance-color-label", "appearance-color-label"],
     ["interlinear-appearance-color-inherit-label", "appearance-color-inherit-label"],
+    ["interlinear-appearance-color-inherit-help", "appearance-color-inherit-help"],
+    ["interlinear-appearance-color-reset", "appearance-color-reset"],
     ["interlinear-appearance-color-help", "appearance-color-help"],
     ["interlinear-appearance-font-family-label", "appearance-font-family-label"],
     ["interlinear-appearance-font-family-help", "appearance-font-family-help"],
@@ -556,6 +800,8 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-appearance-paragraph-spacing-help", "appearance-paragraph-spacing-help"],
     ["interlinear-appearance-background-label", "appearance-background-label"],
     ["interlinear-appearance-background-inherit-label", "appearance-background-inherit-label"],
+    ["interlinear-appearance-background-inherit-help", "appearance-background-inherit-help"],
+    ["interlinear-appearance-background-reset", "appearance-color-reset"],
     ["interlinear-appearance-background-help", "appearance-background-help"],
     ["interlinear-appearance-theme-label", "appearance-theme-label"],
     ["interlinear-appearance-theme-help", "appearance-theme-help"],
@@ -568,10 +814,15 @@ function fillAppearanceLabels(doc: Document): void {
       "interlinear-appearance-underline-color-inherit-label",
       "appearance-underline-color-inherit-label",
     ],
+    [
+      "interlinear-appearance-underline-color-inherit-help",
+      "appearance-underline-color-inherit-help",
+    ],
+    ["interlinear-appearance-underline-color-reset", "appearance-color-reset"],
     ["interlinear-appearance-underline-color-help", "appearance-underline-color-help"],
     ["interlinear-appearance-ribbon-label", "appearance-ribbon-label"],
     ["interlinear-appearance-ribbon-color-label", "appearance-ribbon-color-label"],
-    ["interlinear-appearance-ribbon-color-reset", "appearance-ribbon-color-reset"],
+    ["interlinear-appearance-ribbon-color-reset", "appearance-color-reset"],
     ["interlinear-appearance-ribbon-color-help", "appearance-ribbon-color-help"],
     ["interlinear-display-mode-title", "display-mode-title"],
     ["interlinear-display-mode-label", "display-mode-label"],

@@ -560,36 +560,57 @@
       style="margin-left: 10px; max-width: 520px"
     ></html:span>
   </hbox>
-  <hbox align="center" style="margin-bottom: 4px">
-    <html:label
-      id="interlinear-appearance-color-label"
-      for="interlinear-appearance-color"
-      style="min-width: 180px"
-    ></html:label>
-    <html:input
-      id="interlinear-appearance-color"
-      type="color"
-      class="interlinear-color-input"
-    />
-    <html:input
-      id="interlinear-appearance-color-inherit"
-      type="checkbox"
-      style="margin-left: 10px"
-    />
-    <html:label
-      id="interlinear-appearance-color-inherit-label"
-      for="interlinear-appearance-color-inherit"
-      style="margin-left: 6px"
-    ></html:label>
+  <html:div id="interlinear-appearance-color-control" class="interlinear-color-control">
+    <hbox align="center" class="interlinear-color-row">
+      <html:label
+        id="interlinear-appearance-color-label"
+        for="interlinear-appearance-color"
+        class="interlinear-color-label"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-color-preview"
+        class="interlinear-color-preview"
+      ></html:span>
+      <html:input
+        id="interlinear-appearance-color"
+        type="color"
+        class="interlinear-color-input"
+      />
+      <html:input
+        id="interlinear-appearance-color-hex"
+        type="text"
+        class="interlinear-color-hex"
+      />
+      <html:button
+        id="interlinear-appearance-color-reset"
+        type="button"
+        class="interlinear-color-reset"
+      ></html:button>
+    </hbox>
+    <hbox align="center" class="interlinear-color-inherit-row">
+      <html:input id="interlinear-appearance-color-inherit" type="checkbox" />
+      <html:label
+        id="interlinear-appearance-color-inherit-label"
+        for="interlinear-appearance-color-inherit"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-color-inherit-help"
+        class="interlinear-color-inherit-help"
+      ></html:span>
+    </hbox>
     <html:span
       id="interlinear-appearance-color-presets"
       class="interlinear-color-presets"
     ></html:span>
-  </hbox>
-  <html:p
-    id="interlinear-appearance-color-help"
-    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
-  ></html:p>
+    <html:span
+      id="interlinear-appearance-color-error"
+      class="interlinear-color-error"
+    ></html:span>
+    <html:p
+      id="interlinear-appearance-color-help"
+      class="interlinear-color-help"
+    ></html:p>
+  </html:div>
   <hbox align="center" style="margin-bottom: 4px">
     <html:label
       id="interlinear-appearance-font-family-label"
@@ -648,35 +669,60 @@
       style="margin-left: 10px; max-width: 520px"
     ></html:span>
   </hbox>
-  <hbox align="center" style="margin-bottom: 4px">
-    <html:label
-      id="interlinear-appearance-background-label"
-      for="interlinear-appearance-background"
-      style="min-width: 180px"
-    ></html:label>
-    <html:input
-      id="interlinear-appearance-background"
-      type="color"
-      class="interlinear-color-input"
-    />
-    <html:input
-      id="interlinear-appearance-background-inherit"
-      type="checkbox"
-      style="margin-left: 10px"
-    />
-    <html:label
-      id="interlinear-appearance-background-inherit-label"
-      for="interlinear-appearance-background-inherit"
-      style="margin-left: 6px"
-    ></html:label>
+  <html:div id="interlinear-appearance-background-control" class="interlinear-color-control">
+    <hbox align="center" class="interlinear-color-row">
+      <html:label
+        id="interlinear-appearance-background-label"
+        for="interlinear-appearance-background"
+        class="interlinear-color-label"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-background-preview"
+        class="interlinear-color-preview"
+      ></html:span>
+      <html:input
+        id="interlinear-appearance-background"
+        type="color"
+        class="interlinear-color-input"
+      />
+      <html:input
+        id="interlinear-appearance-background-hex"
+        type="text"
+        class="interlinear-color-hex"
+      />
+      <html:button
+        id="interlinear-appearance-background-reset"
+        type="button"
+        class="interlinear-color-reset"
+      ></html:button>
+    </hbox>
+    <hbox align="center" class="interlinear-color-inherit-row">
+      <html:input id="interlinear-appearance-background-inherit" type="checkbox" />
+      <html:label
+        id="interlinear-appearance-background-inherit-label"
+        for="interlinear-appearance-background-inherit"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-background-inherit-help"
+        class="interlinear-color-inherit-help"
+      ></html:span>
+    </hbox>
     <html:span
       id="interlinear-appearance-background-presets"
       class="interlinear-color-presets"
     ></html:span>
-  </hbox>
+    <html:span
+      id="interlinear-appearance-background-error"
+      class="interlinear-color-error"
+    ></html:span>
+    <html:p
+      id="interlinear-appearance-background-help"
+      class="interlinear-color-help"
+    ></html:p>
+  </html:div>
   <html:p
-    id="interlinear-appearance-background-help"
-    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
+    id="interlinear-appearance-contrast-warning"
+    class="interlinear-contrast-warning"
   ></html:p>
   <hbox align="center" style="margin-bottom: 8px">
     <html:label
@@ -702,36 +748,57 @@
       style="margin-left: 6px"
     ></html:label>
   </hbox>
-  <hbox align="center" style="margin-bottom: 4px">
-    <html:label
-      id="interlinear-appearance-underline-color-label"
-      for="interlinear-appearance-underline-color"
-      style="min-width: 180px"
-    ></html:label>
-    <html:input
-      id="interlinear-appearance-underline-color"
-      type="color"
-      class="interlinear-color-input"
-    />
-    <html:input
-      id="interlinear-appearance-underline-color-inherit"
-      type="checkbox"
-      style="margin-left: 10px"
-    />
-    <html:label
-      id="interlinear-appearance-underline-color-inherit-label"
-      for="interlinear-appearance-underline-color-inherit"
-      style="margin-left: 6px"
-    ></html:label>
+  <html:div id="interlinear-appearance-underline-color-control" class="interlinear-color-control">
+    <hbox align="center" class="interlinear-color-row">
+      <html:label
+        id="interlinear-appearance-underline-color-label"
+        for="interlinear-appearance-underline-color"
+        class="interlinear-color-label"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-underline-color-preview"
+        class="interlinear-color-preview"
+      ></html:span>
+      <html:input
+        id="interlinear-appearance-underline-color"
+        type="color"
+        class="interlinear-color-input"
+      />
+      <html:input
+        id="interlinear-appearance-underline-color-hex"
+        type="text"
+        class="interlinear-color-hex"
+      />
+      <html:button
+        id="interlinear-appearance-underline-color-reset"
+        type="button"
+        class="interlinear-color-reset"
+      ></html:button>
+    </hbox>
+    <hbox align="center" class="interlinear-color-inherit-row">
+      <html:input id="interlinear-appearance-underline-color-inherit" type="checkbox" />
+      <html:label
+        id="interlinear-appearance-underline-color-inherit-label"
+        for="interlinear-appearance-underline-color-inherit"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-underline-color-inherit-help"
+        class="interlinear-color-inherit-help"
+      ></html:span>
+    </hbox>
     <html:span
       id="interlinear-appearance-underline-color-presets"
       class="interlinear-color-presets"
     ></html:span>
-  </hbox>
-  <html:p
-    id="interlinear-appearance-underline-color-help"
-    style="line-height: 1.6; margin: 0 0 8px 0; max-width: 760px"
-  ></html:p>
+    <html:span
+      id="interlinear-appearance-underline-color-error"
+      class="interlinear-color-error"
+    ></html:span>
+    <html:p
+      id="interlinear-appearance-underline-color-help"
+      class="interlinear-color-help"
+    ></html:p>
+  </html:div>
   <hbox align="center" style="margin-bottom: 4px">
     <html:input id="interlinear-appearance-ribbon" type="checkbox" />
     <html:label
@@ -740,31 +807,46 @@
       style="margin-left: 6px"
     ></html:label>
   </hbox>
-  <hbox align="center" style="margin-bottom: 4px">
-    <html:label
-      id="interlinear-appearance-ribbon-color-label"
-      for="interlinear-appearance-ribbon-color"
-      style="min-width: 180px"
-    ></html:label>
-    <html:input
-      id="interlinear-appearance-ribbon-color"
-      type="color"
-      class="interlinear-color-input"
-    />
-    <html:button
-      id="interlinear-appearance-ribbon-color-reset"
-      type="button"
-      style="margin-left: 10px; padding: 3px 10px"
-    ></html:button>
+  <html:div id="interlinear-appearance-ribbon-color-control" class="interlinear-color-control">
+    <hbox align="center" class="interlinear-color-row">
+      <html:label
+        id="interlinear-appearance-ribbon-color-label"
+        for="interlinear-appearance-ribbon-color"
+        class="interlinear-color-label"
+      ></html:label>
+      <html:span
+        id="interlinear-appearance-ribbon-color-preview"
+        class="interlinear-color-preview"
+      ></html:span>
+      <html:input
+        id="interlinear-appearance-ribbon-color"
+        type="color"
+        class="interlinear-color-input"
+      />
+      <html:input
+        id="interlinear-appearance-ribbon-color-hex"
+        type="text"
+        class="interlinear-color-hex"
+      />
+      <html:button
+        id="interlinear-appearance-ribbon-color-reset"
+        type="button"
+        class="interlinear-color-reset"
+      ></html:button>
+    </hbox>
     <html:span
       id="interlinear-appearance-ribbon-color-presets"
       class="interlinear-color-presets"
     ></html:span>
-  </hbox>
-  <html:p
-    id="interlinear-appearance-ribbon-color-help"
-    style="line-height: 1.6; margin: 0; max-width: 760px"
-  ></html:p>
+    <html:span
+      id="interlinear-appearance-ribbon-color-error"
+      class="interlinear-color-error"
+    ></html:span>
+    <html:p
+      id="interlinear-appearance-ribbon-color-help"
+      class="interlinear-color-help"
+    ></html:p>
+  </html:div>
 </groupbox>
 
 <groupbox id="interlinear-glossary-section">

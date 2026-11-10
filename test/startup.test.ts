@@ -586,6 +586,30 @@ describe("startup", function () {
       assert.equal(ribbonColor?.type, "color");
       assert.equal(ribbonColor?.value, "#2f6fdf");
 
+      const colorHex = byId("interlinear-appearance-color-hex");
+      const colorPreview = win?.document.getElementById(
+        "interlinear-appearance-color-preview",
+      ) as HTMLElement | null;
+      const colorReset = win?.document.getElementById(
+        "interlinear-appearance-color-reset",
+      ) as HTMLButtonElement | null;
+      const colorError = win?.document.getElementById(
+        "interlinear-appearance-color-error",
+      ) as HTMLElement | null;
+      const contrastWarning = win?.document.getElementById(
+        "interlinear-appearance-contrast-warning",
+      ) as HTMLElement | null;
+      assert.exists(colorHex);
+      assert.exists(colorPreview);
+      assert.exists(colorReset);
+      assert.exists(colorError);
+      assert.exists(contrastWarning);
+      assert.equal(colorHex?.value, "#333333");
+      assert.equal(colorHex?.disabled, true);
+      assert.equal(colorPreview?.dataset.inherit, "true");
+      assert.equal(colorError?.textContent, "");
+      assert.equal(contrastWarning?.textContent, "");
+
       const colorPresets = win?.document.querySelectorAll(
         "#interlinear-appearance-color-presets .interlinear-color-preset",
       );
@@ -652,6 +676,97 @@ describe("startup", function () {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value as any, true);
       }
+    }
+  });
+
+  it("should sync hex input, reset, contrast warning and theme preview in color controls", async function () {
+    this.timeout(10000);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    const fire = (el: HTMLElement | null, type: string) =>
+      el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-color-hex")) break;
+        await Zotero.Promise.delay(50);
+      }
+
+      const picker = byId("interlinear-appearance-color");
+      const hex = byId("interlinear-appearance-color-hex");
+      const inherit = byId("interlinear-appearance-color-inherit");
+      const reset = win?.document.getElementById(
+        "interlinear-appearance-color-reset",
+      ) as HTMLButtonElement | null;
+      const error = win?.document.getElementById(
+        "interlinear-appearance-color-error",
+      ) as HTMLElement | null;
+      const preview = win?.document.getElementById(
+        "interlinear-appearance-color-preview",
+      ) as HTMLElement | null;
+      const bgHex = byId("interlinear-appearance-background-hex");
+      const bgPicker = byId("interlinear-appearance-background");
+      const warning = win?.document.getElementById(
+        "interlinear-appearance-contrast-warning",
+      ) as HTMLElement | null;
+      const theme = win?.document.getElementById(
+        "interlinear-appearance-theme",
+      ) as HTMLSelectElement | null;
+      assert.exists(picker);
+      assert.exists(hex);
+      assert.exists(inherit);
+      assert.exists(reset);
+      assert.exists(preview);
+      assert.exists(bgHex);
+      assert.exists(warning);
+      assert.exists(theme);
+      assert.equal(inherit?.checked, true);
+
+      if (hex) hex.value = "#ff0000";
+      fire(hex, "input");
+      assert.equal(picker?.value, "#ff0000");
+      assert.equal(inherit?.checked, false);
+      assert.equal(hex?.value, "#FF0000");
+      assert.equal(preview?.dataset.inherit, "false");
+
+      if (hex) hex.value = "nope";
+      fire(hex, "input");
+      fire(hex, "blur");
+      assert.notEqual(error?.textContent, "");
+      assert.equal(error?.dataset.state, "error");
+      assert.equal(hex?.value, "#FF0000");
+      assert.equal(picker?.value, "#ff0000");
+
+      reset?.click();
+      assert.equal(inherit?.checked, true);
+      assert.equal(picker?.disabled, true);
+      assert.equal(preview?.dataset.inherit, "true");
+      assert.equal(error?.textContent, "");
+
+      if (hex) hex.value = "#777777";
+      fire(hex, "input");
+      if (bgHex) bgHex.value = "#ffffff";
+      fire(bgHex, "input");
+      assert.equal(bgPicker?.value, "#ffffff");
+      assert.notEqual(warning?.textContent, "");
+      assert.equal(warning?.dataset.state, "warning");
+
+      if (hex) hex.value = "#000000";
+      fire(hex, "input");
+      assert.equal(warning?.textContent, "");
+
+      reset?.click();
+      if (theme) theme.value = "dark";
+      fire(theme, "change");
+      assert.equal(preview?.dataset.inherit, "false");
+      assert.equal(preview?.style.backgroundColor, "rgb(232, 232, 232)");
+      if (theme) theme.value = "auto";
+      fire(theme, "change");
+      assert.equal(preview?.dataset.inherit, "true");
+    } finally {
+      win?.close();
     }
   });
 
