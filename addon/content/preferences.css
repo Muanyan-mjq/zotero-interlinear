@@ -15,6 +15,12 @@
   --interlinear-success: #1f8a4c;
   --interlinear-warning: #b45309;
   --interlinear-error: #c7354a;
+  /* Zotero 10 native preference controls use these tokens. */
+  --interlinear-native-accent: var(--accent-blue, #4072e5);
+  --interlinear-native-accent-text: var(--accent-white, #ffffff);
+  --interlinear-control-bg: var(--fill-quinary, rgba(127, 127, 127, 0.08));
+  --interlinear-control-bg-hover: var(--fill-quarternary, rgba(127, 127, 127, 0.14));
+  --interlinear-control-bg-active: var(--fill-senary, rgba(127, 127, 127, 0.04));
   --interlinear-radius: 7px;
   --interlinear-radius-lg: 11px;
   --interlinear-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -119,41 +125,55 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  margin: 0 0 22px;
-  padding: 8px 0 0;
+  margin: 0 0 20px;
+  padding: 4px 0 0;
+  border-bottom: 1px solid var(--interlinear-border);
   background: Canvas;
 }
 
-#interlinear-settings-root .interlinear-actionbar {
+#interlinear-settings-root .interlinear-toolbar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  padding: 6px 0 10px;
+  gap: 12px;
+  min-height: 42px;
+  padding: 3px 2px 5px;
 }
 
 #interlinear-settings-root .interlinear-tabs {
   display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 2px;
-  margin-bottom: -1px;
-  border-bottom: 1px solid var(--interlinear-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+#interlinear-settings-root .interlinear-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-width: 0;
 }
 
 #interlinear-settings-root .interlinear-tab {
   appearance: none;
   -moz-appearance: none;
-  margin: 0 0 -1px;
-  padding: 8px 13px 9px;
-  border: 1px solid transparent;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 5px 10px 6px;
+  border: 0;
   border-bottom: 2px solid transparent;
-  border-radius: var(--interlinear-radius) var(--interlinear-radius) 0 0;
+  border-radius: 0;
   background: transparent;
   color: var(--interlinear-muted);
   font: inherit;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
@@ -163,14 +183,25 @@
 }
 
 #interlinear-settings-root .interlinear-tab:hover {
-  background: var(--interlinear-surface);
+  background: var(--interlinear-control-bg-active);
   color: CanvasText;
 }
 
 #interlinear-settings-root .interlinear-tab[aria-selected="true"] {
-  border-bottom-color: var(--interlinear-accent);
-  background: var(--interlinear-surface);
+  border-bottom-color: var(--interlinear-native-accent);
+  background: transparent;
   color: CanvasText;
+}
+
+#interlinear-settings-root .interlinear-tab[data-dirty="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--interlinear-warning);
+  vertical-align: 1px;
 }
 
 /* ------------------------------------------------------------- sections */
@@ -425,58 +456,66 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 5px 13px;
-  border: 1px solid var(--interlinear-border-strong);
-  border-radius: var(--interlinear-radius);
-  background: Canvas;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--interlinear-control-bg);
   color: CanvasText;
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
   transition:
     background-color var(--interlinear-motion),
-    border-color var(--interlinear-motion),
-    transform var(--interlinear-motion);
+    border-color var(--interlinear-motion);
 }
 
 #interlinear-settings-root .interlinear-button:hover {
-  border-color: var(--interlinear-accent);
-  background: var(--interlinear-surface-hover);
+  background: var(--interlinear-control-bg-hover);
 }
 
 #interlinear-settings-root .interlinear-button:active {
-  transform: translateY(1px);
+  background: var(--interlinear-control-bg-active);
 }
 
 #interlinear-settings-root .interlinear-button:disabled {
   opacity: 0.5;
   cursor: default;
-  transform: none;
 }
 
 #interlinear-settings-root .interlinear-button-primary {
-  padding: 7px 18px;
-  border-color: var(--interlinear-accent);
-  background: var(--interlinear-accent);
-  color: #ffffff;
-  font-weight: 650;
+  min-width: 72px;
+  border-color: transparent;
+  background: var(--interlinear-native-accent);
+  color: var(--interlinear-native-accent-text);
+  font-weight: 400;
 }
 
 #interlinear-settings-root .interlinear-button-primary:hover {
-  border-color: var(--interlinear-accent-hover);
-  background: var(--interlinear-accent-hover);
+  background: color-mix(
+    in srgb,
+    var(--interlinear-native-accent) 88%,
+    Canvas
+  );
+}
+
+#interlinear-settings-root .interlinear-button-primary:active {
+  background: color-mix(
+    in srgb,
+    var(--interlinear-native-accent) 78%,
+    Canvas
+  );
 }
 
 #interlinear-settings-root .interlinear-button-small {
-  min-height: 26px;
-  padding: 3px 10px;
-  border-color: var(--interlinear-border);
-  font-size: 11.5px;
-  font-weight: 500;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 #interlinear-settings-root .interlinear-actions {
@@ -494,7 +533,13 @@
 #interlinear-settings-root .interlinear-inline-status {
   color: CanvasText;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.35;
+}
+
+#interlinear-settings-root .interlinear-settings-status {
+  max-width: 300px;
+  text-align: right;
+  white-space: normal;
 }
 
 #interlinear-settings-root .interlinear-settings-status:empty,
@@ -507,40 +552,67 @@
 #interlinear-settings-root .interlinear-test-status::before,
 #interlinear-settings-root .interlinear-inline-status::before {
   content: "";
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
   border-radius: 50%;
   background: var(--interlinear-success);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
   vertical-align: 1px;
 }
 
-#interlinear-settings-root .interlinear-settings-status[data-state="running"]::before,
-#interlinear-settings-root .interlinear-test-status[data-state="running"]::before {
-  background: var(--interlinear-accent);
+#interlinear-settings-root .interlinear-settings-status[data-state="saved"]::before,
+#interlinear-settings-root .interlinear-settings-status[data-state="success"]::before,
+#interlinear-settings-root .interlinear-test-status[data-state="success"]::before {
+  content: "✓";
+  background: transparent;
+  color: var(--interlinear-success);
+  font-size: 13px;
 }
 
+#interlinear-settings-root .interlinear-settings-status[data-state="dirty"]::before,
 #interlinear-settings-root .interlinear-settings-status[data-state="warning"]::before,
 #interlinear-settings-root .interlinear-test-status[data-state="warning"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
   background: var(--interlinear-warning);
 }
 
 #interlinear-settings-root .interlinear-settings-status[data-state="error"]::before,
 #interlinear-settings-root .interlinear-test-status[data-state="error"]::before {
+  content: "!";
   background: var(--interlinear-error);
 }
 
-#interlinear-settings-root .interlinear-settings-status[data-state="success"]::before,
-#interlinear-settings-root .interlinear-test-status[data-state="success"]::before {
-  background: var(--interlinear-success);
+#interlinear-settings-root .interlinear-settings-status[data-state="running"]::before,
+#interlinear-settings-root .interlinear-test-status[data-state="running"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  background: var(--interlinear-native-accent);
+}
+
+#interlinear-settings-root .interlinear-settings-status[data-state="info"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  background: var(--interlinear-muted);
 }
 
 #interlinear-settings-root .interlinear-save-hint {
-  margin-left: auto;
+  max-width: 260px;
   color: CanvasText;
   font-size: 11.5px;
-  line-height: 1.5;
+  line-height: 1.35;
+  text-align: right;
+  white-space: normal;
 }
 
 #interlinear-settings-root .interlinear-save-hint:empty {
@@ -856,6 +928,28 @@
 
   #interlinear-settings-root .interlinear-field-label {
     white-space: normal;
+  }
+
+  #interlinear-settings-root .interlinear-toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 2px;
+  }
+
+  #interlinear-settings-root .interlinear-tabs {
+    flex: 1 1 100%;
+  }
+
+  #interlinear-settings-root .interlinear-toolbar-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    padding-top: 2px;
+  }
+
+  #interlinear-settings-root .interlinear-settings-status,
+  #interlinear-settings-root .interlinear-save-hint {
+    max-width: none;
+    text-align: left;
   }
 
   #interlinear-settings-root .interlinear-save-hint {

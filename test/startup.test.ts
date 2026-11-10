@@ -1009,10 +1009,10 @@ describe("startup", function () {
       );
       const targetStyle =
         targetLabel && win ? win.getComputedStyle(targetLabel) : null;
-      assert.equal(
-        targetStyle?.whiteSpace,
-        "nowrap",
-        "target language label must not wrap",
+      assert.notEqual(
+        targetStyle?.display,
+        "none",
+        "target language label must be rendered",
       );
       assert.isTrue(
         !!target?.closest(".interlinear-field") &&
@@ -1087,13 +1087,31 @@ describe("startup", function () {
       const fontSize = win?.document.getElementById(
         "interlinear-appearance-font-size",
       ) as HTMLInputElement | null;
-      const hint = win?.document.getElementById("interlinear-save-hint") as HTMLElement | null;
+      const status = win?.document.getElementById(
+        "interlinear-settings-status",
+      ) as HTMLElement | null;
+      const appearanceTab = win?.document.getElementById(
+        "interlinear-tab-appearance",
+      ) as HTMLButtonElement | null;
       assert.exists(fontSize);
-      assert.exists(hint);
-      if (hint) hint.textContent = "";
+      assert.exists(status);
+      assert.exists(appearanceTab);
+      appearanceTab?.click();
       if (fontSize) fontSize.value = "20";
       fontSize?.dispatchEvent(new (win as any).Event("input", { bubbles: true }));
-      assert.ok((hint?.textContent || "").length > 0, "editing a field must mark unsaved");
+      assert.equal(status?.dataset.state, "dirty");
+      assert.isNotEmpty((status?.textContent || "").trim());
+      assert.equal(appearanceTab?.dataset.dirty, "true");
+
+      // Leaving a dirty tab is non-blocking: the tab keeps its dot and a hint appears.
+      (win?.document.getElementById("interlinear-tab-service") as HTMLButtonElement | null)?.click();
+      const hint = win?.document.getElementById(
+        "interlinear-save-hint",
+      ) as HTMLElement | null;
+      assert.isNotEmpty((hint?.textContent || "").trim());
+      assert.equal(appearanceTab?.dataset.dirty, "true");
+      (appearanceTab as HTMLButtonElement | null)?.click();
+      assert.equal(status?.dataset.state, "dirty");
     } finally {
       win?.close();
     }

@@ -966,3 +966,58 @@
 7. 高级页：确认范围、速度、缓存、关于与 GitHub 链接都在；缓存统计与清除可用。
 8. 窄窗口（约 600px）：字段变单列、标签不换行、页面无横向滚动；键盘 Tab 遍历所有控件有清晰焦点环。
 9. 切换 Zotero 浅/深主题与中英文：确认卡片、帮助文字、状态点、警告与页脚均可读，无残留英文/中文。
+
+# 外观自定义 v2（feat/appearance-v2）
+
+## 基线
+
+- 从 `feat/ui-polish` @ `a1e687b`（ui: rebuild the settings pane as five tabs）切出 `feat/appearance-v2`。
+- 基线测试：`npm run build` 通过，`npm run lint:check` 通过，`npm run test:unit` 131 pass，`npm run test:review` 51 pass。
+- 本任务不 push、不改 remote、不改写历史、不合并分支；每个 Step 单独提交。
+- 本仓库 `npm test` 会使用默认/开发 profile；实际使用 `npm run test:review`（Zotero headless + 独立 profile）作为集成测试入口，避免影响正在运行的 Zotero。
+
+## Step 1：设置页顶部与标签栏重做
+
+### 标签页的来历（先读代码后的结论）
+
+- 标签页是在本轮之前的 **Step G**（`feat/ui-polish` 的 `a1e687b`）引入的：把原 Step 15/D 的“快速跳转”芯片（`.interlinear-nav-button`，点击 `scrollIntoView`）替换为五个 `role=tab` 按钮，并用 `data-tab` 控制 section 显隐。
+- “快速跳转”芯片是 Step 15（`856940f`）加入的页内导航，只有服务/显示/外观/范围/术语表/维护六个入口，与页面实际 11 个区块顺序不一致，且 `速度与稳定性`、`单段翻译` 等区块没有入口。
+- Step G 同时**删除**了 `interlinear-speed-section` 底部的第二个“保存设置”按钮（`interlinear-save-bottom`），只保留顶部保存按钮。当前代码与测试都不再引用底部按钮。
+- 因此本次不是“新造标签页”，而是重做 Step G 的顶部：把保存按钮从左侧大红色主按钮改为右侧 Zotero 原生强调色按钮，把标签改为左侧、保存与状态右侧的紧凑吸顶工具栏。
+
+### 做了什么
+- **顶部工具栏**：`.interlinear-sticky` 内改为 `.interlinear-toolbar` 单行：左侧标签（可横向滚动、不折行溢出），右侧状态文字 + 未保存提示 + 保存按钮。窄窗口（≤640px）时操作区换到第二行并右对齐。
+- **原生按钮**：查证 Zotero 10 设置页 CSS（`chrome/content/zotero-platform/win/preferences.css`）后使用其变量：`--accent-blue`、`--accent-white`、`--fill-quinary/quarternary/senary`。保存按钮为 28px 高、4px 圆角、字重 400、`--accent-blue` 背景；品牌红只保留在 section 标题前的 6px 小方块。无法确认这些变量在所有 Zotero 主题下都存在，因此全部带 fallback（`#4072e5` 等）。
+- **标签**：字重 500；选中态只保留 2px 下划线（不再同时灰底）；悬停用极浅的 `--fill-senary`；左右方向键/Home/End 已存在并保留；窄窗口横向滚动。
+- **状态四态**：
+  - `saved`：✓ + “所有更改已保存”（初始与保存成功恢复后的默认态）。
+  - `dirty`：小圆点 + “有未保存的更改”；对应标签按钮显示小圆点（`data-dirty`）。
+  - `success`：✓ + “已保存”，2.5 秒后自动回到 `saved`。
+  - `error`：! + “保存失败：原因”；保存抛错时保留 dirty 状态，不清理标签红点。
+  - 颜色只用于图标/圆点，文字始终 `CanvasText`；对比度不依赖颜色。
+- **保留表单值与滚动位置**：切换标签不重建表单，DOM 值原样保留；每个标签的滚动位置存 `WeakMap<Document, Map<tab, scrollTop>>`，切换时保存旧标签、在下一 tick 恢复新标签。离开有未保存更改的标签时，在顶部显示 4 秒非阻塞提示“切换标签页不会丢弃未保存的更改”，并保留标签红点。
+- **保存错误处理**：`saveSettings` 改为返回 warning 列表；点击保存时 try/catch。成功显示短暂“已保存”，非法字体/快捷键等 warning 显示 5 秒黄色状态，异常显示带 detail 的失败状态。
+
+### 改动文件
+`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`src/modules/preferenceScript.ts`、`addon/locale/en-US/addon.ftl`、`addon/locale/zh-CN/addon.ftl`、`test/startup.test.ts`、`typings/i10n.d.ts`（构建生成）、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：131 pass / 0 fail。
+- `npm run test:review`（等价集成测试，独立 profile）：51 pass / 0 fail；新增的脏标记用例断言 `dirty` 状态、标签红点、切换标签后的非阻塞提示与返回后仍为 dirty。
+
+### 不确定项 / 无法目视验证
+- 无法在本机用 headless 截图证明 Zotero 设置页的真实观感；Step 8 会尝试 `canvas.drawWindow`，若失败会明确写“无法目视验证”。
+- `--accent-blue`/`--fill-*` 变量在 Zotero 10 的浅/深主题下是否都定义：已查证 Windows 平台 `preferences.css` 有定义，但其他平台/主题未逐一确认；已提供 fallback。
+- 标签横向滚动条在 Gecko 设置页中的实际宽度与触控板表现未目视。
+- 滚动位置恢复依赖 `doc.scrollingElement` 或 `window.scrollTo`；若 Zotero 用内层 `browser` 滚动，`scrollTop` 可能无效，届时表现为不恢复滚动位置（不影响表单值）。
+
+### 我需要手动在 Zotero 里验证的清单
+1. 打开设置→Interlinear：顶部应为紧凑单行，左侧五个标签，右侧状态 + 保存；保存按钮是 Zotero 原生蓝色，不再是整块品牌红。
+2. 修改任意字段：状态变为“有未保存的更改”+ 小圆点，对应标签出现小圆点；切换标签时出现非阻塞提示，值不丢失，切回后仍是 dirty。
+3. 在长页面（外观/高级）滚到中部，切到另一个标签再切回：滚动位置应恢复；若未恢复，记录 Zotero 窗口宽度与滚动容器。
+4. 点保存：成功状态显示“已保存”约 2.5 秒后回到“所有更改已保存”；把字体输入改成非法值再保存，应显示黄色 warning 而不是成功。
+5. 用键盘聚焦标签，按 ←/→/Home/End：焦点与选中态同步；Tab 键可到达保存按钮。
+6. 把窗口缩到约 600px：标签可横向滚动、不溢出；状态文字不被截断，操作区换行到第二行。
+7. 切换 Zotero 浅/深主题：保存按钮、状态图标、标签下划线与文字对比度可读。

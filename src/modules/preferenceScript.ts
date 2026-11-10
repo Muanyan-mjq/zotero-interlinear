@@ -134,7 +134,7 @@ const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
-type StatusState = "info" | "success" | "warning" | "error" | "running";
+type StatusState = "info" | "success" | "warning" | "error" | "running" | "saved" | "dirty";
 type FluentKey = Parameters<typeof getString>[0];
 
 interface ColorPreset {
@@ -202,11 +202,28 @@ function updateStatus(
   else element.removeAttribute("data-state");
 }
 
+const statusTimers = new WeakMap<Document, any>();
+const hintTimers = new WeakMap<Document, any>();
+
+function clearStatusTimer(doc: Document): void {
+  const timer = statusTimers.get(doc);
+  if (timer) {
+    try {
+      doc.defaultView?.clearTimeout?.(timer);
+    } catch (_) {
+      // Window may already be closing.
+    }
+    statusTimers.delete(doc);
+  }
+}
+
 function setStatus(doc: Document, message: string, state: StatusState = "info"): void {
-  const statuses = Array.from(
-    doc.querySelectorAll(".interlinear-settings-status"),
-  ) as HTMLElement[];
-  for (const status of statuses) updateStatus(status, message, state);
+  clearStatusTimer(doc);
+  updateStatus(
+    getElement<HTMLElement>(doc, "interlinear-settings-status"),
+    message,
+    state,
+  );
 }
 
 function setTestStatus(
@@ -222,16 +239,123 @@ function setTestStatus(
   );
 }
 
-function setSaveHint(doc: Document, message: string): void {
-  updateStatus(
-    getElement<HTMLElement>(doc, "interlinear-save-hint"),
-    message,
-    "warning",
-  );
+/** Save-state helper: success can restore to the idle "all changes saved" state. */
+function setSaveState(
+  doc: Document,
+  state: StatusState,
+  message: string,
+  restoreAfterMs?: number,
+): void {
+  setStatus(doc, message, state);
+  if (!restoreAfterMs) return;
+  const win = doc.defaultView;
+  if (!win?.setTimeout) return;
+  const timer = win.setTimeout(() => {
+    statusTimers.delete(doc);
+    setSaveState(doc, "saved", getString("settings-status-saved"));
+  }, restoreAfterMs);
+  statusTimers.set(doc, timer);
 }
 
-function markDirty(doc: Document): void {
-  setSaveHint(doc, getString("settings-unsaved"));
+function setSaveHint(doc: Document, message: string, restoreAfterMs?: number): void {
+  const timer = hintTimers.get(doc);
+  if (timer) {
+    try {
+      doc.defaultView?.clearTimeout?.(timer);
+    } catch (_) {
+      // Window may already be closing.
+    }
+    hintTimers.delete(doc);
+  }
+  updateStatus(getElement<HTMLElement>(doc, "interlinear-save-hint"), message, "warning");
+  if (!message || !restoreAfterMs) return;
+  const win = doc.defaultView;
+  if (!win?.setTimeout) return;
+  const next = win.setTimeout(() => {
+    hintTimers.delete(doc);
+    updateStatus(getElement<HTMLElement>(doc, "interlinear-save-hint"), "", "warning");
+  }, restoreAfterMs);
+  hintTimers.set(doc, next);
+}
+
+const dirtyTabs = new WeakMap<Document, Set<string>>();
+const tabScrollPositions = new WeakMap<Document, Map<string, number>>();
+
+function dirtyTabsFor(doc: Document): Set<string> {
+  let set = dirtyTabs.get(doc);
+  if (!set) {
+    set = new Set();
+    dirtyTabs.set(doc, set);
+  }
+  return set;
+}
+
+function markTabDirty(doc: Document, tab: string | undefined): void {
+  if (!tab) return;
+  dirtyTabsFor(doc).add(tab);
+  const button = getElement<HTMLButtonElement>(doc, `interlinear-tab-${tab}`);
+  if (button) button.dataset.dirty = "true";
+}
+
+function clearDirtyTabs(doc: Document): void {
+  dirtyTabsFor(doc).clear();
+  for (const button of Array.from(
+    doc.querySelectorAll(".interlinear-tab"),
+  ) as HTMLButtonElement[]) {
+    delete button.dataset.dirty;
+  }
+}
+
+function tabForTarget(target: EventTarget | null | undefined): string | undefined {
+  const element = target as Element | null;
+  const section = element?.closest?.(".interlinear-section[data-tab]");
+  return section?.getAttribute("data-tab") || undefined;
+}
+
+function scrollHost(doc: Document): HTMLElement | null {
+  return (doc.scrollingElement || doc.documentElement) as HTMLElement | null;
+}
+
+function currentScrollTop(doc: Document): number {
+  const host = scrollHost(doc);
+  return host?.scrollTop || doc.defaultView?.scrollY || 0;
+}
+
+function setScrollTop(doc: Document, value: number): void {
+  const host = scrollHost(doc);
+  if (host) host.scrollTop = value;
+  try {
+    doc.defaultView?.scrollTo?.(0, value);
+  } catch (_) {
+    // Some Gecko documents do not expose scrollTo; setting scrollTop is enough.
+  }
+}
+
+function rememberTabScroll(doc: Document, tab: string): void {
+  let positions = tabScrollPositions.get(doc);
+  if (!positions) {
+    positions = new Map();
+    tabScrollPositions.set(doc, positions);
+  }
+  positions.set(tab, currentScrollTop(doc));
+}
+
+function restoreTabScroll(doc: Document, tab: string): void {
+  const positions = tabScrollPositions.get(doc);
+  const top = positions?.get(tab) ?? 0;
+  const win = doc.defaultView;
+  if (!win?.setTimeout) {
+    setScrollTop(doc, top);
+    return;
+  }
+  win.setTimeout(() => setScrollTop(doc, top), 0);
+}
+
+function markDirty(doc: Document, target?: EventTarget | null): void {
+  const tab = tabForTarget(target);
+  markTabDirty(doc, tab);
+  setSaveState(doc, "dirty", getString("settings-unsaved"));
+  setSaveHint(doc, "");
 }
 
 function parseRgbColor(value: string): string | null {
@@ -801,19 +925,20 @@ function syncSectionVisibility(doc: Document): void {
   }
 }
 
-function firstVisibleSection(doc: Document, tab: SettingsTab): HTMLElement | null {
-  return doc.querySelector<HTMLElement>(
-    `.interlinear-section[data-tab="${tab}"]:not([hidden])`,
-  );
-}
-
 function setActiveTab(
   doc: Document,
   tab: SettingsTab,
-  options: { focus?: boolean; scroll?: boolean } = {},
+  options: { focus?: boolean } = {},
 ): void {
   const container = getElement<HTMLElement>(doc, "interlinear-settings-tabs");
   if (!container) return;
+  const previous = activeSettingsTab(doc);
+  if (previous !== tab) {
+    rememberTabScroll(doc, previous);
+    if (dirtyTabsFor(doc).has(previous)) {
+      setSaveHint(doc, getString("settings-tab-unsaved-hint"), 4000);
+    }
+  }
   container.dataset.activeTab = tab;
   const buttons = Array.from(
     container.querySelectorAll(".interlinear-tab"),
@@ -825,23 +950,7 @@ function setActiveTab(
     if (selected && options.focus) button.focus();
   }
   syncSectionVisibility(doc);
-  if (options.scroll) {
-    const section = firstVisibleSection(doc, tab);
-    if (section) {
-      const media = doc.defaultView
-        ? doc.defaultView.matchMedia("(prefers-reduced-motion: reduce)")
-        : null;
-      const reduced = media ? media.matches : false;
-      try {
-        section.scrollIntoView({
-          behavior: reduced ? "auto" : "smooth",
-          block: "start",
-        });
-      } catch (_) {
-        section.scrollIntoView();
-      }
-    }
-  }
+  if (previous !== tab) restoreTabScroll(doc, tab);
 }
 
 function registerSettingsTabs(doc: Document): void {
@@ -854,7 +963,7 @@ function registerSettingsTabs(doc: Document): void {
   for (const button of buttons) {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab;
-      if (isSettingsTab(tab)) setActiveTab(doc, tab, { scroll: true });
+      if (isSettingsTab(tab)) setActiveTab(doc, tab);
     });
     button.addEventListener("keydown", (event) => {
       const keyEvent = event as KeyboardEvent;
@@ -901,8 +1010,8 @@ function registerSecretToggles(doc: Document): void {
 }
 
 function registerDirtyTracking(doc: Document): void {
-  // Sections are siblings of #interlinear-settings-root, so listen on the document.
-  const mark = () => markDirty(doc);
+  // Delegate on the document so every tab and every nested control is covered.
+  const mark = (event: Event) => markDirty(doc, event.target);
   doc.addEventListener("change", mark);
   doc.addEventListener("input", mark);
 }
@@ -1129,7 +1238,7 @@ function readInputText(doc: Document, id: string, fallback = ""): string {
   return input ? input.value : fallback;
 }
 
-function saveSettings(doc: Document): void {
+function saveSettings(doc: Document): string[] {
   const engineValue = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
   const validEngines: TranslationEngine[] = [
     "google",
@@ -1251,13 +1360,7 @@ function saveSettings(doc: Document): void {
   refreshTranslationStyles();
   refreshDisplayModes();
   refreshAppearancePreview(doc);
-
-  setStatus(
-    doc,
-    warnings.length ? warnings.join(" ") : getString("settings-saved"),
-    warnings.length ? "warning" : "success",
-  );
-  setSaveHint(doc, "");
+  return warnings;
 }
 
 async function testOllama(doc: Document): Promise<void> {
@@ -1741,6 +1844,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   registerSettingsTabs(doc);
   registerSecretToggles(doc);
   registerDirtyTracking(doc);
+  setSaveState(doc, "saved", getString("settings-status-saved"));
 
   hoverTranslate?.addEventListener("change", () => {
     if (hoverDelay) hoverDelay.disabled = !hoverTranslate.checked;
@@ -1748,12 +1852,28 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
 
   engine?.addEventListener("change", () => {
     syncSectionVisibility(doc);
-    setStatus(doc, getString("settings-engine-pending"), "warning");
-    markDirty(doc);
+    markDirty(doc, engine);
   });
 
   getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
-    saveSettings(doc);
+    try {
+      const warnings = saveSettings(doc);
+      clearDirtyTabs(doc);
+      setSaveHint(doc, "");
+      if (warnings.length) {
+        setSaveState(doc, "warning", warnings.join(" "), 5000);
+      } else {
+        setSaveState(doc, "success", getString("settings-status-success"), 2500);
+      }
+    } catch (error: any) {
+      setSaveState(
+        doc,
+        "error",
+        getString("settings-status-error", {
+          args: { detail: String(error?.message || error) },
+        }),
+      );
+    }
   });
 
   getElement<HTMLButtonElement>(doc, "interlinear-test-ollama")?.addEventListener(
