@@ -540,3 +540,4 @@ interaction-auto-translate-off = 不自动翻译
 interaction-auto-translate-cached = 仅此前翻译过的论文（命中缓存）
 interaction-auto-translate-always = 总是翻译（可能产生 API 费用）
 interaction-auto-translate-warning = “总是”会在打开 PDF 时启动全文翻译，可能向服务商发送大量请求。
+appearance-advanced-summary = 高级外观（装饰、分隔线、色带、块布局、导出）

@@ -3272,6 +3272,7 @@ function fillLanguageOptions(
 function fillAppearanceLabels(doc: Document): void {
   const entries: Array<[string, Parameters<typeof getString>[0]]> = [
     ["interlinear-appearance-title", "appearance-title"],
+    ["interlinear-appearance-advanced-summary", "appearance-advanced-summary"],
     ["interlinear-appearance-presets-title", "appearance-presets-title"],
     ["interlinear-appearance-my-presets-label", "appearance-my-presets-label"],
     ["interlinear-appearance-preset-name-label", "appearance-preset-name-label"],

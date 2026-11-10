@@ -4,6 +4,7 @@
 // @ts-nocheck
 export type FluentMessageId =
   | 'appearance-accent-preset-title'
+  | 'appearance-advanced-summary'
   | 'appearance-apply-preset'
   | 'appearance-background-help'
   | 'appearance-background-inherit-help'

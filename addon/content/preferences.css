@@ -1203,3 +1203,52 @@
     transition: none !important;
   }
 }
+
+/* Advanced appearance groups use native details so the default page stays
+   short while decorations/dividers/ribbon/block/export remain discoverable. */
+#interlinear-settings-root .interlinear-details {
+  margin: 0 0 18px;
+  border: 1px solid var(--interlinear-border);
+  border-radius: var(--interlinear-radius-lg);
+  background: var(--interlinear-surface);
+}
+
+#interlinear-settings-root .interlinear-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+#interlinear-settings-root .interlinear-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-details > summary::before {
+  content: "▸";
+  display: inline-block;
+  color: var(--interlinear-muted);
+  transition: transform var(--interlinear-motion);
+}
+
+#interlinear-settings-root .interlinear-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+#interlinear-settings-root .interlinear-details-body {
+  padding: 0 16px 16px;
+}
+
+#interlinear-settings-root .interlinear-details-body .interlinear-card {
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}

@@ -540,3 +540,4 @@ interaction-auto-translate-off = Do not translate automatically
 interaction-auto-translate-cached = Only previously translated papers (cache)
 interaction-auto-translate-always = Always translate (may incur API costs)
 interaction-auto-translate-warning = “Always” starts a full translation when a PDF opens and can send many requests to your provider.
+appearance-advanced-summary = Advanced appearance (decorations, dividers, ribbon, block layout, export)
