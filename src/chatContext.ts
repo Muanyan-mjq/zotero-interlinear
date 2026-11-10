@@ -46,6 +46,8 @@ export interface ChatContextOptions {
   /** Injectable for tests and non-window documents. */
   selection?: any;
   limit?: number;
+  /** Override the paragraph selector so chat can follow the translation scope. */
+  paragraphSelector?: string;
 }
 
 export function truncateChatContext(
@@ -84,17 +86,21 @@ function paragraphText(element: HTMLElement): string {
   }
 }
 
-function getParagraphElements(doc: Document): HTMLElement[] {
+function getParagraphElements(doc: Document, selector: string): HTMLElement[] {
   let elements: Element[];
   try {
-    elements = Array.from(doc.querySelectorAll(CHAT_PARAGRAPH_SELECTOR));
+    elements = Array.from(doc.querySelectorAll(selector));
   } catch (_) {
     return [];
   }
   return elements.filter((element) => isChatParagraph(element as HTMLElement)) as HTMLElement[];
 }
 
-function selectionParagraph(doc: Document, selection: any): HTMLElement | null {
+function selectionParagraph(
+  doc: Document,
+  selection: any,
+  selector: string,
+): HTMLElement | null {
   // A caret without an actual text selection should not send a whole
   // paragraph; real Selection objects expose isCollapsed.
   if (selection?.isCollapsed === true) return null;
@@ -103,7 +109,7 @@ function selectionParagraph(doc: Document, selection: any): HTMLElement | null {
   try {
     const element =
       anchor.nodeType === 1 ? (anchor as Element) : (anchor.parentElement as Element | null);
-    const paragraph = element?.closest?.(CHAT_PARAGRAPH_SELECTOR) as HTMLElement | null;
+    const paragraph = element?.closest?.(selector) as HTMLElement | null;
     if (!paragraph || paragraph.ownerDocument !== doc) return null;
     return isChatParagraph(paragraph) ? paragraph : null;
   } catch (_) {
@@ -111,8 +117,12 @@ function selectionParagraph(doc: Document, selection: any): HTMLElement | null {
   }
 }
 
-function visibleParagraphs(doc: Document, viewportHeight: number): HTMLElement[] {
-  const paragraphs = getParagraphElements(doc);
+function visibleParagraphs(
+  doc: Document,
+  viewportHeight: number,
+  selector: string,
+): HTMLElement[] {
+  const paragraphs = getParagraphElements(doc, selector);
   if (viewportHeight <= 0) return paragraphs;
   return paragraphs.filter((element) => {
     try {
@@ -135,18 +145,19 @@ export function collectChatContext(
   options: ChatContextOptions = {},
 ): ChatContextResult | null {
   const limit = options.limit ?? CHAT_CONTEXT_LIMIT;
+  const selector = options.paragraphSelector || CHAT_PARAGRAPH_SELECTOR;
   let paragraphs: HTMLElement[];
 
   if (scope === "selection") {
     const selection = options.selection ?? doc.defaultView?.getSelection?.() ?? null;
-    const paragraph = selectionParagraph(doc, selection);
+    const paragraph = selectionParagraph(doc, selection, selector);
     paragraphs = paragraph ? [paragraph] : [];
   } else if (scope === "page") {
     const viewportHeight =
       options.viewportHeight ?? doc.defaultView?.innerHeight ?? 0;
-    paragraphs = visibleParagraphs(doc, viewportHeight);
+    paragraphs = visibleParagraphs(doc, viewportHeight, selector);
   } else {
-    paragraphs = getParagraphElements(doc);
+    paragraphs = getParagraphElements(doc, selector);
   }
 
   const texts = paragraphs

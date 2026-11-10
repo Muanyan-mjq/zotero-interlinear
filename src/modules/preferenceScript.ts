@@ -2131,6 +2131,9 @@ function renderFontList(doc: Document): void {
   const list = getElement<HTMLElement>(doc, "interlinear-font-list");
   if (!state || !list) return;
   const detected = state.detected && state.detected.size ? state.detected : null;
+  const detectedLower = detected
+    ? new Set(Array.from(detected, (name) => name.toLowerCase()))
+    : null;
   const candidates = filterFontCandidates({
     query: state.query,
     detected,
@@ -2179,7 +2182,7 @@ function renderFontList(doc: Document): void {
         cssFamily: `${quoteFontName(candidate.family)}, ${fontGroupCssFamily(candidate.group)}`,
         active: state.stack.primary.toLowerCase() === key,
         favorite: state.favorites.some((favorite) => favorite.toLowerCase() === key),
-        undetected: detected ? !detected.has(key) : false,
+        undetected: detectedLower ? !detectedLower.has(key) : false,
       });
     }
   }
@@ -3111,6 +3114,7 @@ function setActiveTab(
     if (selected && options.focus) button.focus();
   }
   syncSectionVisibility(doc);
+  if (tab === "display") syncAutoTranslateWarning(doc);
   if (previous !== tab) restoreTabScroll(doc, tab);
 }
 
@@ -4030,6 +4034,17 @@ function updateShortcutConflict(doc: Document): void {
   );
 }
 
+function syncAutoTranslateWarning(doc: Document): void {
+  const always =
+    getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.value ===
+    "always";
+  updateStatus(
+    getElement<HTMLElement>(doc, "interlinear-auto-translate-warning"),
+    always ? getString("interaction-auto-translate-warning") : "",
+    "warning",
+  );
+}
+
 export async function registerPrefsScripts(window: Window): Promise<void> {
   const doc = window.document;
   const root = getElement<HTMLElement>(doc, "interlinear-settings-root");
@@ -4148,21 +4163,11 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   setFormValue(doc, "interlinear-display-shortcut", getDisplayShortcut());
   setFormValue(doc, "interlinear-hover-modifier", getHoverModifier());
   setFormValue(doc, "interlinear-auto-translate", getAutoTranslateOnOpen());
-  const syncAutoTranslateWarning = () => {
-    const always =
-      getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.value ===
-      "always";
-    updateStatus(
-      getElement<HTMLElement>(doc, "interlinear-auto-translate-warning"),
-      always ? getString("interaction-auto-translate-warning") : "",
-      "warning",
-    );
-  };
   getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.addEventListener(
     "change",
-    syncAutoTranslateWarning,
+    () => syncAutoTranslateWarning(doc),
   );
-  syncAutoTranslateWarning();
+  syncAutoTranslateWarning(doc);
   if (skipLastPages) skipLastPages.value = String(getSkipLastPages());
   setFormChecked(doc, "interlinear-scope-body", getScopeBody());
   setFormChecked(doc, "interlinear-scope-titles", getScopeTitles());

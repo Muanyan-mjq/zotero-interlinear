@@ -1519,6 +1519,11 @@ describe("startup", function () {
           cache.fonts.length,
           "the list must show exactly the detected catalog fonts",
         );
+        assert.equal(
+          list?.querySelectorAll('.interlinear-font-row[data-undetected="true"]').length,
+          0,
+          "fonts in the detected set must not carry the undetected badge",
+        );
         const showAll = win?.document.getElementById(
           "interlinear-font-show-all",
         ) as HTMLInputElement | null;

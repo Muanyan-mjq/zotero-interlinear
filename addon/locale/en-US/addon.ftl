@@ -1,7 +1,7 @@
 
 appearance-title = Translation appearance
 appearance-type-title = Typography
-appearance-colors-title = Colors and marks
+appearance-colors-title = Colors and marks (9 items)
 appearance-preview-label = Live preview
 appearance-preview-scheme = Preview dark theme
 appearance-preview-help = Shows your unsaved changes with the same styles the reader uses; the background follows Zotero's theme.
@@ -283,7 +283,7 @@ export-error-no-attachment = Cannot access the Zotero attachment of the current 
 export-error-failed = Failed to export the bilingual PDF: { $detail }
 export-success = The bilingual PDF was created and added to this item's Zotero attachments.
 
-settings-page-title = Translation scope
+settings-page-title = Page range
 settings-skip-last-label = Skip trailing pages
 settings-skip-last-help = Default 1. Usually skips the reference list at the end of a paper; set 0 to disable skipping by page count.
 settings-page-note = Structured paragraphs that Zotero marks as references are still skipped. The page limit uses physical PDF pages.
@@ -513,7 +513,7 @@ export-mode-reader = Match the reader
 export-mode-print = Print-friendly (light background, black text)
 state-animation-label = Animate the loading placeholder
 reduce-motion-label = Reduce motion
-scope-title = Translation scope
+scope-title = Content scope
 scope-body-label = Body paragraphs
 scope-titles-label = Headings
 scope-captions-label = Figure and table captions

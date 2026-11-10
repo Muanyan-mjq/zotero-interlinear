@@ -1,7 +1,7 @@
 
 appearance-title = 译文外观
 appearance-type-title = 排版
-appearance-colors-title = 颜色与标记
+appearance-colors-title = 颜色与标记（9 项）
 appearance-preview-label = 实时预览
 appearance-preview-scheme = 预览深色主题
 appearance-preview-help = 用阅读器相同的样式呈现尚未保存的改动；背景跟随 Zotero 主题。
@@ -283,7 +283,7 @@ export-error-no-attachment = 无法取得当前 PDF 的 Zotero 附件条目。
 export-error-failed = 导出中英对照 PDF 失败：{ $detail }
 export-success = 已生成中英对照 PDF，并保存到当前文献的 Zotero 附件中。
 
-settings-page-title = 翻译范围
+settings-page-title = 页面范围
 settings-skip-last-label = 不翻译末尾页数
 settings-skip-last-help = 默认 1 页。常用于跳过论文最后的参考文献页；设为 0 表示不按页数跳过。
 settings-page-note = 插件同时继续跳过 Zotero 已明确标记为参考文献的结构化段落。页数限制按 PDF 物理页计算。
@@ -513,7 +513,7 @@ export-mode-reader = 与阅读器一致
 export-mode-print = 打印专用（浅底黑字）
 state-animation-label = 为加载占位文字添加动画
 reduce-motion-label = 减少动画
-scope-title = 翻译范围
+scope-title = 内容范围
 scope-body-label = 正文段落
 scope-titles-label = 标题
 scope-captions-label = 图注与表注

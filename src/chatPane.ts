@@ -20,6 +20,11 @@ import {
   getAppearance,
   getDisplayMode,
   getEngine,
+  getScopeBody,
+  getScopeCaptions,
+  getScopeListItems,
+  getScopeNotes,
+  getScopeTitles,
   getTargetLanguage,
   setDisplayMode,
 } from "./settings";
@@ -88,6 +93,21 @@ function htmlElement<K extends keyof HTMLElementTagNameMap>(
     "http://www.w3.org/1999/xhtml",
     tag,
   ) as HTMLElementTagNameMap[K];
+}
+
+function buildChatParagraphSelector(): string {
+  const parts: string[] = [];
+  if (getScopeBody()) parts.push("p[data-ref-path]");
+  if (getScopeTitles()) {
+    for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
+      parts.push(`${tag}[data-ref-path]`);
+    }
+  }
+  if (getScopeCaptions()) parts.push("figcaption[data-ref-path]");
+  if (getScopeNotes()) parts.push("aside.sdt-note[data-ref-path]");
+  if (getScopeListItems()) parts.push("li[data-ref-path]");
+  const selector = parts.map((part) => `#sdt-content ${part}`).join(",");
+  return selector || "#sdt-content p[data-ref-path]";
 }
 
 function findReader(itemID: number): any | null {
@@ -290,7 +310,9 @@ async function sendQuestion(body: HTMLElement): Promise<void> {
   }
 
   const scope = getSelectedScope(body);
-  const context = collectChatContext(doc, scope);
+  const context = collectChatContext(doc, scope, {
+    paragraphSelector: buildChatParagraphSelector(),
+  });
   if (!context) {
     setStatus(
       body,
