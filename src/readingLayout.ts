@@ -1,4 +1,6 @@
 import { logError } from "./utils/log";
+import { refreshSDTView } from "./zoteroCompat";
+
 interface LayoutObserver {
   refresh: () => void;
   dispose: () => void;
@@ -23,9 +25,7 @@ export function observeReadingLayout(view: any, doc: Document): void {
       // This is the same path Zotero uses after a reading-mode resize. It
       // invalidates both annotation range and page-rectangle caches, then
       // synchronously redraws highlights and repositions their popups.
-      if (typeof view?._handleViewUpdate === "function") {
-        view._handleViewUpdate(true);
-      } else {
+      if (!refreshSDTView(view)) {
         win.dispatchEvent(new (win as any).Event("resize"));
       }
     } catch (error) {

@@ -81,6 +81,14 @@ import {
   type ToggleTransition,
 } from "./readerToggle";
 import { whenSecretsReady } from "./secrets";
+import {
+  getActiveSDTView,
+  getInternalReader,
+  getReaderFrameDocument,
+  getReaders,
+  getSDTViews,
+  setReadingMode,
+} from "./zoteroCompat";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
@@ -263,17 +271,6 @@ async function translateTextLimited(
   return { text: translated.join(" ").trim(), engineTag };
 }
 
-function getInternalReader(reader: any): any {
-  return reader?._internalReader || reader;
-}
-
-function getActiveSDTView(reader: any): any {
-  const internal = getInternalReader(reader);
-  if (!internal) return null;
-
-  const primary = internal._lastViewPrimary !== false || !internal._secondaryView;
-  return primary ? internal._primarySDTView : internal._secondarySDTView;
-}
 
 function getSDTDocument(reader: any): Document | null {
   try {
@@ -477,15 +474,10 @@ async function ensureReadingMode(reader: any): Promise<Document> {
   let doc = getSDTDocument(reader);
   if (doc?.querySelector("#sdt-content")) return doc;
 
-  const internal = getInternalReader(reader);
-  if (!internal) {
+  if (!getInternalReader(reader)) {
     throw new Error(getString("error-reader-unavailable"));
   }
-
-  const primary = internal._lastViewPrimary !== false || !internal._secondaryView;
-  if (typeof internal._setReadingMode === "function") {
-    await internal._setReadingMode(primary, true);
-  } else {
+  if (!(await setReadingMode(reader, true))) {
     throw new Error(getString("error-reading-mode-unsupported"));
   }
 
@@ -694,7 +686,7 @@ function cycleDisplayMode(reader: any, toolbarDoc?: Document): void {
 
 function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {  if (!toolbarDoc) {
     try {
-      toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+      toolbarDoc = getReaderFrameDocument(reader) as Document | undefined;
     } catch (_) {
       toolbarDoc = undefined;
     }
@@ -714,7 +706,7 @@ function updateDisplayButtonState(reader: any, toolbarDoc?: Document): void {  i
 
 /** Re-apply the display mode to readers that are already open. */
 export function refreshDisplayModes(): void {
-  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  const readers = getReaders();
   for (const reader of readers) {
     try {
       if (reader.type !== "pdf") continue;
@@ -729,7 +721,7 @@ export function refreshDisplayModes(): void {
 
 /** Re-apply appearance settings to readers that are already open. */
 export function refreshTranslationStyles(): void {
-  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  const readers = getReaders();
   for (const reader of readers) {
     try {
       if (reader.type !== "pdf") continue;
@@ -1184,12 +1176,7 @@ function hasReaderInteractions(reader: any, doc: Document): boolean {
 
 function getReaderSDTDocuments(reader: any): Document[] {
   const docs: Document[] = [];
-  const internal = getInternalReader(reader);
-  const views = [
-    internal?._primarySDTView,
-    internal?._secondarySDTView,
-    getActiveSDTView(reader),
-  ];
+  const views = [...getSDTViews(reader), getActiveSDTView(reader)];
   for (const view of views) {
     try {
       const doc = view?._iframeDocument || view?._iframe?.contentDocument;
@@ -1262,7 +1249,7 @@ export function watchReaderInteractions(reader: any): void {
   scheduleRetries(INTERACTION_ATTACH_DELAYS_MS);
 
   try {
-    const outerDoc = reader?._iframeWindow?.document as Document | undefined;
+    const outerDoc = getReaderFrameDocument(reader) as Document | undefined;
     if (outerDoc) {
       state.doc = outerDoc;
       state.onLoad = (event: Event) => {
@@ -1306,7 +1293,7 @@ function getNoticeDocument(reader: any): Document | null {
     // The SDT view may not exist before reading mode is initialized.
   }
   try {
-    const doc = reader?._iframeWindow?.document as Document | undefined;
+    const doc = getReaderFrameDocument(reader) as Document | undefined;
     if (doc?.body || doc?.documentElement) return doc;
   } catch (_) {
     // The reader may already be closed.
@@ -1982,7 +1969,7 @@ export function renderBilingualToolbarButtons(event: any): void {
 function updateToolbarProgress(reader: any): void {
   let toolbarDoc: Document | undefined;
   try {
-    toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+    toolbarDoc = getReaderFrameDocument(reader) as Document | undefined;
   } catch (_) {
     toolbarDoc = undefined;
   }
@@ -2043,8 +2030,7 @@ export function cleanupBilingualReader(reader: any): void {
     }
   }
 
-  const internal = getInternalReader(reader);
-  for (const view of [internal?._primarySDTView, internal?._secondarySDTView]) {
+  for (const view of getSDTViews(reader)) {
     try {
       const doc = view?._iframeDocument || view?._iframe?.contentDocument;
       if (doc) clearTranslations(doc);
@@ -2055,7 +2041,7 @@ export function cleanupBilingualReader(reader: any): void {
 
   let toolbarDoc: Document | undefined;
   try {
-    toolbarDoc = reader?._iframeWindow?.document as Document | undefined;
+    toolbarDoc = getReaderFrameDocument(reader) as Document | undefined;
   } catch (_) {
     toolbarDoc = undefined;
   }

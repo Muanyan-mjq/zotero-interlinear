@@ -1634,3 +1634,29 @@
 
 - GitHub 原生 Secret scanning + push protection 需你在仓库设置里开启，我这边无法验证是否已开。
 - CI 上的这一步尚未在真实 Actions 环境跑过（本地等价命令已验证）。
+
+## Step 8：私有 API 收敛（src/zoteroCompat.ts，纯重构）
+
+### 做了什么
+
+- 新增 `src/zoteroCompat.ts`，把散落在 5 个文件里的私有/未文档化访问集中到一处，并为每个访问点写明版本敏感注释：
+  `getInternalReader`、`isPrimaryView`、`getActiveSDTView`、`getSDTViews`、`setReadingMode`（返回 `boolean`，缺 API 时 false）、`refreshSDTView`（返回 `boolean`，缺 `_handleViewUpdate` 时 false 让调用方回退到合成 resize）、`getReaders`、`getReaderFrameWindow`、`getReaderFrameDocument`、`getSDTViewDocument`。
+- 迁移的文件：`bilingualReader.ts`（内部 reader、SDT 视图、`_setReadingMode`、`_readers`、`_iframeWindow`）、`readerUI.ts`（同上 + 偏好窗回退）、`readerToolbar.ts`（reader 列表与工具栏文档）、`chatPane.ts`（reader 列表）、`readingLayout.ts`（`_handleViewUpdate`）。
+- 全仓复查：`_internalReader` / `_primarySDTView` / `_secondarySDTView` / `_setReadingMode` / `_handleViewUpdate` / `_iframeWindow` 在 `src/` 下（除 compat 文件）**0 命中**。
+- 行为保持：`refreshSDTView` 保留原来的 `else { 合成 resize }` 回退；`setReadingMode` 保留“无内部 reader → `error-reader-unavailable`，有 reader 但无 `_setReadingMode` → `error-reading-mode-unsupported`”的两种错误区分。
+- `src/zoteroCompat.ts` 加入 lint 列表。
+
+### 改动文件
+
+`src/zoteroCompat.ts`（新）、`src/bilingualReader.ts`、`src/readerUI.ts`、`src/readerToolbar.ts`、`src/chatPane.ts`、`src/readingLayout.ts`、`package.json`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过（重构中间态曾因 `else` 缺少回退报 TS1128，已按语义补回）。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：200 pass / 0 fail。
+- `npm run test:review`：Zotero 10.0.8 **67 passed**；Zotero 11.0-dev.5 **67 passed**（与重构前完全一致，无回归）。
+
+### 未目视验证
+
+- 真机 PDF 上的阅读模式切换、左右分栏、插入/删除译文后的高亮几何：集成测试只断言 DOM 与几何数值，未目视。
