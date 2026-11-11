@@ -1538,3 +1538,44 @@
     justify-content: flex-end;
   }
 }
+
+/* API key state: encrypted / unencrypted / session-only / needs re-entry. */
+#interlinear-settings-root .interlinear-secret-status {
+  color: var(--interlinear-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+#interlinear-settings-root .interlinear-secret-status:empty {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-secret-status[data-state="plaintext"],
+#interlinear-settings-root .interlinear-secret-status[data-state="needs-reentry"] {
+  color: CanvasText;
+}
+
+#interlinear-settings-root .interlinear-secret-status[data-state="plaintext"]::before,
+#interlinear-settings-root .interlinear-secret-status[data-state="needs-reentry"]::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--interlinear-warning);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+}
+
+#interlinear-settings-root .interlinear-secret-status[data-state="encrypted"]::before {
+  content: "✓";
+  margin-right: 5px;
+  color: var(--interlinear-success);
+  font-size: 12px;
+}

@@ -1543,3 +1543,45 @@
 2. 重启 Zotero：设置页应显示“已使用系统钥匙串加密”，翻译仍能带 key 请求（可用“测试连接”看 401 而不是“请先填写密钥”）。
 3. 把 `prefs.js` 里的值改成 `oskv1:garbage` 后重启：应显示“需要重新输入”，且该键不被清空。
 4. 若在 Linux 上：无 libsecret 时应显示“仅本次会话有效”，且 `prefs.js` 不出现明文。
+
+## Step 5：设置页密钥 UI
+
+### 做了什么
+
+- **三个密钥字段**（openai / claude / gemini）各新增一个状态文字（`role=status`、`aria-live=polite`）和一个“清除密钥”按钮。
+- **掩码显示**：已保存的密钥在输入框里显示 `••••••••` + 末四位（长度为 4 以内则只显示掩码），并打上 `data-masked="true"`；聚焦即清空等待新输入；失焦且仍为空时把掩码恢复，避免“看起来没设置”。
+- **显示/隐藏 8 秒自动回遮蔽**：点“显示”后 8 秒自动切回 `password` 并复位按钮文案与 `aria-pressed`。
+- **输入即 trim**：`input` 事件里立刻去掉首尾空白，避免“看着一样、保存时被静默改掉”。
+- **清除密钥**：同步清内存缓存 + 删偏好 + 清空输入框 + 刷新状态，并在保存状态行提示“密钥已清除”。
+- **四种状态**：`已使用系统钥匙串加密` / `未加密保存` / `仅本次会话有效` / `需要重新输入`，用 `data-state` 控制图标（✓ 或 !）与对比度；空状态不占位。
+- **钥匙串不可用时的二次确认（内联，非系统弹窗）**：点保存时若用户填了新密钥且 `isKeystoreAvailable() === false`，在 `#interlinear-save-confirm` 里给出三个按钮：`仅本次会话`（默认、聚焦）/ `仍然不加密保存` / `取消`。选“不加密”后 `setSecret(..., { allowPlaintext: true })`，随后状态持续显示“未加密保存”。**任何路径都不会静默写明文。**
+- **保存时不覆盖未改动的密钥**：`readSecretInput()` 在“仍是掩码”时返回 `undefined`，`saveSettings` 跳过写入；为防止程序化赋值被误判成掩码，判定条件是“`data-masked` 为真**且**值仍等于当前掩码”。
+- **保存后刷新**：密钥是异步落盘的，保存后 150ms 与 800ms 各刷新一次状态与掩码（不阻塞保存状态提示）。
+- **文案**：新增 9 个键（en/zh 各一次，535 → 550，两边一致）；同时把三条 `provider-*-api-key-help` 从“明文保存”改为“加密保存”，避免与新行为矛盾。
+
+### 改动文件
+
+`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/{en-US,zh-CN}/addon.ftl`、`typings/i10n.d.ts`（生成）、`test/startup.test.ts`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：194 pass / 0 fail。
+- `npm run test:review`：Zotero 10.0.8 **67 passed**；Zotero 11.0-dev.5 **67 passed**（新增「masks a stored key and clears it from the pane」，覆盖掩码、状态文字与清除按钮）。
+- 文案改动后又完整跑了一遍两版本，仍 67 / 67。
+
+### 未目视验证
+
+- 掩码字体在 13px 下的观感、`••••••••` 在窄窗口是否被截断。
+- 8 秒自动回遮蔽与“显示”按钮的交互手感。
+- 内联确认区三个按钮在 600px 下的换行与焦点顺序（代码里把第一个按钮 `focus()`，键盘 Tab 顺序按 DOM）。
+- 深浅主题下 `data-state="plaintext"`/`needs-reentry` 的警告图标对比度。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 填入假 key 保存：输入框变成 `••••••••` + 末四位，状态显示“已使用系统钥匙串加密”。
+2. 点输入框：内容清空，可直接输入新 key；不输入直接点走：掩码恢复。
+3. 点“显示”：8 秒后自动回到遮蔽；再点“显示/隐藏”手动切换正常。
+4. 点“清除密钥”：输入框清空、`prefs.js` 中该键消失、状态文字消失。
+5. 在 Linux（无 libsecret）或临时把 `Zotero.OSKeyStore` 置空：保存时出现三个按钮的内联确认，选“仅本次会话”后状态为“仅本次会话有效”；选“仍然不加密保存”后 `prefs.js` 里是明文且状态持续显示“未加密保存”。

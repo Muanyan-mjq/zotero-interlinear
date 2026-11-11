@@ -299,6 +299,48 @@ describe("startup", function () {
     }
   });
 
+  it("masks a stored key and clears it from the pane", async function () {
+    this.timeout(15000);
+    const pref = "extensions.zotero.interlinear.openai.apiKey";
+    const previous = Zotero.Prefs.get(pref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
+    assert.exists(win);
+    const byId = (id: string) => win?.document.getElementById(id) as HTMLInputElement | null;
+
+    try {
+      const input = byId("interlinear-openai-api-key");
+      const status = win?.document.getElementById("interlinear-openai-key-status");
+      const clear = win?.document.getElementById("interlinear-openai-key-clear");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement | null;
+      assert.exists(input);
+      assert.exists(status);
+      assert.exists(clear);
+      assert.exists(save);
+
+      input!.value = "sk-test-000111222333444555";
+      save!.click();
+      await waitForStoredSecret(pref);
+
+      // The mask is applied after the (asynchronous) write is verified.
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if (String(input!.value).startsWith("••••")) break;
+        await Zotero.Promise.delay(100);
+      }
+      assert.match(String(input!.value), /^••••••••/u, "a stored key is shown masked");
+      assert.equal(input!.dataset.masked, "true");
+      assert.isNotEmpty(String(status!.textContent || "").trim());
+
+      clear!.click();
+      assert.equal(String(Zotero.Prefs.get(pref, true) || ""), "");
+      assert.equal(input!.value, "");
+    } finally {
+      win?.close();
+      if (previous === undefined) Zotero.Prefs.clear(pref, true);
+      else Zotero.Prefs.set(pref, previous as string, true);
+    }
+  });
+
   it("should keep the previous font when an invalid custom stack is saved", async function () {
     this.timeout(10000);
     const fontPref = "extensions.zotero.interlinear.appearance.fontFamily";
