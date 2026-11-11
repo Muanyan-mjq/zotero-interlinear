@@ -1300,10 +1300,15 @@ describe("startup", function () {
       assert.exists(panel);
       assert.notEqual(panel?.hidden, true);
       assert.isNotNull(panel?.closest("#interlinear-settings-root"));
-      assert.equal(
-        win?.getComputedStyle(panel as HTMLElement).position,
-        "fixed",
-      );
+      // The preferences stylesheet is injected as a processing instruction
+      // and can lag a few ticks behind the pane markup.
+      let pickerPosition = "";
+      for (let attempt = 0; attempt < 100; attempt++) {
+        pickerPosition = win?.getComputedStyle(panel as HTMLElement).position || "";
+        if (pickerPosition === "fixed") break;
+        await Zotero.Promise.delay(50);
+      }
+      assert.equal(pickerPosition, "fixed");
       const pickerHex = byId("interlinear-color-picker-hex");
       assert.exists(pickerHex);
       if (pickerHex) pickerHex.value = "#ff0000";
