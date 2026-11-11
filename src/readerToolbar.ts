@@ -1,6 +1,7 @@
 import { cleanupBilingualReader, renderBilingualToolbarButtons } from "./bilingualReader";
 import { cleanupReaderUI, renderReaderExportButton } from "./readerUI";
 import { config } from "../package.json";
+import { logError } from "./utils/log";
 
 const PLUGIN_ID = config.addonID;
 const STARTUP_RECONCILE_DELAYS_MS = [250, 1000, 3000];
@@ -77,7 +78,7 @@ export function reconcileReaderToolbars(): void {
       renderReaderToolbar({ reader, doc });
     } catch (error) {
       // A reader can close or replace its iframe while being inspected.
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -126,7 +127,7 @@ export function renderReaderToolbar(event: any): void {
     try {
       render(target);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -136,7 +137,7 @@ function cleanupReader(reader: any): void {
     try {
       cleanup(reader);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }

@@ -25,6 +25,7 @@ import {
   getXhrResponseBody,
   normalizeChatCompletionsEndpoint,
 } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
 
 export interface OpenAIChatConfig {
   endpoint: string;
@@ -57,6 +58,7 @@ export interface OllamaChatConfig {
 }
 
 function chatHttpError(status: number | undefined, detail: string): string {
+  detail = redactSecrets(detail);
   if (status) {
     return detail
       ? getString("chat-error-http", {

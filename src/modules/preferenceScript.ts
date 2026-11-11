@@ -210,6 +210,7 @@ import {
   testOpenAIConnection,
 } from "../providers";
 import { version as addonVersion } from "../../package.json";
+import { logError, redactForDisplay } from "../utils/log";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -2769,7 +2770,7 @@ function applyAppearancePreset(
     refreshTranslationStyles();
     refreshDisplayModes();
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
   const message = getString("appearance-preset-applied", { args: { name: label } });
   setPresetStatus(doc, message);
@@ -2943,7 +2944,7 @@ function registerAppearancePresets(doc: Document): void {
         refreshTranslationStyles();
         refreshDisplayModes();
       } catch (error) {
-        Zotero.logError(error as Error);
+        logError(error as Error);
       }
       setPresetStatus(doc, getString("appearance-undo-done"), "success");
     },
@@ -3011,7 +3012,7 @@ async function importAppearance(doc: Document): Promise<void> {
     setPresetStatus(
       doc,
       getString("appearance-preset-import-error", {
-        args: { reason: String(error?.message || error) },
+        args: { reason: redactForDisplay(error?.message || error) },
       }),
       "error",
     );
@@ -3036,7 +3037,7 @@ async function exportAppearance(doc: Document): Promise<void> {
     setPresetStatus(
       doc,
       getString("appearance-preset-export-error", {
-        args: { reason: String(error?.message || error) },
+        args: { reason: redactForDisplay(error?.message || error) },
       }),
       "error",
     );
@@ -3741,7 +3742,7 @@ async function testOllama(doc: Document): Promise<void> {
       "ollama",
       "error",
       getString("ollama-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3774,7 +3775,7 @@ async function testGoogle(doc: Document): Promise<void> {
       "google",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3811,7 +3812,7 @@ async function testOpenAI(doc: Document): Promise<void> {
       "openai",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3848,7 +3849,7 @@ async function testClaude(doc: Document): Promise<void> {
       "claude",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3885,7 +3886,7 @@ async function testGemini(doc: Document): Promise<void> {
       "gemini",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3922,7 +3923,7 @@ async function importGlossary(doc: Document): Promise<void> {
     const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
     if (status) {
       status.textContent = getString("glossary-status-error", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       });
     }
   } finally {
@@ -3959,7 +3960,7 @@ async function exportGlossary(doc: Document): Promise<void> {
     const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
     if (status) {
       status.textContent = getString("glossary-status-error", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       });
     }
   } finally {
@@ -4277,7 +4278,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
         doc,
         "error",
         getString("settings-status-error", {
-          args: { detail: String(error?.message || error) },
+          args: { detail: redactForDisplay(error?.message || error) },
         }),
       );
     }

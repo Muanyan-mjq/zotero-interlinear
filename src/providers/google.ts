@@ -8,6 +8,7 @@ import {
   parseGoogleResponse,
 } from "./googleProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
 
 export interface GoogleConfig {
   baseURL: string;
@@ -46,7 +47,7 @@ export async function requestGoogleTranslation(
     const failed = error?.xmlhttp || error?.xhr;
     const detail = responseDetail(getXhrResponseBody(failed)) || error?.message || "";
     throw new Error(
-      getString("provider-error-google-network", { args: { detail: String(detail) } }),
+      getString("provider-error-google-network", { args: { detail: redactSecrets(detail) } }),
     );
   }
 
@@ -54,7 +55,7 @@ export async function requestGoogleTranslation(
     const detail = responseDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(
       getString("provider-error-google-http", {
-        args: { status: String(xhr?.status || "unknown"), detail },
+        args: { status: String(xhr?.status || "unknown"), detail: redactSecrets(detail) },
       }),
     );
   }

@@ -6,6 +6,7 @@ import { registerPrefsScripts } from "./modules/preferenceScript";
 import { migrateLegacyPreferences } from "./settings";
 import { flushTranslationCacheIndex } from "./translationCache";
 import { cleanupAllReadingLayouts } from "./readingLayout";
+import { logError } from "./utils/log";
 
 async function registerPreferencesPane(): Promise<void> {
   await Zotero.PreferencePanes.register({
@@ -56,7 +57,7 @@ async function onStartup() {
     try {
       await initialize();
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 

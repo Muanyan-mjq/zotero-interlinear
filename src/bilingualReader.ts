@@ -71,6 +71,7 @@ import { exportBilingualPDF } from "./readerUI";
 import { getString } from "./utils/locale";
 import { registerToolbarHandlers } from "./toolbarEvents";
 import { INTERLINEAR_ICON_DATA_URL } from "./interlinearIcon";
+import { logError } from "./utils/log";
 import {
   transition,
   isTranslationVisible,
@@ -406,7 +407,7 @@ function dispatchToggle(reader: any, event: ToggleEvent): ToggleTransition {
       // start-run / resume-run / clear-translations need async orchestration
       // and are executed by the calling event handler.
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
   updateToolbarProgress(reader);
@@ -717,7 +718,7 @@ export function refreshDisplayModes(): void {
       if (doc?.querySelector("#sdt-content")) applyDisplayMode(doc);
       updateDisplayButtonState(reader);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -739,7 +740,7 @@ export function refreshTranslationStyles(): void {
         }
       }
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -1122,7 +1123,7 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
     try {
       entry.controller.dispose();
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 
@@ -1222,7 +1223,7 @@ export function watchReaderInteractions(reader: any): void {
       try {
         attachInteractionsToReaderDocument(reader, doc);
       } catch (error) {
-        Zotero.logError(error as Error);
+        logError(error as Error);
       }
     }
   };
@@ -1246,7 +1247,7 @@ export function watchReaderInteractions(reader: any): void {
           try {
             tryAttach();
           } catch (error) {
-            Zotero.logError(error as Error);
+            logError(error as Error);
           }
         }, delay),
       );
@@ -1334,7 +1335,7 @@ function dismissErrorNotice(doc: Document): void {
 /** Non-blocking replacement for window.alert: a dismissible in-reader toast. */
 function showError(reader: any, message: string): void {
   try {
-    Zotero.logError(new Error(message));
+    logError(new Error(message));
   } catch (_) {
     // Outside Zotero there is nowhere to report.
   }
@@ -1716,7 +1717,7 @@ async function prepareAndRun(reader: any): Promise<void> {
   try {
     await (Zotero as any).SDT?.ensure?.(itemID, { isPriority: true });
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
 
   const engine = getEngine();
@@ -1781,7 +1782,7 @@ export function configureTranslation(reader: any): void {
     const preferencesWindow = Zotero.Utilities.Internal.openPreferences(PREFERENCES_PANE_ID);
     if (preferencesWindow) return;
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
 
   showError(reader, getString("settings-open-failed"));
@@ -1907,7 +1908,7 @@ function maybeAutoTranslate(reader: any): void {
     void toggleBilingualReading(reader);
     return;
   }
-  void showCachedTranslations(reader).catch((error) => Zotero.logError(error as Error));
+  void showCachedTranslations(reader).catch((error) => logError(error as Error));
 }
 
 export function renderBilingualToolbarButtons(event: any): void {
@@ -2033,7 +2034,7 @@ export function cleanupBilingualReader(reader: any): void {
       try {
         entry.controller.dispose();
       } catch (error) {
-        Zotero.logError(error as Error);
+        logError(error as Error);
       }
     }
   }

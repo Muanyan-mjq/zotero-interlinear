@@ -30,6 +30,7 @@ import {
 } from "./settings";
 import { resolveUiFontFamily } from "./appearance";
 import { getLocaleID, getString } from "./utils/locale";
+import { logError } from "./utils/log";
 
 const CHAT_PANE_ID = "interlinear-chat";
 const SEND_SELECTOR = "#interlinear-chat-send";
@@ -471,7 +472,7 @@ export function registerChatPane(): void {
     });
     sectionKey = typeof key === "string" ? key : null;
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
 }
 
@@ -481,7 +482,7 @@ export function unregisterChatPane(): void {
     try {
       manager.unregisterSection(sectionKey);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
   sectionKey = null;

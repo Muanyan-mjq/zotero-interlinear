@@ -2,6 +2,7 @@ import { buildTranslationCSS } from "./appearance";
 import { getAppearance, getTargetLanguage } from "./settings";
 import { getString } from "./utils/locale";
 import { registerToolbarHandlers } from "./toolbarEvents";
+import { logError } from "./utils/log";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const EXPORT_BUTTON_CLASS = "interlinear-export-button";
@@ -41,7 +42,7 @@ function showMessage(reader: any, message: string): void {
     win.alert(message);
     return;
   }
-  Zotero.logError(new Error(message));
+  logError(new Error(message));
 }
 
 function confirmMessage(reader: any, message: string): boolean {
@@ -372,7 +373,7 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
     await printHTMLToPDF(html, tempFile);
     importedAttachment = await importExportedPDF(tempFile, sourceAttachment);
   } catch (error: any) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
     showMessage(
       reader,
       getString("export-error-failed", {

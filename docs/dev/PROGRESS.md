@@ -1423,3 +1423,40 @@
 1. 打开设置→Interlinear：五个标签、表单值、预览卡片是否正常出现，无空白帧或闪烁。
 2. 快速连续切换五个标签，再关闭重开设置窗口，确认不重复绑定、不报错。
 3. 若手上有开启 `security.chrome_baseline_csp.enabled` 的 Zotero 11 构建，复测同一页面。
+
+## Step 2：P0 脱敏（redactSecrets / logError）
+
+### 做了什么
+
+- 新增 `src/utils/redact.ts`（无 import，供 Node 类型剥离直接加载）：
+  - `redactSecrets(text, knownSecrets)`：先替换本次会话持有的密钥原文（≥4 字符才处理，避免误伤短词），再用形状正则遮蔽 `sk-…`、`sk-ant-…`、`AIza…`、`Bearer <token>`、`x-api-key: <token>`、`x-goog-api-key: <token>`、`Authorization: <token>`（`Authorization` 用负向前瞻避免吞掉后面的 `Bearer`，保证输出仍是 `Authorization: Bearer ***`）。
+  - `redactError(error, knownSecrets)`：保留 `name`/`stack`，只替换其中的密钥。
+- 新增 `src/utils/log.ts`：`logError()`（统一走 `Zotero.logError(redactError(...))`，永不抛错）、`redactForDisplay()`（UI 文案脱敏）、`setLogSecretsProvider()`（由 `settings.ts` 注册，惰性读取三个 key）。
+- **接入点**：
+  - 5 个 provider 的错误格式化：`openai.ts`/`claude.ts`/`gemini.ts`/`chat.ts` 的 `httpError()` 入口统一 `detail = redactSecrets(detail)`；`google.ts` 两处 `detail` 直接包 `redactSecrets()`。
+  - `src/modules/preferenceScript.ts`：10 处把错误原文塞进状态的 `String(error?.message || error)` 全部改为 `redactForDisplay(...)`（三个 provider 的连接测试 + 术语表/预设/导入等失败提示）。
+  - 全仓 `Zotero.logError(` → `logError(`（9 个文件、27 处），统一脱敏后再交给 Zotero。
+  - 把 `src/utils` 纳入 `lint:check` / `lint:fix` 的扫描范围。
+- **单测**：`test/redact.node.test.mjs`（9 条），覆盖已知密钥多次出现、三种密钥形状、头部回显（文本与 JSON 两种写法）、`redactError` 保留 stack、nullish/非字符串输入、以及 7 条“无密钥文本不得改写”的正例（含 `task-management`、`disk-usage`、中文错误文案、sha512 摘要、模型名）。断言方式为“输出中不得出现原文，也不得出现密钥的任意 8 字符窗口”。
+
+### 改动文件
+
+`src/utils/redact.ts`（新）、`src/utils/log.ts`（新）、`src/providers/{openai,claude,gemini,google,chat}.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`src/{bilingualReader,chatPane,hooks,readerInteractions,readerToolbar,readerUI,readingLayout}.ts`、`test/redact.node.test.mjs`（新）、`package.json`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：186 pass / 0 fail（新增 9 条）。
+- `npm run test:review`：Zotero 10.0.8 **59 passed**；Zotero 11.0-dev.5 **59 passed**。
+
+### 未目视验证 / 不确定
+
+- 真实服务返回的 401 报文里，密钥形状若不是 `sk-`/`AIza` 前缀（例如自定义网关自己生成的 token），只能依赖“已知密钥原文替换”这一层——只要本次会话确实持有该 key，就能遮住；**未有真实 401 响应做过端到端验证**。
+- `Authorization` 头部回显的 JSON 形式（带转义引号）只做了字符串级验证，未用真实响应体验证。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 在设置页填入一个错误 key（如 `sk-test-000…`），点“测试连接”：失败提示里不应出现完整 key 或 8 位以上片段。
+2. 打开帮助→调试输出，确认日志里没有 key。
+3. 触发一次需要报错的路径（例如把 endpoint 填成不存在的域名），确认提示可读、没有被过度打码。

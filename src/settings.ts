@@ -53,6 +53,7 @@ import {
   parseShortcut,
   type ShortcutSpec,
 } from "./shortcut";
+import { logError, setLogSecretsProvider } from "./utils/log";
 
 export type { AppearanceSettings } from "./appearance";
 export type { DisplayMode } from "./displayMode";
@@ -432,6 +433,10 @@ export function getGeminiApiKey(): string {
 export function setGeminiApiKey(apiKey: string): void {
   setStringPref(GEMINI_API_KEY_PREF, apiKey.trim());
 }
+
+// Error messages and debug output must never carry a key this session holds in
+// memory. The logger calls this lazily, so rotating a key needs no re-wiring.
+setLogSecretsProvider(() => [getOpenAIApiKey(), getClaudeApiKey(), getGeminiApiKey()]);
 
 export function getGeminiPrompt(): string {
   return getRawStringPref(GEMINI_PROMPT_PREF).trim() || DEFAULT_OPENAI_PROMPT;
@@ -964,7 +969,7 @@ export function migrateLegacyPreferences(): void {
         }
         rootBranch.clearUserPref(malformedKey);
       } catch (error) {
-        Zotero.logError(error as Error);
+        logError(error as Error);
       }
     }
   }
@@ -1011,13 +1016,13 @@ function migrateLegacyBranch(rootBranch: any): void {
           break;
       }
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
   try {
     rootBranch.setBoolPref(markerKey, true);
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
 }
 

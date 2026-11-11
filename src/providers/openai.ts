@@ -14,6 +14,7 @@ import {
   getXhrResponseBody,
   normalizeChatCompletionsEndpoint,
 } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
 
 export interface OpenAIConfig {
   endpoint: string;
@@ -25,6 +26,7 @@ export interface OpenAIConfig {
 }
 
 function httpError(status: number | undefined, detail: string): string {
+  detail = redactSecrets(detail);
   if (status) {
     return detail
       ? getString("provider-error-openai-http", {
