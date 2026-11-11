@@ -258,6 +258,23 @@ const FONT_ALL_GENERIC_TOKENS = new Set([
   "ui-monospace",
 ]);
 const FONT_NAME_MAX_LENGTH = 80;
+// Keep in sync with fontCatalog.ts. Legacy symbol/dingbat faces map ASCII to
+// Greek letters or pictographs, so a saved stack containing one would render
+// every label as gibberish in the reader and chat.
+const NON_TEXT_FONT_FAMILIES = new Set([
+  "bookshelf symbol 7",
+  "marlett",
+  "ms reference specialty",
+  "symbol",
+  "webdings",
+  "wingdings",
+  "wingdings 2",
+  "wingdings 3",
+]);
+
+function isNonTextFontFamily(value: string): boolean {
+  return NON_TEXT_FONT_FAMILIES.has(value.trim().toLowerCase());
+}
 
 /** Accept only tokens that cannot terminate a declaration or open a rule. */
 export function isValidColor(value: string): boolean {
@@ -602,7 +619,9 @@ export function isValidFontName(value: string): boolean {
 }
 
 function normalizeFontName(value: unknown): string {
-  return typeof value === "string" && isValidFontName(value) ? value.trim() : "";
+  if (typeof value !== "string" || !isValidFontName(value)) return "";
+  const name = value.trim();
+  return isNonTextFontFamily(name) ? "" : name;
 }
 
 function normalizeGeneric(value: unknown): FontGeneric {

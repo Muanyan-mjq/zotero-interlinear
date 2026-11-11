@@ -15,6 +15,7 @@ import {
   detectAvailableFonts,
   filterFontCandidates,
   isFontDetected,
+  isNonTextFontFamily,
   normalizeFontFavorites,
   parseFontDetectionCache,
   quoteFontName,
@@ -153,6 +154,30 @@ test("normalizeFontFavorites dedupes, validates and caps the list", () => {
   assert.deepEqual(mixed, ["Georgia", "Arial"]);
   const many = Array.from({ length: FONT_FAVORITES_MAX + 10 }, (_, index) => `Font ${index}`);
   assert.equal(normalizeFontFavorites(many).length, FONT_FAVORITES_MAX);
+});
+
+test("symbol and dingbat fonts never reach the picker or saved favorites", () => {
+  const blocked = ["Symbol", "Webdings", "Wingdings", "Marlett"];
+  for (const family of blocked) {
+    assert.equal(isNonTextFontFamily(family), true);
+    assert.equal(
+      FONT_CANDIDATES.some(
+        (candidate) => candidate.family.toLowerCase() === family.toLowerCase(),
+      ),
+      false,
+      `${family} must not be a candidate`,
+    );
+    assert.equal(
+      filterFontCandidates({ showAll: true, query: family }).some(
+        (candidate) => candidate.family.toLowerCase() === family.toLowerCase(),
+      ),
+      false,
+      `${family} must not render a row`,
+    );
+  }
+  assert.equal(isNonTextFontFamily("Symbola"), false);
+  assert.equal(isNonTextFontFamily("Segoe UI Symbol"), false);
+  assert.deepEqual(normalizeFontFavorites(["Symbol", "Georgia", "Wingdings"]), ["Georgia"]);
 });
 
 test("parseFontDetectionCache accepts fresh valid caches only", () => {

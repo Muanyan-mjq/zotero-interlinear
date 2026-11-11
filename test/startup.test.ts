@@ -1549,10 +1549,25 @@ describe("startup", function () {
         } groups=${list?.querySelectorAll(".interlinear-font-group").length}`,
       );
 
+      showAll?.click();
+      await Zotero.Promise.delay(50);
+      const blockedFamilies = new Set(["symbol", "webdings", "wingdings", "marlett"]);
+      const leaked = Array.from(
+        list?.querySelectorAll<HTMLElement>(".interlinear-font-row[data-family]") || [],
+      )
+        .map((entry) => entry.dataset.family || "")
+        .filter((family) => blockedFamilies.has(family.toLowerCase()));
+      assert.deepEqual(leaked, [], "symbol and dingbat fonts must not be selectable");
+
       if (input) input.value = "Arial; color: red";
       fire(input, "input");
       fire(input, "blur");
       assert.notEqual(error?.textContent, "");
+
+      if (input) input.value = "Symbol";
+      fire(input, "input");
+      fire(input, "blur");
+      assert.notEqual(error?.textContent, "", "symbol fonts must be rejected");
 
       if (input) input.value = "Georgia, serif";
       fire(input, "input");
