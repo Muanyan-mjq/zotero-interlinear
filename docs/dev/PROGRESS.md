@@ -1585,3 +1585,22 @@
 3. 点“显示”：8 秒后自动回到遮蔽；再点“显示/隐藏”手动切换正常。
 4. 点“清除密钥”：输入框清空、`prefs.js` 中该键消失、状态文字消失。
 5. 在 Linux（无 libsecret）或临时把 `Zotero.OSKeyStore` 置空：保存时出现三个按钮的内联确认，选“仅本次会话”后状态为“仅本次会话有效”；选“仍然不加密保存”后 `prefs.js` 里是明文且状态持续显示“未加密保存”。
+
+## Step 6：安全文档
+
+### 做了什么
+
+- **README（中英）**：把一句“密钥以明文保存”的旧提示替换为完整的“隐私与密钥”段落，明确：段落文本会发给所选服务（无法避免，不要翻敏感文献）；密钥用 OS 钥匙串加密、prefs 只存 `oskv1:` 密文；不进日志/缓存键/调试输出/导出；走请求头不进 URL；非回环需 HTTPS（除非显式确认明文 HTTP 主机）；带密钥请求不跟随重定向；换机器/换 OS 用户需重新输入；Linux 无 Secret Service 的默认与“未加密保存”的显式确认；旧明文就地加密与明文读取路径保留窗口。
+- **新增 `SECURITY.md`**：GitHub 私有漏洞报告入口（`/security/advisories/new`）、支持范围（最新版本 + Zotero 10 桌面版，11 未声明）、插件会把哪些数据发到哪里、已知限制（钥匙串绑定 OS 账户、Linux 需要 Secret Service、插件无沙箱因此其他插件可读同一偏好、依赖 Zotero 内部阅读模式接口）、不在范围内的事项（Zotero/服务商/操作系统本身的问题、需要不存在 API 的加固、超大文档或恶意响应导致的 DoS）。
+- **`docs/dev/SETTINGS.md`**：三个 `apiKey` 行改为密文存储；§8 安全与校验补上密钥三态（加密 / 仅会话 / 需重新输入）与迁移策略；新增 §9“端点与网络请求”（loopback/私网白名单、不跟随重定向、统一脱敏）。
+- **`CHANGELOG.md`**：新增 `[Unreleased]`，分 Security / Changed / Added 记录本次加固（加密存储、拒绝重定向、HTTP 限制、脱敏、CSP 迁移、密钥 UI、SECURITY.md）。
+- **文案一致性**：三条 `provider-*-api-key-help` 从“明文保存”改为“使用系统钥匙串加密保存”，中英同步（见 Step 5 改动清单）。
+
+### 改动文件
+
+`README.md`、`README-zh-CN.md`、`SECURITY.md`（新）、`docs/dev/SETTINGS.md`、`CHANGELOG.md`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- 纯文档变更，无代码改动；`npm run build` 通过。
+- `lint:check` / `test:unit` / `test:review`（Zotero 10 + 11）与 Step 7 一起跑，结果见 Step 7 一节（同一代码状态，文档不影响构建产物）。
