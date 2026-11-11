@@ -69,6 +69,25 @@ function isValidFontName(value: string): boolean {
   return SAFE_FONT_NAME.test(trimmed);
 }
 
+// Legacy symbol/dingbat faces remap ASCII to Greek letters or pictographs, so
+// selecting one turns every label into gibberish. Keep them out of the picker,
+// favorites and saved appearance stacks. Symbola and Segoe UI Symbol are real
+// Unicode text fonts and stay available.
+const NON_TEXT_FONT_FAMILIES = new Set([
+  "bookshelf symbol 7",
+  "marlett",
+  "ms reference specialty",
+  "symbol",
+  "webdings",
+  "wingdings",
+  "wingdings 2",
+  "wingdings 3",
+]);
+
+export function isNonTextFontFamily(family: string): boolean {
+  return NON_TEXT_FONT_FAMILIES.has(family.trim().toLowerCase());
+}
+
 type CandidateSeed = [family: string, group: FontGroup, script?: FontScript];
 
 const CANDIDATE_SEEDS: readonly CandidateSeed[] = [
@@ -278,7 +297,6 @@ const CANDIDATE_SEEDS: readonly CandidateSeed[] = [
   ["Lohit Devanagari", "other", "hi"],
   ["Loma", "other", "th"],
   ["Mangal", "other", "hi"],
-  ["Marlett", "other"],
   ["Miriam", "other", "he"],
   ["Mishafi", "other", "ar"],
   ["Myanmar Text", "other"],
@@ -301,15 +319,12 @@ const CANDIDATE_SEEDS: readonly CandidateSeed[] = [
   ["Segoe UI Historic", "other"],
   ["Segoe UI Symbol", "other"],
   ["Silom", "other", "th"],
-  ["Symbol", "other"],
   ["Symbola", "other"],
   ["Tajawal", "other", "ar"],
   ["Thonburi", "other", "th"],
   ["TLwgMono", "other", "th"],
   ["Umpush", "other", "th"],
   ["Waree", "other", "th"],
-  ["Webdings", "other"],
-  ["Wingdings", "other"],
 ];
 
 export const FONT_CANDIDATES: readonly FontCandidate[] = CANDIDATE_SEEDS.map(
@@ -391,6 +406,7 @@ export function filterFontCandidates(
   const detected = toLowerCaseSet(options.detected);
   const favorites = toLowerCaseSet(options.favorites) || new Set<string>();
   return FONT_CANDIDATES.filter((candidate) => {
+    if (isNonTextFontFamily(candidate.family)) return false;
     if (!options.showAll && detected) {
       const key = candidate.family.toLowerCase();
       if (!detected.has(key) && !favorites.has(key)) return false;
@@ -437,7 +453,7 @@ export function normalizeFontFavorites(raw: unknown): string[] {
     if (typeof value !== "string") continue;
     const name = value.trim();
     const key = name.toLowerCase();
-    if (!isValidFontName(name) || seen.has(key)) continue;
+    if (!isValidFontName(name) || isNonTextFontFamily(name) || seen.has(key)) continue;
     seen.add(key);
     result.push(name);
     if (result.length >= FONT_FAVORITES_MAX) break;

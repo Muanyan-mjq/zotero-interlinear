@@ -9,6 +9,7 @@ import {
   FONT_SIZE_MIN,
   FONT_STACK_PRESETS,
   buildColorPalette,
+  buildFontStack,
   buildTranslationCSS,
   contrastRatio,
   contrastRatioOver,
@@ -27,10 +28,12 @@ import {
   normalizeHexInput,
   normalizeThemeColor,
   parseColorToRgba,
+  parseFontStack,
   pushColorUnique,
   resolveEffectiveColor,
   resolveFontSelection,
   resolveThemeColor,
+  resolveUiFontFamily,
   rgbaToHex,
   rgbaToHsl,
 } from "../src/appearance.ts";
@@ -351,6 +354,37 @@ test("isValidFontFamily accepts empty and safe stacks but rejects CSS-breaking t
   assert.equal(isValidFontFamily("Arial; color: red"), false);
   assert.equal(isValidFontFamily('Font "Name"'), false);
   assert.equal(isValidFontFamily("Arial}"), false);
+  assert.equal(isValidFontFamily("Symbol"), false);
+  assert.equal(isValidFontFamily("Georgia, Symbol, serif"), true);
+});
+
+test("symbol fonts are stripped from parsed, saved and UI font stacks", () => {
+  const parsed = parseFontStack("Symbol, Georgia, serif");
+  assert.equal(parsed.primary, "Georgia");
+  assert.equal(buildFontStack(parsed), "Georgia, serif");
+
+  const mixed = normalizeAppearance({
+    fontStack: { primary: "Symbol", fallbacks: ["Georgia"], generic: "serif" },
+  });
+  assert.equal(mixed.fontStack.primary, "");
+  assert.deepEqual(mixed.fontStack.fallbacks, ["Georgia"]);
+  assert.equal(mixed.fontFamily, "Georgia, serif");
+
+  const symbolOnly = normalizeAppearance({
+    fontFamily: "Webdings",
+    fontStack: { primary: "Webdings", fallbacks: [], generic: "" },
+  });
+  assert.equal(symbolOnly.fontFamily, "");
+  assert.deepEqual(symbolOnly.fontStack, { primary: "", fallbacks: [], generic: "" });
+  assert.equal(resolveUiFontFamily(symbolOnly), "");
+
+  assert.equal(
+    resolveUiFontFamily({
+      ...DEFAULT_APPEARANCE,
+      fontStack: { primary: "Georgia", fallbacks: [], generic: "" },
+    }),
+    "Georgia",
+  );
 });
 
 test("normalizeThemeColor converts legacy strings and keeps safe split colors", () => {

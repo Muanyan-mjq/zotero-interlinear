@@ -1300,10 +1300,15 @@ describe("startup", function () {
       assert.exists(panel);
       assert.notEqual(panel?.hidden, true);
       assert.isNotNull(panel?.closest("#interlinear-settings-root"));
-      assert.equal(
-        win?.getComputedStyle(panel as HTMLElement).position,
-        "fixed",
-      );
+      // The preferences stylesheet is injected as a processing instruction
+      // and can lag a few ticks behind the pane markup.
+      let pickerPosition = "";
+      for (let attempt = 0; attempt < 100; attempt++) {
+        pickerPosition = win?.getComputedStyle(panel as HTMLElement).position || "";
+        if (pickerPosition === "fixed") break;
+        await Zotero.Promise.delay(50);
+      }
+      assert.equal(pickerPosition, "fixed");
       const pickerHex = byId("interlinear-color-picker-hex");
       assert.exists(pickerHex);
       if (pickerHex) pickerHex.value = "#ff0000";
@@ -1516,6 +1521,17 @@ describe("startup", function () {
       assert.exists(showAll);
       assert.exists(input);
       assert.exists(error);
+      const weight = win?.document.getElementById(
+        "interlinear-font-weight",
+      ) as HTMLSelectElement | null;
+      assert.exists(weight);
+      assert.deepEqual(
+        Array.from(weight?.options || []).map((option) => option.textContent?.trim()),
+        ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+      );
+      const selectedWeight = weight?.options[weight.selectedIndex];
+      assert.exists(selectedWeight);
+      assert.equal(selectedWeight?.textContent?.trim(), weight?.value);
       assert.isAtLeast(
         list?.querySelectorAll(".interlinear-font-row").length || 0,
         4,
@@ -1533,10 +1549,25 @@ describe("startup", function () {
         } groups=${list?.querySelectorAll(".interlinear-font-group").length}`,
       );
 
+      showAll?.click();
+      await Zotero.Promise.delay(50);
+      const blockedFamilies = new Set(["symbol", "webdings", "wingdings", "marlett"]);
+      const leaked = Array.from(
+        list?.querySelectorAll<HTMLElement>(".interlinear-font-row[data-family]") || [],
+      )
+        .map((entry) => entry.dataset.family || "")
+        .filter((family) => blockedFamilies.has(family.toLowerCase()));
+      assert.deepEqual(leaked, [], "symbol and dingbat fonts must not be selectable");
+
       if (input) input.value = "Arial; color: red";
       fire(input, "input");
       fire(input, "blur");
       assert.notEqual(error?.textContent, "");
+
+      if (input) input.value = "Symbol";
+      fire(input, "input");
+      fire(input, "blur");
+      assert.notEqual(error?.textContent, "", "symbol fonts must be rejected");
 
       if (input) input.value = "Georgia, serif";
       fire(input, "input");
