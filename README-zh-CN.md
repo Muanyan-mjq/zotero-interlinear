@@ -30,6 +30,28 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 - **翻译缓存。** 按服务、语言对与术语表区分缓存，设置页可一键清理。
 - 界面提供英文与简体中文；错误以阅读器内非阻塞提示条显示。
 
+## 截图
+
+以下都是插件在隔离 profile 中运行时抓取的**真实 Zotero 10 窗口**，没有模拟图、没有拼接、没有后期修饰。
+
+![翻译服务与语言设置](docs/images/settings-service.png)
+*翻译后端、语言对与服务地址。所有截图里的 API 密钥输入框都刻意留空。*
+
+![译文外观：外观方案与实时预览](docs/images/settings-appearance.png)
+*六套内置方案、我的方案，以及与阅读器同一套 CSS 的实时预览。*
+
+![自定义取色器](docs/images/settings-color-picker.png)
+*内置 HSV 取色器：透明度、RGB/HSL、HEX，每个颜色角色可分别设置浅色/深色值。*
+
+![显示与交互设置](docs/images/settings-display.png)
+*排版、悬停翻译与快捷键。*
+
+![窄窗口布局](docs/images/settings-narrow.png)
+*同一页面在约 800px 宽时：字段变单列，高级组保持折叠。*
+
+阅读器截图（原文/译文对照、左右双栏、工具栏显示/隐藏状态）**暂未包含**——当前抓图脚本只驱动设置页。
+仍缺的清单见 `docs/dev/SCREENSHOT-REVIEW.md`。
+
 ## 安装
 
 1. 从 [Releases](https://github.com/Muanyan-mjq/zotero-interlinear/releases) 下载最新的 `interlinear.xpi`。

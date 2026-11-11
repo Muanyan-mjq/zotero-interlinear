@@ -30,6 +30,30 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 - **Caching.** Translations are cached per service, language pair, and glossary, with a one-click cleanup in settings.
 - English and Simplified Chinese UI; errors appear as non-blocking notices inside the reader.
 
+## Screenshots
+
+Every image below is a real Zotero 10 window captured from the plugin running in an
+isolated profile — no mockups, no compositing, no retouching.
+
+![Service and language settings](docs/images/settings-service.png)
+*Translation service, language pair and endpoint. API key fields are intentionally empty in every capture.*
+
+![Appearance settings with presets and live preview](docs/images/settings-appearance.png)
+*Six built-in presets, named presets, and a live preview that reuses the reader's own translation CSS.*
+
+![Custom colour picker](docs/images/settings-color-picker.png)
+*The built-in HSV picker: alpha, RGB/HSL, HEX, and separate light/dark values per colour role.*
+
+![Display and interaction settings](docs/images/settings-display.png)
+*Layout, hover translation and keyboard shortcuts.*
+
+![Narrow window layout](docs/images/settings-narrow.png)
+*The same pane around 800px wide: fields collapse to one column and advanced groups stay collapsed.*
+
+Reader screenshots — source/translation pairs, side-by-side columns, and the toolbar's
+shown/hidden states — are **not** included yet; the capture harness only drives the
+settings pane. What is still missing is listed in `docs/dev/SCREENSHOT-REVIEW.md`.
+
 ## Install
 
 1. Download the latest `interlinear.xpi` from [Releases](https://github.com/Muanyan-mjq/zotero-interlinear/releases).
