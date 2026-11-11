@@ -211,6 +211,7 @@ import {
 } from "../providers";
 import { version as addonVersion } from "../../package.json";
 import { logError, redactForDisplay } from "../utils/log";
+import { assessEndpoint } from "../utils/endpointSafety";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -3550,6 +3551,99 @@ function readInputText(doc: Document, id: string, fallback = ""): string {
   return input ? input.value : fallback;
 }
 
+/** Endpoints whose requests would carry an API key. */
+const KEY_TARGET_ENDPOINT_IDS = [
+  "interlinear-openai-endpoint",
+  "interlinear-claude-endpoint",
+  "interlinear-gemini-base-url",
+] as const;
+
+/** Every endpoint that can be pointed at an arbitrary host. */
+const CONFIRMABLE_ENDPOINT_IDS = [
+  "interlinear-google-base-url",
+  ...KEY_TARGET_ENDPOINT_IDS,
+] as const;
+
+interface InsecureEndpoint {
+  fieldId: string;
+  host: string;
+}
+
+/**
+ * Plain-HTTP endpoints that would leak a credential beyond the machine or LAN.
+ * See src/utils/endpointSafety.ts for the policy and its unit tests.
+ */
+function findInsecureEndpoints(doc: Document): InsecureEndpoint[] {
+  const found: InsecureEndpoint[] = [];
+  for (const fieldId of CONFIRMABLE_ENDPOINT_IDS) {
+    const value = getElement<HTMLInputElement>(doc, fieldId)?.value?.trim() || "";
+    if (!value) continue;
+    const assessment = assessEndpoint(value);
+    if (!assessment.needsConfirmation) continue;
+    found.push({ fieldId, host: assessment.host || value });
+  }
+  return found;
+}
+
+/** One hint per key-bearing endpoint: where the key is going. */
+function installKeyTargetHints(doc: Document): void {
+  const hint = getString("settings-endpoint-key-target-help");
+  for (const fieldId of KEY_TARGET_ENDPOINT_IDS) {
+    const hintId = `${fieldId}-key-target`;
+    if (doc.getElementById(hintId)) continue;
+    const input = getElement<HTMLInputElement>(doc, fieldId);
+    const field = input?.closest(".interlinear-field");
+    if (!field?.parentElement) continue;
+    const paragraph = createElement(doc, "p", "interlinear-help", hintId);
+    paragraph.textContent = hint;
+    field.after(paragraph);
+  }
+}
+
+function hideSaveConfirm(doc: Document): void {
+  const box = getElement<HTMLElement>(doc, "interlinear-save-confirm");
+  if (!box) return;
+  box.hidden = true;
+  box.textContent = "";
+}
+
+/**
+ * Inline, non-modal confirmation. The system dialog equivalents (`alert`/
+ * `confirm`) are deliberately not used: they block the whole Zotero window.
+ */
+function showSaveConfirm(doc: Document, endpoints: InsecureEndpoint[], onConfirm: () => void): void {
+  const box = getElement<HTMLElement>(doc, "interlinear-save-confirm");
+  if (!box) return;
+  box.textContent = "";
+
+  const text = createElement(doc, "div", "interlinear-save-confirm-text");
+  text.textContent = getString("settings-save-insecure-warning", {
+    args: { hosts: endpoints.map((entry) => entry.host).join(", ") },
+  });
+
+  const actions = createElement(doc, "div", "interlinear-save-confirm-actions");
+  const confirm = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  confirm.type = "button";
+  confirm.textContent = getString("settings-save-insecure-confirm");
+  confirm.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    onConfirm();
+  });
+
+  const cancel = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  cancel.type = "button";
+  cancel.textContent = getString("settings-save-insecure-cancel");
+  cancel.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    setSaveState(doc, "dirty", getString("settings-unsaved"));
+  });
+
+  actions.append(confirm, cancel);
+  box.append(text, actions);
+  box.hidden = false;
+  confirm.focus();
+}
+
 function saveSettings(doc: Document): string[] {
   const engineValue = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
   const validEngines: TranslationEngine[] = [
@@ -4250,6 +4344,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   }
   updateShortcutConflict(doc);
   registerSettingsTabs(doc);
+  installKeyTargetHints(doc);
   registerSecretToggles(doc);
   registerDirtyTracking(doc);
   setSaveState(doc, "saved", getString("settings-status-saved"));
@@ -4263,7 +4358,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     markDirty(doc, engine);
   });
 
-  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
+  const performSave = (): void => {
     try {
       const warnings = saveSettings(doc);
       clearDirtyTabs(doc);
@@ -4281,6 +4376,26 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
           args: { detail: redactForDisplay(error?.message || error) },
         }),
       );
+    }
+  };
+
+  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
+    // A key sent over plain HTTP to a host outside the machine/LAN is worth a
+    // second look. Ask inline, then save only after the user confirms.
+    const insecure = findInsecureEndpoints(doc);
+    if (insecure.length) {
+      showSaveConfirm(doc, insecure, performSave);
+      return;
+    }
+    hideSaveConfirm(doc);
+    performSave();
+  });
+
+  doc.addEventListener("input", (event) => {
+    const target = event.target as HTMLElement | null;
+    const id = target?.id;
+    if (id && (CONFIRMABLE_ENDPOINT_IDS as readonly string[]).includes(id)) {
+      hideSaveConfirm(doc);
     }
   });
 

@@ -2,6 +2,7 @@
 // Interlinear — Ollama chat provider.
 
 import { getString } from "../utils/locale";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
 
 export interface OllamaConfig {
   baseURL: string;
@@ -30,10 +31,12 @@ export async function requestOllamaTranslation(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     responseType: "json",
+    ...NO_REDIRECT_OPTIONS,
     timeout: config.timeoutMs,
   });
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     throw new Error(
       getString("provider-error-ollama-http", {
         args: { status: String(xhr?.status || "unknown") },

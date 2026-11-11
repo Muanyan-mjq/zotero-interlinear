@@ -541,3 +541,11 @@ interaction-auto-translate-cached = Only previously translated papers (cache)
 interaction-auto-translate-always = Always translate (may incur API costs)
 interaction-auto-translate-warning = “Always” starts a full translation when a PDF opens and can send many requests to your provider.
 appearance-advanced-summary = Advanced appearance (decorations, dividers, ribbon, block layout, export)
+
+# Credentials and endpoints
+provider-error-redirect = The endpoint redirected to { $location }. Enter the final address in the settings instead of relying on a redirect.
+provider-error-redirect-unknown = The endpoint redirected somewhere else. Enter the final address in the settings instead of relying on a redirect.
+settings-endpoint-key-target-help = Requests send the API key to this address. Only use an endpoint you trust.
+settings-save-insecure-warning = These endpoints use plain HTTP, so the API key would be sent unencrypted: { $hosts }. Use HTTPS instead, or confirm that you trust this network.
+settings-save-insecure-confirm = Save anyway
+settings-save-insecure-cancel = Cancel

@@ -1481,3 +1481,60 @@
   color: var(--interlinear-muted);
   font-size: 11px;
 }
+
+/* Inline confirmation shown when a save would send a key over plain HTTP.
+   Deliberately inline (not a system dialog) so it stays inside the pane. */
+#interlinear-settings-root .interlinear-save-confirm {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--interlinear-warning) 45%, var(--interlinear-border));
+  border-radius: var(--interlinear-radius-lg);
+  background: color-mix(in srgb, var(--interlinear-warning) 10%, Canvas);
+  color: CanvasText;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+#interlinear-settings-root .interlinear-save-confirm[hidden] {
+  display: none;
+}
+
+#interlinear-settings-root .interlinear-save-confirm-text {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+#interlinear-settings-root .interlinear-save-confirm::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--interlinear-warning);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#interlinear-settings-root .interlinear-save-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  #interlinear-settings-root .interlinear-save-confirm-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+}

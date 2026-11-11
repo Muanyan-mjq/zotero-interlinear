@@ -1460,3 +1460,41 @@
 1. 在设置页填入一个错误 key（如 `sk-test-000…`），点“测试连接”：失败提示里不应出现完整 key 或 8 位以上片段。
 2. 打开帮助→调试输出，确认日志里没有 key。
 3. 触发一次需要报错的路径（例如把 endpoint 填成不存在的域名），确认提示可读、没有被过度打码。
+
+## Step 3：HTTPS/回环校验 + 拒绝重定向
+
+### 做了什么
+
+- 新增 `src/utils/endpointSafety.ts`（无 import，可被 Node 直接加载）：`assessEndpoint()` 判定 `https` 放行、`http` 仅允许 loopback（`localhost`/`*.localhost`/`127.0.0.0/8`/`::1`/`::ffff:127.0.0.1`）与私网（`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、`fc00::/7`、`fe80::/10`），其余 `http://` 标记为 `public-http` 需要确认。
+  - 处理了 `new URL()` 把 `::ffff:127.0.0.1` 归一化成 `::ffff:7f00:1` 的情况（否则 IPv4-mapped 回环会被误判成公网）。
+  - 明确不做“字符串前缀匹配”：`127.0.0.1.evil.com`、`localhost.evil.com`、`192.168.1.1.evil.com` 都判为公网。
+- **保存时二次确认（内联，不用系统弹窗）**：`preferences.xhtml` 新增 `#interlinear-save-confirm` 容器（`role=alert`、默认隐藏），`preferenceScript.ts` 新增 `findInsecureEndpoints()` / `showSaveConfirm()`；点保存时若存在公网 `http://` 端点，先展示“哪些主机、为什么”，用户点“仍然保存”才真正写入，点“取消”回到未保存状态。改了端点输入框会收起该提示。
+- **端点提示**：openai / claude / gemini 三个带密钥的 endpoint 下方动态插入 `settings-endpoint-key-target-help`（“请求会把 API 密钥发送到这个地址，只填写你信任的端点”），插入是幂等的（按 id 去重）。
+- **拒绝重定向**：新增 `src/providers/secureRequest.ts`（`NO_REDIRECT_OPTIONS = { followRedirects: false }`、`isRedirectStatus()`、`getRedirectLocation()`、`redirectErrorMessage()`），openai/claude/gemini/google/chat/ollama 六个请求全部带上该选项，并在非 2xx 分支最前面判断 3xx → 抛“端点发生了重定向，请在设置里直接填写最终地址”。依据是 `xpcom/http.js`：`followRedirects:false` 时 Zotero 在 `asyncOnChannelRedirect` 里取消通道，并返回 `status=3xx` + 只支持 `Location` 的替身对象，且**把重定向当 success**，所以必须在 provider 里显式判 3xx。
+- **单测**：`test/endpointSafety.node.test.mjs`（8 条）覆盖 https/回环/私网/公网/仿冒/非法值/IPv6/带端口/带 userinfo/大小写；Ollama 默认 `http://127.0.0.1:11434` 有专门用例确认不被误伤。
+- **集成测试**：新增「should refuse to follow a redirect that would resend the key」——用测试替身让 `Zotero.HTTP.request` 返回 302（与 Zotero 真实返回形态一致），断言：抛错、只发生 1 次请求（第二个主机从未被请求）、`options.followRedirects === false`、报错是重定向消息、错误信息不含密钥。
+
+### 改动文件
+
+`src/utils/endpointSafety.ts`（新）、`src/providers/secureRequest.ts`（新）、`src/providers/{openai,claude,gemini,google,chat,ollama}.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/{en-US,zh-CN}/addon.ftl`（各 +6 键，535 → 541）、`typings/i10n.d.ts`（构建生成）、`test/endpointSafety.node.test.mjs`（新）、`test/startup.test.ts`、`package.json`。
+
+### 测试结果
+
+- `npm run build`：通过（需先 `npx zotero-plugin build` 重新生成 `typings/i10n.d.ts`，否则 tsc 不认识新键）。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：194 pass / 0 fail（新增 8 条）。
+- `npm run test:review`：Zotero 10.0.8 **60 passed**；Zotero 11.0-dev.5 **60 passed**。
+- 首次跑红的原因：断言 `message` 含重定向地址，但集成测试里 `getString()` 会退化为消息 id（`_getString` 在 `addon` 全局不存在时返回 `interlinear-<id>`），改为断言消息 id 后通过。**这是测试环境的既有行为，不是回归。**
+
+### 未目视验证 / 不确定
+
+- 内联确认区的真实观感（宽度、换行、深浅主题对比度）未目视。
+- 真实服务发生 302 时的行为只做了替身测试，没有对真实公网端点验证（避免向第三方发请求）。
+- 是否该对 `http://` 的 Google 免费接口也提示：当前一并提示（它也会把原文发出去），未与产品确认。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 把 OpenAI endpoint 改成 `http://api.example.com/v1/chat/completions` 后点保存：出现内联警告，点“仍然保存”才写入，点“取消”保持未保存。
+2. 改成 `http://127.0.0.1:11434/v1/chat/completions`：不应出现警告（回环放行）。
+3. 三个 endpoint 输入框下方都能看到“密钥会发送到这个地址”的提示；切换深浅主题确认对比度。
+4. 若有一个会 302 的端点（可用本地代理模拟）：测试连接应报“端点发生了重定向”，而不是静默跟随。

@@ -26,6 +26,7 @@ import {
   normalizeChatCompletionsEndpoint,
 } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
 
 export interface OpenAIChatConfig {
   endpoint: string;
@@ -97,6 +98,7 @@ async function postChatJSON(
       headers,
       body: JSON.stringify(body),
       responseType: "text",
+      ...NO_REDIRECT_OPTIONS,
       timeout: timeoutMs,
     });
   } catch (error: any) {
@@ -107,6 +109,7 @@ async function postChatJSON(
   }
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     const detail =
       extractChatErrorDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(chatHttpError(xhr?.status, detail));

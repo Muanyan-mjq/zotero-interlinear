@@ -20,6 +20,7 @@ import {
 } from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
+import { requestOpenAITranslation } from "../src/providers/openai";
 import { getString } from "../src/utils/locale";
 
 
@@ -2196,6 +2197,54 @@ describe("startup", function () {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value, true);
       }
+    }
+  });
+
+  it("should refuse to follow a redirect that would resend the key", async function () {
+    this.timeout(10000);
+    const originalRequest = Zotero.HTTP.request;
+    const calls: Array<{ url: string; options: any }> = [];
+    // Test double: a 302 is exactly what Zotero.HTTP.request returns when
+    // followRedirects is false (see xpcom/http.js).
+    (Zotero.HTTP as any).request = async (_method: string, url: string, options: any) => {
+      calls.push({ url, options });
+      return {
+        status: 302,
+        getResponseHeader: (name: string) =>
+          String(name).toLowerCase() === "location"
+            ? "https://evil.example/v1/chat/completions"
+            : null,
+      };
+    };
+
+    try {
+      let failure: any = null;
+      try {
+        await requestOpenAITranslation(
+          {
+            endpoint: "https://api.example.com/v1/chat/completions",
+            apiKey: "sk-test-000111222333444555",
+            model: "gpt-test",
+            systemPrompt: "translate",
+            temperature: 0.2,
+            timeoutMs: 1000,
+          },
+          "hello",
+        );
+      } catch (error) {
+        failure = error;
+      }
+
+      assert.exists(failure, "a redirect must not be treated as success");
+      assert.equal(calls.length, 1, "the redirect target must never be requested");
+      assert.equal(calls[0].url, "https://api.example.com/v1/chat/completions");
+      assert.equal(calls[0].options.followRedirects, false);
+      // Integration tests import src modules directly, so getString() degrades
+      // to the message id here; assert on the redirect message either way.
+      assert.match(String(failure.message), /provider-error-redirect/u);
+      assert.notInclude(String(failure.message), "sk-test-000111222333444555");
+    } finally {
+      Zotero.HTTP.request = originalRequest;
     }
   });
 

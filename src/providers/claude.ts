@@ -11,6 +11,7 @@ import {
 } from "./claudeProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
 
 export interface ClaudeConfig {
   endpoint: string;
@@ -67,6 +68,7 @@ export async function requestClaudeTranslation(
       headers,
       body: JSON.stringify(body),
       responseType: "text",
+      ...NO_REDIRECT_OPTIONS,
       timeout: config.timeoutMs,
     });
   } catch (error: any) {
@@ -77,6 +79,7 @@ export async function requestClaudeTranslation(
   }
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     const detail =
       extractClaudeErrorDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(httpError(xhr?.status, detail));
