@@ -1257,6 +1257,15 @@ describe("startup", function () {
       assert.exists(darkRow);
       assert.exists(darkHex);
       assert.notEqual(darkRow?.hidden, true);
+      const darkRowDisplay = () =>
+        darkRow ? win?.getComputedStyle(darkRow).display : "";
+      assert.notEqual(darkRowDisplay(), "none");
+      mode.value = "theme";
+      fire(mode, "change");
+      assert.equal(darkRowDisplay(), "none");
+      mode.value = "split";
+      fire(mode, "change");
+      assert.notEqual(darkRowDisplay(), "none");
       if (darkHex) darkHex.value = "#eeeeee";
       fire(darkHex, "input");
       assert.equal(darkHex?.value, "#EEEEEE");

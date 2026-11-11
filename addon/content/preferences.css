@@ -728,6 +728,10 @@
   margin: 0 0 8px;
 }
 
+#interlinear-settings-root .interlinear-color-row[hidden] {
+  display: none;
+}
+
 #interlinear-settings-root .interlinear-color-label {
   min-width: 120px;
   color: CanvasText;
