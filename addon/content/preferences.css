@@ -143,20 +143,24 @@
   display: flex;
   align-items: center;
   flex: 1 1 auto;
+  flex-wrap: nowrap;
   min-width: 0;
   gap: 2px;
+  padding-bottom: 10px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
   scrollbar-width: thin;
+  scrollbar-color: var(--interlinear-border-strong) transparent;
 }
 
 #interlinear-settings-root .interlinear-toolbar-actions {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
   flex: 0 0 auto;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -165,14 +169,14 @@
   -moz-appearance: none;
   flex: 0 0 auto;
   margin: 0;
-  padding: 5px 10px 6px;
+  padding: 6px 9px 7px;
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--interlinear-muted);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
@@ -378,6 +382,11 @@
   max-width: 280px;
 }
 
+#interlinear-settings-root .interlinear-select option {
+  background-color: Menu;
+  color: MenuText;
+}
+
 #interlinear-settings-root .interlinear-select-wide {
   max-width: 440px;
 }
@@ -530,6 +539,12 @@
   font-size: 12px;
 }
 
+#interlinear-settings-root .interlinear-save-button {
+  height: 30px;
+  min-height: 30px;
+  font-size: 14px;
+}
+
 #interlinear-settings-root .interlinear-actions {
   display: flex;
   align-items: center;
@@ -550,6 +565,7 @@
 
 #interlinear-settings-root .interlinear-settings-status {
   max-width: 300px;
+  font-size: 13px;
   text-align: right;
   white-space: normal;
 }
@@ -621,7 +637,7 @@
 #interlinear-settings-root .interlinear-save-hint {
   max-width: 260px;
   color: CanvasText;
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1.35;
   text-align: right;
   white-space: normal;
