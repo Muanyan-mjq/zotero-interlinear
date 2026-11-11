@@ -1038,10 +1038,28 @@ describe("startup", function () {
       (byId("interlinear-appearance-apply-preset") as HTMLButtonElement | null)?.click();
       assert.equal(getAppearance().textAlign, previousAppearance.textAlign);
 
+      const rename = byId("interlinear-appearance-rename-preset");
+      assert.exists(rename);
+      assert.equal(
+        rename?.closest(".interlinear-field-control"),
+        select?.closest(".interlinear-field-control"),
+        "rename belongs to the my-presets row",
+      );
       if (select) select.value = "Integration preset";
-      (byId("interlinear-appearance-delete-preset") as HTMLButtonElement | null)?.click();
+      const nameInput = byId("interlinear-appearance-preset-name");
+      if (nameInput) nameInput.value = "Renamed preset";
+      (rename as HTMLButtonElement | null)?.click();
+      assert.isTrue(
+        getAppearancePresets().some((preset) => preset.name === "Renamed preset"),
+      );
       assert.isFalse(
         getAppearancePresets().some((preset) => preset.name === "Integration preset"),
+      );
+
+      if (select) select.value = "Renamed preset";
+      (byId("interlinear-appearance-delete-preset") as HTMLButtonElement | null)?.click();
+      assert.isFalse(
+        getAppearancePresets().some((preset) => preset.name === "Renamed preset"),
       );
     } finally {
       win?.close();
@@ -1239,6 +1257,15 @@ describe("startup", function () {
       assert.exists(darkRow);
       assert.exists(darkHex);
       assert.notEqual(darkRow?.hidden, true);
+      const darkRowDisplay = () =>
+        darkRow ? win?.getComputedStyle(darkRow).display : "";
+      assert.notEqual(darkRowDisplay(), "none");
+      mode.value = "theme";
+      fire(mode, "change");
+      assert.equal(darkRowDisplay(), "none");
+      mode.value = "split";
+      fire(mode, "change");
+      assert.notEqual(darkRowDisplay(), "none");
       if (darkHex) darkHex.value = "#eeeeee";
       fire(darkHex, "input");
       assert.equal(darkHex?.value, "#EEEEEE");
@@ -1272,6 +1299,11 @@ describe("startup", function () {
       ) as HTMLElement | null;
       assert.exists(panel);
       assert.notEqual(panel?.hidden, true);
+      assert.isNotNull(panel?.closest("#interlinear-settings-root"));
+      assert.equal(
+        win?.getComputedStyle(panel as HTMLElement).position,
+        "fixed",
+      );
       const pickerHex = byId("interlinear-color-picker-hex");
       assert.exists(pickerHex);
       if (pickerHex) pickerHex.value = "#ff0000";
@@ -1304,6 +1336,58 @@ describe("startup", function () {
       else Zotero.Prefs.set(recentPref, previousRecent as any, true);
       if (previousSaved === undefined) Zotero.Prefs.clear(savedPref, true);
       else Zotero.Prefs.set(savedPref, previousSaved as any, true);
+    }
+  });
+
+  it("should resolve the auto preview scheme against the Zotero theme", async function () {
+    this.timeout(10000);
+    const themePref = "browser.theme.toolbar-theme";
+    const previousTheme = Zotero.Prefs.get(themePref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    const fire = (el: HTMLElement | null, type: string) =>
+      el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-theme")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const themeSelect = win?.document.getElementById(
+        "interlinear-appearance-theme",
+      ) as HTMLSelectElement | null;
+      assert.exists(themeSelect);
+      if (themeSelect) themeSelect.value = "auto";
+      const toggle = byId("interlinear-appearance-preview-scheme");
+      if (toggle) toggle.checked = false;
+      for (const id of [
+        "interlinear-appearance-color-inherit",
+        "interlinear-appearance-background-inherit",
+      ]) {
+        const inherit = byId(id);
+        if (inherit) inherit.checked = true;
+        fire(inherit, "change");
+      }
+      fire(themeSelect, "change");
+
+      const styleText = () =>
+        (
+          win?.document.getElementById("interlinear-appearance-preview") as HTMLElement
+        )?.shadowRoot?.querySelector("style")?.textContent || "";
+
+      Zotero.Prefs.set(themePref, 0, true);
+      fire(themeSelect, "change");
+      assert.match(styleText(), /#2b2b2b/iu, "dark Zotero theme");
+
+      Zotero.Prefs.set(themePref, 1, true);
+      fire(themeSelect, "change");
+      assert.match(styleText(), /#f6f6f6/iu, "light Zotero theme");
+    } finally {
+      if (previousTheme === undefined) Zotero.Prefs.clear(themePref, true);
+      else Zotero.Prefs.set(themePref, previousTheme as any, true);
+      win?.close();
     }
   });
 
