@@ -12,6 +12,9 @@ async function registerPreferencesPane(): Promise<void> {
     pluginID: addon.data.config.addonID,
     id: "interlinear-preferences",
     src: "content/preferences.xhtml",
+    // Zotero's baseline chrome CSP will block inline event handlers, so the
+    // pane boots from a registered script instead of an `onload` attribute.
+    scripts: ["content/preferences-init.js"],
     stylesheets: ["content/preferences.css"],
     label: "Interlinear",
   });

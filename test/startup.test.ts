@@ -22,6 +22,24 @@ import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
 import { getString } from "../src/utils/locale";
 
+
+/**
+ * The settings pane now boots from a script registered through
+ * `Zotero.PreferencePanes.register({ scripts })` (see hooks.ts), because
+ * Zotero's baseline chrome CSP blocks inline event handlers. That script runs
+ * before Zotero inserts the pane markup, so initialization is asynchronous and
+ * tests must wait for the pane to report itself ready instead of assuming the
+ * old inline `onload` already ran.
+ */
+async function waitForPrefsReady(win: Window | null): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const root = win?.document?.getElementById("interlinear-settings-root");
+    if (root?.dataset.initialized === "true") return;
+    await Zotero.Promise.delay(25);
+  }
+  throw new Error("settings pane did not finish initializing");
+}
+
 describe("startup", function () {
   it("should have plugin instance defined", function () {
     assert.isNotEmpty(Zotero[config.addonInstance]);
@@ -40,6 +58,7 @@ describe("startup", function () {
   it("should load the preferences controls", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
 
     try {
@@ -184,6 +203,7 @@ describe("startup", function () {
   it("should switch the settings pane between five tabs", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) => win?.document.getElementById(id) as HTMLElement | null;
     const isHidden = (id: string) => byId(id)?.hidden ?? true;
@@ -263,6 +283,7 @@ describe("startup", function () {
     Zotero.Prefs.set(fontPref, "Georgia, serif", true);
     Zotero.Prefs.clear(v2Pref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -302,6 +323,7 @@ describe("startup", function () {
   it("should reveal and hide API keys in the settings pane", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -393,6 +415,7 @@ describe("startup", function () {
     const previousShortcutEnabled = Zotero.Prefs.get(shortcutEnabledPref, true);
     const previousShortcut = Zotero.Prefs.get(shortcutPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
 
     try {
@@ -480,6 +503,7 @@ describe("startup", function () {
       keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
     );
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as
@@ -572,6 +596,7 @@ describe("startup", function () {
     const previousGlossary = Zotero.Prefs.get(glossaryPref, true);
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as
@@ -680,6 +705,7 @@ describe("startup", function () {
     (Zotero.Reader as any)._readers = [reader];
 
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as
@@ -891,6 +917,7 @@ describe("startup", function () {
     };
     (Zotero.Reader as any)._readers = [reader];
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -996,6 +1023,7 @@ describe("startup", function () {
     const previousAppearance = getAppearance();
     const previousPresets = getAppearancePresets();
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1083,6 +1111,7 @@ describe("startup", function () {
       keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
     );
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1136,6 +1165,7 @@ describe("startup", function () {
   it("should sync hex input, reset, contrast warning and theme preview in color controls", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1228,6 +1258,7 @@ describe("startup", function () {
   it("should edit split colors, extra color roles and color palettes", async function () {
     this.timeout(20000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1349,6 +1380,7 @@ describe("startup", function () {
     const themePref = "browser.theme.toolbar-theme";
     const previousTheme = Zotero.Prefs.get(themePref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1399,6 +1431,7 @@ describe("startup", function () {
   it("should live-preview appearance changes in an isolated shadow root using the real CSS", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1455,6 +1488,7 @@ describe("startup", function () {
   it("should give source and target languages separate rows so labels do not wrap", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -1497,6 +1531,7 @@ describe("startup", function () {
     const previousFavorites = Zotero.Prefs.get(favoritesPref, true);
     Zotero.Prefs.clear(favoritesPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1602,6 +1637,7 @@ describe("startup", function () {
     Zotero.Prefs.clear(detectionPref, true);
     Zotero.Prefs.clear(favoritesPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -1661,6 +1697,7 @@ describe("startup", function () {
   it("should mark unsaved changes when a numeric field changes", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
