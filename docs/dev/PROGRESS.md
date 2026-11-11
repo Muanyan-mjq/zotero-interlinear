@@ -1315,7 +1315,7 @@
 - `npm test`：未运行（本机无 `.env`；`test:review` 是独立 profile 的安全等价入口）。
 
 ### 仍待决定 / 未完成
-1. **真实 Zotero GUI 目视验证**：只完成了“真实 DOM + 同一 CSS”的 Chromium 近似截图；真实 Zotero 窗口仍建议人工过一遍。
+1. **真实 Zotero GUI 目视验证**：已于 2026-11-11 完成偏好页真实截图与目视检查，见下方 Step 9；阅读器内流程仍未截图验证。
 2. **导出流程阻塞式 alert/confirm**：未改，见 BACKLOG。
 3. **阅读器工具栏右键菜单历史问题**：未在用户机器复测；侧边栏面板仍兜底。
 4. **P3 全部项**：见 `docs/dev/BACKLOG.md`，未实现。
@@ -1330,3 +1330,44 @@
 6. 显示与交互：悬停修饰键（none/Alt/Ctrl）、单段/显示隐藏/排版循环快捷键、冲突提示、自动翻译（关/仅缓存/总是）。
 7. 导出/划词弹窗/阅读助手：导出模式、弹窗宽度、界面跟随、深浅主题对比度。
 8. 译文块右键/双击：重新翻译、复制译文/原文；错误块点击重试；缓存/请求不重复。
+
+## Step 9：真实 GUI 目视验证与后端链路端到端（2026-11-11）
+
+### 做了什么
+
+- **真实 Zotero GUI 截图**：新增 `test-gui/capture.test.ts` + `scripts/test-gui.mjs`，以非 headless、独立 profile 启动 Zotero，通过 `canvas.drawWindow` 直接截取真实偏好窗口。产物为 `docs/dev/screenshots/*-gui.png`（共 15 张）：五个标签、颜色组、取色器、外观方案、高级组、浅/深主题、历史近似“窄窗口”。旧的 Chromium 近似图保留不动。
+- **目视发现并修复的问题**（各自独立提交）：
+  1. `5881331` 自动模式预览不跟随 Zotero 深色主题（先写集成用例复现）。
+  2. `8d24e24` “重命名”按钮从方案名称行移入“我的方案”行。
+  3. `c38389d` **自定义取色器完全无样式**：它被挂到偏好页 `body`，没有对应 CSS，实际渲染成覆盖在左侧栏上、底部被裁切的裸控件。改为挂载到 `#interlinear-settings-root`，新增 209 行作用域化 popover 样式，并把顶部坐标钳制在窗口内；集成用例新增“面板位于 settings root 内 + computed position 为 fixed”断言。
+  4. `dba4fcd` 颜色卡的“深色主题”行在“跟随主题/统一颜色”下仍然显示：`.interlinear-color-row { display: flex }` 覆盖了 `hidden` 属性；补 `.interlinear-color-row[hidden] { display: none }`，用 computed display 断言钉住。
+- **取色器细节**：范围行标签列 64→78px 并 `nowrap`，避免“不透明度 %”折成两行；截图脚本在拍完取色器后恢复“跟随主题”，防止后续浅/深主题截图继承临时的 #333333。
+- **后端链路端到端（真实 HTTP）**：新增 `test-e2e/` + `scripts/test-e2e.mjs`，验证了三组：
+  - 本地 mock HTTP 服务（127.0.0.1:18923）逐个走通 OpenAI 兼容 `/v1/chat/completions`、Claude `/v1/messages`、Gemini `:generateContent`、Ollama `/api/chat` 的端点、鉴权头、请求体与响应解析；翻译与聊天返回均为预期标记。
+  - 真实本机 Ollama（qwen2.5:7b）：翻译与聊天均返回中文，耗时约 5.6s。
+  - 真实 Google 翻译：经 Clash 代理 `127.0.0.1:7897`，`translate_a/single` 返回中文，耗时约 1.4s。
+- **工具产物**：`test-gui/`、`test-e2e/`、`scripts/test-gui.mjs`、`scripts/test-e2e.mjs` 目前是验证工具，是否长期保留待决定。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：171 pass / 0 fail。
+- `npm run test:review`（Zotero headless，独立 profile）：**59 pass / 0 fail**（含取色器挂载/定位与深色行隐藏的新断言）。
+- `node scripts/test-gui.mjs`：1 pass，重新生成 15 张真实 GUI 截图。
+- `node scripts/test-e2e.mjs`（mock 独立启动）：3 pass（四协议 mock、真实 Ollama、真实 Google）。
+
+### 不确定项 / 未验证
+
+- **官方付费模型未实测**：OpenAI/Claude/Gemini 没有用户 API 密钥，只验证了本地 mock 的线上协议路径；无法证明官方服务当前模型名、限流与响应格式完全一致。
+- 截图只覆盖**偏好页**；阅读器内工具栏/右键菜单/导出弹窗/译文块菜单/阅读助手在真实 PDF 上的表现仍未截图验证。
+- “窄窗口”截图实际为 800px 宽：Zotero 窗口存在最小宽度，`resizeTo(620)` 被抬高，600px 单列布局仍未真实验证。
+- 取色器在小窗口下会被钳制到视口顶部并可能盖住正在编辑的颜色行；可滚动，但实机手感未评估。
+- 本次临时启动的 Ollama 与 mock 服务、以及 `.scaffold/` 下的诊断文件尚未清理。
+
+### 需要用户手动验证
+
+1. 用真实 PDF 跑一次全文翻译，确认进度、暂停/继续、取消、失败重试与高亮不偏移。
+2. 右键阅读器工具栏图标是否仍然无响应（历史问题）。
+3. 若愿意提供官方 API key：分别测试 OpenAI/Claude/Gemini 的“测试连接”和一段真实翻译。
+4. 取色器在 800px 以内窄窗口中的弹出位置与滚动是否顺手。

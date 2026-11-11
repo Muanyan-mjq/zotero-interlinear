@@ -19,6 +19,10 @@
   - `81f4c9e` docs: audit settings paths and add reference docs
   - `0472f2a` Merge origin/main into feat/appearance-v2
   - `0c95175` fix: correct font badges, warning sync and chat scope
+  - `5881331` fix: resolve the auto appearance preview from the Zotero theme
+  - `8d24e24` ui: keep the preset rename button on the my-presets row
+  - `c38389d` fix: style and anchor the custom color picker
+  - `dba4fcd` fix: hide dark-theme color rows outside split mode
 - 注意：**Step 5（外观方案）与 Step 6 落在同一个提交 `cbde85d`**，因会话中断未拆开；按“不改写历史”约束保留。Step 7 单独提交 `ba3cd5d`。
 
 ## 已完成（不要重做）
@@ -28,14 +32,16 @@
 - **Step 8 已做**：设置项审计、默认值/范围/保存/读取核对、折叠式高级组、颜色卡默认折叠、聊天上下文跟随翻译范围、`SETTINGS.md`、`BACKLOG.md`、README/CHANGELOG 更新。
 - **视觉自检**：用“真实初始化后 DOM + 同一份 preferences.css”序列化后交给 Playwright/Chromium 截图，产物在 `docs/dev/screenshots/`：
   - `service.png`、`display.png`、`appearance.png`、`appearance-dark.png`、`service-dark.png`、`glossary.png`、`advanced.png`
-  - 这不是真实 Zotero GUI 截图；sticky 在截图时临时改为 static，preview 的 shadow DOM 被内联。**真实 Zotero GUI 仍未人工目视。**
+  - 这不是真实 Zotero GUI 截图。
+- **真实 GUI 目视验证（2026-11-11 完成）**：用非 headless 独立 profile + `canvas.drawWindow` 直截真实 Zotero 偏好窗口，产物 `docs/dev/screenshots/*-gui.png`（15 张）。发现并修复：自动预览不跟随深色主题（`5881331`）、重命名按钮位置（`8d24e24`）、取色器完全无样式（`c38389d`）、颜色卡深色行未隐藏（`dba4fcd`）。详见 `PROGRESS.md` Step 9。
+- **后端链路端到端（2026-11-11 完成）**：`test-e2e/` 以真实 HTTP 验证 OpenAI 兼容/Claude/Gemini/Ollama 四种协议（本地 mock）、真实本机 Ollama qwen2.5:7b、真实 Google（经 7897 代理）。官方付费 API 因无密钥未实测。
 
 ## 测试基线（最后一次）
 
 - `npm run build`：通过
 - `npm run lint:check`：通过
 - `npm run test:unit`：171 pass / 0 fail
-- `npm run test:review`（Zotero headless，独立 profile）：58 pass / 0 fail
+- `npm run test:review`（Zotero headless，独立 profile）：59 pass / 0 fail
 - `npm test`：未运行（本机无 `.env`；`test:review` 是独立 profile 的安全等价入口）
 - 测试命令：
   ```powershell
@@ -45,9 +51,10 @@
 
 ## 没完成 / 明天优先做
 
-1. **真实 Zotero GUI 目视验证（最高优先）**
-   - 安装 `.scaffold/build/interlinear.xpi`，逐个标签检查：顶部工具栏/保存四态、600px 与宽屏、浅/深主题、外观方案/字体检测/取色器/装饰/色带/块布局、翻译范围、快捷键、自动翻译、导出、弹窗、聊天。
-   - 真实 GUI 截图放到 `docs/dev/screenshots/`（可覆盖现有近似图，或加 `*-gui.png`）；如果仍然做不到，在 `PROGRESS.md` 明确写“无法目视验证”。
+1. **真实 Zotero GUI 目视验证（偏好页已完成，阅读器内待做）**
+   - 偏好页五个标签已用真实 GUI 截图逐项检查（见 `PROGRESS.md` Step 9 与 `*-gui.png`）。
+   - 仍需在真实 PDF 上验证：工具栏开关/右键菜单、导出弹窗、译文块右键菜单、划词弹窗、阅读助手、高亮对齐；这些目前只有集成断言或未覆盖。
+   - “窄窗口”截图受 Zotero 最小宽度限制实际为 800px，600px 单列布局仍未真实验证。
 2. **最终 UI 打磨（impeccable skill 的 polish 原则）**
    - 重点：`颜色与标记（9 项）` 展开后仍很长（约 4000px）；可考虑每个颜色卡折叠高级行、或改成两栏/紧凑模式。
    - “我的方案”下拉在截图里带一圈高亮/焦点环，确认真实 Zotero 中是否异常。
