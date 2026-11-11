@@ -81,6 +81,8 @@ npm install
 npm run build        # 类型检查 + 打包 .scaffold/build/interlinear.xpi
 npm run lint:check   # ESLint
 npm run test:unit    # Node 单元测试，无需 Zotero
+npm run test:gui     # 采集真实设置窗口截图到 docs/dev/screenshots
+npm run test:e2e     # 后端 e2e：默认只跑 mock 协议
 npm start            # 开发服务器；先在 .env 配置 ZOTERO_PLUGIN_ZOTERO_BIN_PATH
 ```
 
@@ -90,6 +92,14 @@ npm start            # 开发服务器；先在 .env 配置 ZOTERO_PLUGIN_ZOTERO
 ZOTERO_PLUGIN_ZOTERO_BIN_PATH="/path/to/zotero" npm run test:review
 # 或标准入口：
 ZOTERO_PLUGIN_ZOTERO_BIN_PATH="/path/to/zotero" npm test
+```
+
+设置对应环境变量后，`npm run test:e2e` 还会额外验证本机 Ollama 模型和
+经本地代理访问真实 Google 接口：
+
+```bash
+INTERLINEAR_TEST_OLLAMA_MODEL=qwen2.5:7b INTERLINEAR_TEST_GOOGLE_PROXY_PORT=7897 \
+ZOTERO_PLUGIN_ZOTERO_BIN_PATH="/path/to/zotero" npm run test:e2e
 ```
 
 Windows 下路径通常为 `C:\Program Files\Zotero\zotero.exe`。CI 在每次推送到 `main` 时执行 lint、Ubuntu/macOS 构建与测试套件。

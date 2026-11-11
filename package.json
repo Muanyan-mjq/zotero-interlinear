@@ -34,6 +34,8 @@
     "test": "zotero-plugin test --no-watch",
     "test:unit": "node --test test/translationPipeline.node.test.mjs test/appearance.node.test.mjs test/fontCatalog.node.test.mjs test/translationCacheKey.node.test.mjs test/providers.node.test.mjs test/displayMode.node.test.mjs test/glossary.node.test.mjs test/chat.node.test.mjs test/shortcut.node.test.mjs test/readerToggle.node.test.mjs",
     "test:review": "node scripts/test-review.mjs",
+    "test:gui": "node scripts/test-gui.mjs",
+    "test:e2e": "node scripts/test-e2e.mjs",
     "release": "zotero-plugin release"
   },
   "dependencies": {

@@ -81,6 +81,8 @@ npm install
 npm run build        # type-check + package .scaffold/build/interlinear.xpi
 npm run lint:check   # ESLint
 npm run test:unit    # Node unit tests, no Zotero needed
+npm run test:gui     # capture real preference-window screenshots into docs/dev/screenshots
+npm run test:e2e     # provider e2e: mock protocols by default
 npm start            # dev server; set ZOTERO_PLUGIN_ZOTERO_BIN_PATH in .env first
 ```
 
@@ -90,6 +92,14 @@ Integration tests run against a real headless Zotero:
 ZOTERO_PLUGIN_ZOTERO_BIN_PATH="/path/to/zotero" npm run test:review
 # or the standard scaffold entry:
 ZOTERO_PLUGIN_ZOTERO_BIN_PATH="/path/to/zotero" npm test
+```
+
+`npm run test:e2e` also covers a real local Ollama model and a real Google
+request through a local proxy when the matching environment variables are set:
+
+```bash
+INTERLINEAR_TEST_OLLAMA_MODEL=qwen2.5:7b INTERLINEAR_TEST_GOOGLE_PROXY_PORT=7897 \
+ZOTERO_PLUGIN_ZOTERO_BIN_PATH="/path/to/zotero" npm run test:e2e
 ```
 
 On Windows the path is typically `C:\Program Files\Zotero\zotero.exe`. CI runs lint, builds on Ubuntu/macOS, and executes the test suite on every push to `main`.
