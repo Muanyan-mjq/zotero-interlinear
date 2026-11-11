@@ -970,13 +970,25 @@ function currentTheme(doc: Document): AppearanceTheme {
   );
 }
 
+function zoteroColorScheme(doc: Document): ColorScheme {
+  const mode = Zotero.Prefs.get("browser.theme.toolbar-theme", true);
+  if (mode === 0) return "dark";
+  if (mode === 1) return "light";
+  return doc.defaultView?.matchMedia("(prefers-color-scheme: dark)")?.matches
+    ? "dark"
+    : "light";
+}
+
 function previewScheme(doc: Document): ColorScheme {
   const toggle = getElement<HTMLInputElement>(
     doc,
     "interlinear-appearance-preview-scheme",
   );
   if (toggle?.checked) return "dark";
-  return currentTheme(doc) === "dark" ? "dark" : "light";
+  const theme = currentTheme(doc);
+  if (theme === "dark") return "dark";
+  if (theme === "light") return "light";
+  return zoteroColorScheme(doc);
 }
 
 function effectivePreviewColor(

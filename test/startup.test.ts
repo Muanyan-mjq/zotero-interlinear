@@ -1325,6 +1325,58 @@ describe("startup", function () {
     }
   });
 
+  it("should resolve the auto preview scheme against the Zotero theme", async function () {
+    this.timeout(10000);
+    const themePref = "browser.theme.toolbar-theme";
+    const previousTheme = Zotero.Prefs.get(themePref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    assert.exists(win);
+    const byId = (id: string) =>
+      win?.document.getElementById(id) as HTMLInputElement | null;
+    const fire = (el: HTMLElement | null, type: string) =>
+      el?.dispatchEvent(new (win as any).Event(type, { bubbles: true }));
+
+    try {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (win?.document.getElementById("interlinear-appearance-theme")) break;
+        await Zotero.Promise.delay(50);
+      }
+      const themeSelect = win?.document.getElementById(
+        "interlinear-appearance-theme",
+      ) as HTMLSelectElement | null;
+      assert.exists(themeSelect);
+      if (themeSelect) themeSelect.value = "auto";
+      const toggle = byId("interlinear-appearance-preview-scheme");
+      if (toggle) toggle.checked = false;
+      for (const id of [
+        "interlinear-appearance-color-inherit",
+        "interlinear-appearance-background-inherit",
+      ]) {
+        const inherit = byId(id);
+        if (inherit) inherit.checked = true;
+        fire(inherit, "change");
+      }
+      fire(themeSelect, "change");
+
+      const styleText = () =>
+        (
+          win?.document.getElementById("interlinear-appearance-preview") as HTMLElement
+        )?.shadowRoot?.querySelector("style")?.textContent || "";
+
+      Zotero.Prefs.set(themePref, 0, true);
+      fire(themeSelect, "change");
+      assert.match(styleText(), /#2b2b2b/iu, "dark Zotero theme");
+
+      Zotero.Prefs.set(themePref, 1, true);
+      fire(themeSelect, "change");
+      assert.match(styleText(), /#f6f6f6/iu, "light Zotero theme");
+    } finally {
+      if (previousTheme === undefined) Zotero.Prefs.clear(themePref, true);
+      else Zotero.Prefs.set(themePref, previousTheme as any, true);
+      win?.close();
+    }
+  });
+
   it("should live-preview appearance changes in an isolated shadow root using the real CSS", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
