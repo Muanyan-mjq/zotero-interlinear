@@ -1521,6 +1521,17 @@ describe("startup", function () {
       assert.exists(showAll);
       assert.exists(input);
       assert.exists(error);
+      const weight = win?.document.getElementById(
+        "interlinear-font-weight",
+      ) as HTMLSelectElement | null;
+      assert.exists(weight);
+      assert.deepEqual(
+        Array.from(weight?.options || []).map((option) => option.textContent?.trim()),
+        ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+      );
+      const selectedWeight = weight?.options[weight.selectedIndex];
+      assert.exists(selectedWeight);
+      assert.equal(selectedWeight?.textContent?.trim(), weight?.value);
       assert.isAtLeast(
         list?.querySelectorAll(".interlinear-font-row").length || 0,
         4,
