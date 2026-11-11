@@ -1360,7 +1360,10 @@ function pickerNumberRow(
 
 function initializeColorPicker(doc: Document): void {
   if (pickerPanel(doc)) return;
-  const root = doc.body || doc.documentElement;
+  const root =
+    getElement<HTMLElement>(doc, "interlinear-settings-root") ||
+    doc.body ||
+    doc.documentElement;
   if (!root) return;
   const panel = createElement(doc, "div", "interlinear-color-picker");
   panel.id = "interlinear-color-picker";
@@ -1751,10 +1754,10 @@ function openColorPicker(
     panel.style.left = `${left}px`;
     panel.style.visibility = "hidden";
     const height = panel.offsetHeight || 460;
-    const top =
-      rect.bottom + height + 12 > win.innerHeight
-        ? Math.max(8, rect.top - height - 8)
-        : rect.bottom + 6;
+    const below = rect.bottom + 6;
+    const preferred =
+      below + height + 8 > win.innerHeight ? rect.top - height - 8 : below;
+    const top = Math.max(8, Math.min(preferred, win.innerHeight - height - 8));
     panel.style.top = `${top}px`;
     panel.style.visibility = "";
   }

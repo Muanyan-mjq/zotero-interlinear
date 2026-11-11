@@ -1290,6 +1290,11 @@ describe("startup", function () {
       ) as HTMLElement | null;
       assert.exists(panel);
       assert.notEqual(panel?.hidden, true);
+      assert.isNotNull(panel?.closest("#interlinear-settings-root"));
+      assert.equal(
+        win?.getComputedStyle(panel as HTMLElement).position,
+        "fixed",
+      );
       const pickerHex = byId("interlinear-color-picker-hex");
       assert.exists(pickerHex);
       if (pickerHex) pickerHex.value = "#ff0000";
