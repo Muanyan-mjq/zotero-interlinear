@@ -11,6 +11,11 @@ tsconfig.tsbuildinfo
 
 # Scaffold
 .env
+.env.*
+!.env.example
 .scaffold
 build
 logs
+
+# Logs
+*.log

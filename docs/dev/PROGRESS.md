@@ -1604,3 +1604,33 @@
 
 - 纯文档变更，无代码改动；`npm run build` 通过。
 - `lint:check` / `test:unit` / `test:review`（Zotero 10 + 11）与 Step 7 一起跑，结果见 Step 7 一节（同一代码状态，文档不影响构建产物）。
+
+## Step 7：仓库密钥扫描（无新依赖）
+
+### 做了什么
+
+- 新增 `scripts/check-secrets.mjs`（纯 Node，无 import 第三方）：
+  - 默认扫描 `git ls-files`，支持 `--staged` 与显式路径；跳过 `node_modules/`、`.scaffold/`、`docs/images`、`docs/dev/screenshots`、`package-lock.json` 与二进制后缀，单文件 >2MB 跳过。
+  - 7 类模式：OpenAI/Anthropic（`sk-`/`sk-ant-`）、Google（`AIza`）、GitHub token（`ghp_`/`github_pat_`）、Slack、AWS access key、私钥块头、`Bearer <token>`。
+  - 白名单含 `sk-test-`、`sk-ant-test-`、`AIzaTEST`、`000111`、`example.com`、`REDACTED`、`<your`、`YOUR_`；行内 `allow-secret-scan` 注释可单独豁免。
+  - 输出 `file:line  类型  前4…后2 (长度)`，**不打印完整密钥**；命中时 exit 1。
+  - 导出 `scanText()` / `isAllowed()` 供单测使用。
+- `package.json` 新增 `npm run check:secrets`；`.github/workflows/ci.yml` 在 lint 之后加一步 “Scan for committed secrets”。
+- `.gitignore` 收紧：`.env.*` 并 `!.env.example`，新增 `*.log`。
+- 单测 `test/checkSecrets.node.test.mjs`（6 条）：识别四类真实形态假值、识别私钥块、不误报 `sk-test-…`/`AIzaTEST…`/短串/sha512/中文句子、`allow-secret-scan` 生效、行号准确。
+
+### 改动文件
+
+`scripts/check-secrets.mjs`（新）、`test/checkSecrets.node.test.mjs`（新）、`package.json`、`.github/workflows/ci.yml`、`.gitignore`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `node scripts/check-secrets.mjs`：扫描 118 个跟踪文件，0 命中。
+- `npm run build`：通过；`npm run lint:check`：通过。
+- `npm run test:unit`：200 pass / 0 fail（新增 6 条）。
+- `npm run test:review`：Zotero 10 **67 passed**；Zotero 11 首次 66 passed / 1 failed（字体检测缓存断言 `['live','failed']` 不含 `cached`），**单独复跑 Zotero 11 为 67 passed**，判定为偶发（字体测量时序），与本步改动无关（本步只新增脚本与 CI/忽略规则）。
+
+### 未验证
+
+- GitHub 原生 Secret scanning + push protection 需你在仓库设置里开启，我这边无法验证是否已开。
+- CI 上的这一步尚未在真实 Actions 环境跑过（本地等价命令已验证）。
