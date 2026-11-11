@@ -1038,10 +1038,28 @@ describe("startup", function () {
       (byId("interlinear-appearance-apply-preset") as HTMLButtonElement | null)?.click();
       assert.equal(getAppearance().textAlign, previousAppearance.textAlign);
 
+      const rename = byId("interlinear-appearance-rename-preset");
+      assert.exists(rename);
+      assert.equal(
+        rename?.closest(".interlinear-field-control"),
+        select?.closest(".interlinear-field-control"),
+        "rename belongs to the my-presets row",
+      );
       if (select) select.value = "Integration preset";
-      (byId("interlinear-appearance-delete-preset") as HTMLButtonElement | null)?.click();
+      const nameInput = byId("interlinear-appearance-preset-name");
+      if (nameInput) nameInput.value = "Renamed preset";
+      (rename as HTMLButtonElement | null)?.click();
+      assert.isTrue(
+        getAppearancePresets().some((preset) => preset.name === "Renamed preset"),
+      );
       assert.isFalse(
         getAppearancePresets().some((preset) => preset.name === "Integration preset"),
+      );
+
+      if (select) select.value = "Renamed preset";
+      (byId("interlinear-appearance-delete-preset") as HTMLButtonElement | null)?.click();
+      assert.isFalse(
+        getAppearancePresets().some((preset) => preset.name === "Renamed preset"),
       );
     } finally {
       win?.close();
