@@ -22,6 +22,16 @@ import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
 import { requestOpenAITranslation } from "../src/providers/openai";
 import { getString } from "../src/utils/locale";
+import {
+  SECRET_PREFS,
+  getSecret,
+  getSecretStatus,
+  initSecrets,
+  isKeystoreAvailable,
+  migratePlaintextSecrets,
+  setSecret,
+  whenSecretWritesSettled,
+} from "../src/secrets";
 
 
 /**
@@ -39,6 +49,20 @@ async function waitForPrefsReady(win: Window | null): Promise<void> {
     await Zotero.Promise.delay(25);
   }
   throw new Error("settings pane did not finish initializing");
+}
+
+/**
+ * The settings pane runs inside the bundled plugin, so its in-memory key cache
+ * is a different module instance from the one these tests import. Observe the
+ * persisted value instead: ciphertext with the OS key store prefix.
+ */
+async function waitForStoredSecret(prefKey: string): Promise<string> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const value = String(Zotero.Prefs.get(prefKey, true) || "");
+    if (value) return value;
+    await Zotero.Promise.delay(50);
+  }
+  return "";
 }
 
 describe("startup", function () {
@@ -573,12 +597,12 @@ describe("startup", function () {
       assert.equal(Zotero.Prefs.get(keys[0], true), "claude");
       assert.equal(Zotero.Prefs.get(keys[1], true), "https://api.anthropic.com/v1/messages");
       assert.equal(Zotero.Prefs.get(keys[2], true), "claude-sonnet-4-5");
-      assert.equal(Zotero.Prefs.get(keys[3], true), "claude-secret");
+      assert.match(await waitForStoredSecret(keys[3]), /^oskv1:/u);
       assert.equal(Zotero.Prefs.get(keys[4], true), "0.5");
       assert.equal(Zotero.Prefs.get(keys[5], true), "Claude 自定义提示词。");
       assert.equal(Zotero.Prefs.get(keys[6], true), "https://generativelanguage.googleapis.com");
       assert.equal(Zotero.Prefs.get(keys[7], true), "gemini-2.5-pro");
-      assert.equal(Zotero.Prefs.get(keys[8], true), "gemini-secret");
+      assert.match(await waitForStoredSecret(keys[8]), /^oskv1:/u);
       assert.equal(Zotero.Prefs.get(keys[9], true), "0.3");
       assert.equal(Zotero.Prefs.get(keys[10], true), "Gemini 自定义提示词。");
     } finally {
@@ -2200,6 +2224,113 @@ describe("startup", function () {
     }
   });
 
+  describe("API key storage", function () {
+    const prefKey = SECRET_PREFS.openai;
+    const fakeKey = "sk-test-000111222333444555";
+    let previous: unknown;
+
+    beforeEach(async function () {
+      previous = Zotero.Prefs.get(prefKey, true);
+      Zotero.Prefs.clear(prefKey, true);
+      await initSecrets({ force: true });
+    });
+
+    afterEach(async function () {
+      if (previous === undefined) Zotero.Prefs.clear(prefKey, true);
+      else Zotero.Prefs.set(prefKey, previous as string, true);
+      await initSecrets({ force: true });
+    });
+
+    it("encrypts stored keys with the OS key store", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      setSecret(prefKey, fakeKey);
+      await whenSecretWritesSettled();
+
+      const stored = String(Zotero.Prefs.get(prefKey, true));
+      assert.match(stored, /^oskv1:/u, "the persisted value must be ciphertext");
+      assert.notInclude(stored, fakeKey);
+      assert.equal(getSecret(prefKey), fakeKey, "the cache must serve the plaintext");
+      assert.equal(getSecretStatus(prefKey), "encrypted");
+    });
+
+    it("migrates a legacy plaintext key once and stays idempotent", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      Zotero.Prefs.set(prefKey, fakeKey, true);
+      await migratePlaintextSecrets();
+      const first = String(Zotero.Prefs.get(prefKey, true));
+      assert.match(first, /^oskv1:/u);
+
+      await migratePlaintextSecrets();
+      const second = String(Zotero.Prefs.get(prefKey, true));
+      assert.equal(second, first, "a second migration must not touch the ciphertext");
+    });
+
+    it("never writes plaintext when the key store is unavailable", async function () {
+      this.timeout(10000);
+      const originalStore = (Zotero as any).OSKeyStore;
+      try {
+        (Zotero as any).OSKeyStore = undefined;
+        setSecret(prefKey, fakeKey);
+        await whenSecretWritesSettled();
+
+        assert.equal(
+          String(Zotero.Prefs.get(prefKey, true) || ""),
+          "",
+          "an unusable key store must not fall back to plaintext",
+        );
+        assert.equal(getSecret(prefKey), fakeKey, "the key stays in memory for this session");
+        assert.equal(getSecretStatus(prefKey), "session");
+      } finally {
+        (Zotero as any).OSKeyStore = originalStore;
+      }
+    });
+
+    it("keeps an undecryptable value instead of clearing it", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      Zotero.Prefs.set(prefKey, "oskv1:not-a-real-ciphertext", true);
+      await initSecrets({ force: true });
+
+      assert.equal(getSecretStatus(prefKey), "needs-reentry");
+      assert.equal(getSecret(prefKey), "", "ciphertext must never be used as a key");
+      assert.equal(
+        String(Zotero.Prefs.get(prefKey, true)),
+        "oskv1:not-a-real-ciphertext",
+        "the value must survive so it can be read again later",
+      );
+    });
+
+    it("reads a key synchronously once initialised", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      setSecret(prefKey, fakeKey);
+      await whenSecretWritesSettled();
+      await initSecrets({ force: true });
+
+      // No await after this point: providers read keys synchronously.
+      assert.equal(getSecret(prefKey), fakeKey);
+    });
+
+    it("clears a key from memory and from the profile", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      setSecret(prefKey, fakeKey);
+      await whenSecretWritesSettled();
+      setSecret(prefKey, "");
+      await whenSecretWritesSettled();
+
+      assert.equal(getSecret(prefKey), "");
+      assert.equal(String(Zotero.Prefs.get(prefKey, true) || ""), "");
+    });
+  });
+
   it("should refuse to follow a redirect that would resend the key", async function () {
     this.timeout(10000);
     const originalRequest = Zotero.HTTP.request;
@@ -3601,7 +3732,10 @@ describe("chat", function () {
 
     try {
       Zotero.Prefs.set(enginePref, "gemini", true);
-      Zotero.Prefs.set(keyPref, "gemini-test-key", true);
+      // Keys are read from the in-memory cache, so write through the API that
+      // keeps that cache and the profile in sync.
+      setSecret(SECRET_PREFS.gemini, "gemini-test-key");
+      await whenSecretWritesSettled();
 
       const provider = getChatProvider("gemini");
       assert.exists(provider);
@@ -3619,6 +3753,7 @@ describe("chat", function () {
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousKey === undefined) Zotero.Prefs.clear(keyPref, true);
       else Zotero.Prefs.set(keyPref, previousKey, true);
+      await initSecrets({ force: true });
     }
   });
 });

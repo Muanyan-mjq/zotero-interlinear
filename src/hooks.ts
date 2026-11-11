@@ -4,6 +4,7 @@ import { registerReaderToolbar, unregisterReaderToolbar } from "./readerToolbar"
 import { registerChatPane, unregisterChatPane } from "./chatPane";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { migrateLegacyPreferences } from "./settings";
+import { initSecrets } from "./secrets";
 import { flushTranslationCacheIndex } from "./translationCache";
 import { cleanupAllReadingLayouts } from "./readingLayout";
 import { logError } from "./utils/log";
@@ -49,6 +50,9 @@ async function onStartup() {
 
   for (const initialize of [
     migrateLegacyPreferences,
+    // Decrypt stored API keys before anything can ask for one. The promise is
+    // also awaited at every request entry point (see whenSecretsReady()).
+    initSecrets,
     initLocale,
     registerPreferencesPane,
     registerChatPane,

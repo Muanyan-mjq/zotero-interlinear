@@ -212,6 +212,7 @@ import {
 import { version as addonVersion } from "../../package.json";
 import { logError, redactForDisplay } from "../utils/log";
 import { assessEndpoint } from "../utils/endpointSafety";
+import { whenSecretsReady } from "../secrets";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -3878,6 +3879,7 @@ async function testGoogle(doc: Document): Promise<void> {
 }
 
 async function testOpenAI(doc: Document): Promise<void> {
+  await whenSecretsReady();
   const endpoint =
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT;
   const model = readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL;
@@ -3915,6 +3917,7 @@ async function testOpenAI(doc: Document): Promise<void> {
 }
 
 async function testClaude(doc: Document): Promise<void> {
+  await whenSecretsReady();
   const endpoint =
     readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint();
   const model = readInputText(doc, "interlinear-claude-model") || getClaudeModel();
@@ -3952,6 +3955,7 @@ async function testClaude(doc: Document): Promise<void> {
 }
 
 async function testGemini(doc: Document): Promise<void> {
+  await whenSecretsReady();
   const baseURL =
     readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL();
   const model = readInputText(doc, "interlinear-gemini-model") || getGeminiModel();

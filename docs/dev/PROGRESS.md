@@ -1498,3 +1498,48 @@
 2. 改成 `http://127.0.0.1:11434/v1/chat/completions`：不应出现警告（回环放行）。
 3. 三个 endpoint 输入框下方都能看到“密钥会发送到这个地址”的提示；切换深浅主题确认对比度。
 4. 若有一个会 302 的端点（可用本地代理模拟）：测试连接应报“端点发生了重定向”，而不是静默跟随。
+
+## Step 4：OSKeyStore 存储（src/secrets.ts）
+
+### 做了什么
+
+- 新增 `src/secrets.ts`，只使用 Zotero 10 与 11 **共有**的接口（`Zotero.OSKeyStore.available / isEncrypted / encrypt / decrypt`），不碰 10 专有的 `confirmUnencryptedFallback`、`_usable`、`_error`。每次调用都有特性检测 + try/catch。
+- **存储形态**：仍写原来的三个偏好键，值变成 `oskv1:<ciphertext>`（Zotero 自己给同步 API key 用的同一前缀）。底层由 Mozilla `OSKeyStore.sys.mjs` 提供密钥，即 macOS Keychain / Windows DPAPI / Linux libsecret。
+- **同步读取**：`initSecrets()` 在启动时把所有已加密值解密进内存 `Map`；`getSecret()` 保持同步（缓存优先，未命中回落到“非前缀的明文”，绝不把密文当密钥返回）。`translateText()`、聊天发送、三个“测试连接”入口在首次使用前 `await whenSecretsReady()`。
+- **写入**：`setSecret()` 先更新缓存再异步加密落盘，**回读确认以 `oskv1:` 开头**才算成功；失败时把原值写回（不会毁掉一个还能用的密钥），并记录 `lastWriteError` 供 UI 读取。
+- **迁移**：`migratePlaintextSecrets()` 幂等（第二次看到前缀就跳过），失败保留明文、只提示一次、不阻塞翻译。旧明文读取路径保留（至少保留一个大版本，见 README）。
+- **三态**：
+  - 可用 → 加密落盘；
+  - 不可用（无 `Zotero.OSKeyStore`，如 Linux 无 Secret Service）→ **不写任何明文**，值只留在内存（`session` 状态），并 `warn("keystore-unavailable")` 通知 UI；
+  - 解密失败（换机器/换系统用户/密文损坏）→ `needs-reentry`，**不清空 pref**，`getSecret()` 返回空字符串（provider 会报“请先填写密钥”），等用户重新输入。
+- **测试**：`test/startup.test.ts` 新增 `describe("API key storage")` 6 条（加密落盘、幂等迁移、钥匙串不可用时不写明文、垃圾密文不清空、初始化后同步读取、清除密钥）；测试里 key 一律是 `sk-test-000111222333444555`。
+
+### 改动文件
+
+`src/secrets.ts`（新）、`src/settings.ts`、`src/hooks.ts`、`src/bilingualReader.ts`、`src/chatPane.ts`、`src/modules/preferenceScript.ts`、`test/startup.test.ts`、`package.json`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过（`src/secrets.ts` 已加入 lint 列表）。
+- `npm run test:unit`：194 pass / 0 fail（本步未新增 node 单测，逻辑在集成层验证）。
+- `npm run test:review`：Zotero 10.0.8 **66 passed**；Zotero 11.0-dev.5 **66 passed**（钥匙串在两边都可用，6 条用例未被 skip）。
+
+### 偏差与说明
+
+- **集成测试里有两个不同的模块实例**：设置页跑在打包后的插件里，而测试直接 import `src/`，两边各有自己的内存缓存。因此断言“保存后密钥可用”不能读测试侧 `getSecret()`，改为轮询 `Zotero.Prefs.get(key, true)` 并断言以 `oskv1:` 开头（`waitForStoredSecret()`）。同理，Gemini 聊天用例改为通过 `setSecret()` 写入，而不是直接改偏好（否则缓存不会更新）。
+- 首轮跑红 2 条，都是上述原因，不是功能缺陷；调整后两版本全绿。
+
+### 未实测（按约定不猜）
+
+- macOS 钥匙串授权弹窗的时序与是否阻塞 UI。
+- Linux 无 Secret Service 时的真实表现：代码走 `session` 分支，但没有真机验证；也没有验证 Zotero 10 的 `Zotero.OSKeyStore.available` 在该环境下返回 false 还是 `encrypt` 抛错。
+- profile 换机器/换 OS 用户后的 `needs-reentry` 真实路径（只用 `oskv1:not-a-real-ciphertext` 模拟过）。
+- 崩溃时内存中的明文是否会进入转储：未验证，属平台行为。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 填一个假 key 保存后，`prefs.js` 里该键的值应以 `oskv1:` 开头、不含明文。
+2. 重启 Zotero：设置页应显示“已使用系统钥匙串加密”，翻译仍能带 key 请求（可用“测试连接”看 401 而不是“请先填写密钥”）。
+3. 把 `prefs.js` 里的值改成 `oskv1:garbage` 后重启：应显示“需要重新输入”，且该键不被清空。
+4. 若在 Linux 上：无 libsecret 时应显示“仅本次会话有效”，且 `prefs.js` 不出现明文。

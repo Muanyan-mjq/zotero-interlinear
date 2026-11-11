@@ -31,6 +31,7 @@ import {
 import { resolveUiFontFamily } from "./appearance";
 import { getLocaleID, getString } from "./utils/locale";
 import { logError } from "./utils/log";
+import { whenSecretsReady } from "./secrets";
 
 const CHAT_PANE_ID = "interlinear-chat";
 const SEND_SELECTOR = "#interlinear-chat-send";
@@ -297,6 +298,7 @@ async function sendQuestion(body: HTMLElement): Promise<void> {
     return;
   }
 
+  await whenSecretsReady();
   const provider = getChatProvider(getEngine());
   if (!provider) {
     setStatus(body, getString("chat-status-unsupported"));

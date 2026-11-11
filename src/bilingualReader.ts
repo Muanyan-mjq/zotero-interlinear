@@ -80,6 +80,7 @@ import {
   type ToggleEvent,
   type ToggleTransition,
 } from "./readerToggle";
+import { whenSecretsReady } from "./secrets";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
@@ -227,6 +228,9 @@ async function translateText(
   itemID: number,
   engine: TranslationEngine,
 ): Promise<TranslationResponse> {
+  // Keys are decrypted asynchronously at startup; the provider reads them
+  // synchronously, so make sure that has finished.
+  await whenSecretsReady();
   const provider = getTranslationProvider(engine);
   const result = await provider.translate(text, {
     itemID,
