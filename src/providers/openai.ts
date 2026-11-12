@@ -15,7 +15,12 @@ import {
   normalizeChatCompletionsEndpoint,
 } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
-import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import {
+  NO_REDIRECT_OPTIONS,
+  isRedirectStatus,
+  redirectErrorMessage,
+  requestWithRetry,
+} from "./secureRequest";
 import { describeFailure } from "./errorHints";
 
 export interface OpenAIConfig {
@@ -64,7 +69,7 @@ export async function requestOpenAITranslation(
 
   let xhr: any;
   try {
-    xhr = await Zotero.HTTP.request("POST", endpoint, {
+    xhr = await requestWithRetry("POST", endpoint, {
       headers,
       body: JSON.stringify(body),
       responseType: "text",

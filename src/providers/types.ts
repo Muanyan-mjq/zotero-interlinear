@@ -24,6 +24,12 @@ export interface ProviderTranslation {
 export interface TranslationProvider {
   readonly id: ProviderId;
   translate(text: string, context: ProviderContext): Promise<ProviderTranslation>;
+  /**
+   * Optional native batch path: translate several segments in one request,
+   * returning one translation per input, in order. Providers without it fall
+   * back to the marker-prompt batching shared by the LLM backends.
+   */
+  translateBatch?(texts: string[], context: ProviderContext): Promise<string[]>;
 }
 
 export interface ChatProvider {

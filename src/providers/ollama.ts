@@ -2,7 +2,12 @@
 // Interlinear — Ollama chat provider.
 
 import { getString } from "../utils/locale";
-import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import {
+  NO_REDIRECT_OPTIONS,
+  isRedirectStatus,
+  redirectErrorMessage,
+  requestWithRetry,
+} from "./secureRequest";
 
 export interface OllamaConfig {
   baseURL: string;
@@ -27,7 +32,7 @@ export async function requestOllamaTranslation(
     options: { temperature: 0.1 },
   };
 
-  const xhr = await Zotero.HTTP.request("POST", url, {
+  const xhr = await requestWithRetry("POST", url, {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     responseType: "json",

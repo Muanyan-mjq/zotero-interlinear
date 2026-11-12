@@ -36,7 +36,7 @@ import {
 import { buildChatSystemPrompt } from "./chatPrompts";
 import type { ChatTurn } from "./chatProtocol";
 import { requestGeminiTranslation, testGeminiConnection } from "./gemini";
-import { requestGoogleTranslation, testGoogleConnection } from "./google";
+import { requestGoogleTranslation, requestGoogleTranslations, testGoogleConnection } from "./google";
 import { requestOllamaTranslation } from "./ollama";
 import { requestOpenAITranslation, testOpenAIConnection } from "./openai";
 import { buildOllamaSystemPrompt, languageNameZh } from "./prompts";
@@ -146,6 +146,18 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
         text,
       ),
     }),
+    // The gtx endpoint answers one result per `q`, so a whole batch of
+    // paragraphs costs a single request — critical because it throttles by IP.
+    translateBatch: (texts, context) =>
+      requestGoogleTranslations(
+        {
+          baseURL: getGoogleBaseURL(),
+          sourceLanguage: context.sourceLanguage,
+          targetLanguage: context.targetLanguage,
+          timeoutMs: context.timeoutMs,
+        },
+        texts,
+      ),
   };
 }
 

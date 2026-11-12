@@ -383,6 +383,8 @@ export type FluentMessageId =
   | 'paragraph-retry-title'
   | 'paragraph-translate-failed'
   | 'paragraph-translating'
+  | 'paragraph-throttle-cooldown'
+  | 'paragraph-throttle-stopped'
   | 'paragraph-translating-progress'
   | 'paragraph-waiting'
   | 'popup-max-width-label'

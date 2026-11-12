@@ -346,6 +346,8 @@ paragraph-translating = 正在翻译…
 paragraph-translating-progress = 正在翻译…（{ $done }/{ $total }）
 paragraph-translate-failed = 翻译失败：{ $detail }
 paragraph-paused = 已暂停：连续翻译失败。请检查翻译服务后点击本段重试。
+paragraph-throttle-cooldown = 免费接口已限流，{ $seconds } 秒后自动重试…
+paragraph-throttle-stopped = 已暂停：{ $detail }
 paragraph-retry-title = 点击重试该段翻译
 interaction-help = 在阅读模式中选中文字，可只翻译该选区；按 Esc 关闭选区弹窗。将鼠标停在段落上会自动翻译（可在上方开关并调整延迟），也可按自定义快捷键或按住 Alt 点击翻译单个段落。整篇翻译进行中时，单段翻译会复用已有请求，不会重复调用服务。
 

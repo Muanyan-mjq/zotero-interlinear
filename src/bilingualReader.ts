@@ -45,6 +45,7 @@ import {
 import { isFailureText } from "./translationFailure";
 import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
+import { GoogleThrottleError } from "./providers/google";
 import { CancellationToken } from "./cancellationToken";
 import { parseShortcut } from "./shortcut";
 import {
@@ -250,6 +251,38 @@ async function translateText(
     text: applyGlossaryToTranslation(result.text, getGlossaryEntries()),
     engineTag: getCacheEngineTag(),
   };
+}
+
+/**
+ * Native batch path for providers that translate several segments in one
+ * request (Google's multi-`q` endpoint). Returns null when the engine has no
+ * such path so the caller falls back to marker batching.
+ */
+async function translateTextBatch(
+  texts: string[],
+  itemID: number,
+  engine: TranslationEngine,
+): Promise<{ texts: string[]; engineTag: string } | null> {
+  await whenSecretsReady();
+  const provider = getTranslationProvider(engine);
+  if (!provider.translateBatch) return null;
+  const results = await provider.translateBatch(texts, {
+    itemID,
+    sourceLanguage: getSourceLanguage(),
+    targetLanguage: getTargetLanguage(),
+    timeoutMs: getRequestTimeoutMs(),
+  });
+  const entries = getGlossaryEntries();
+  return {
+    texts: results.map((text) => applyGlossaryToTranslation(text, entries)),
+    engineTag: getCacheEngineTag(),
+  };
+}
+
+/** Cooldown carried by a rate-limit error, or 0 for ordinary failures. */
+function getThrottleCooldownMs(error: unknown): number {
+  if (error instanceof GoogleThrottleError) return Math.max(0, error.cooldownMs);
+  return 0;
 }
 
 async function translateTextLimited(
@@ -1487,6 +1520,7 @@ async function translateParagraphs(
 
   let completed = 0;
   let failureStreak = 0;
+  let throttlePauses = 0;
   let aborted = false;
   let nextStartAt = Date.now();
 
@@ -1510,12 +1544,42 @@ async function translateParagraphs(
     );
   };
 
+  const requestNativeBatch = async (
+    texts: string[],
+  ): Promise<{ texts: string[]; engineTag: string } | null> => {
+    await waitForStartSlot();
+    if (!isCurrentRun(reader, generation, doc)) throw new RunCancelledError();
+    return raceWithTimeoutAndCancellation(
+      translateTextBatch(texts, itemID, engine),
+      requestTimeoutMs,
+      cancellation,
+    );
+  };
+
   const translateJob = async (
     job: TranslationJobItem[],
   ): Promise<Array<{ paragraphIndex: number; response: TranslationResponse }>> => {
     if (job.length === 1) {
       const response = await translateTextLimited(job[0].text, request);
       return [{ paragraphIndex: job[0].paragraphIndex, response }];
+    }
+
+    // Prefer a native multi-segment request: one call for the whole job
+    // instead of a marker prompt that the engine may translate away. If the
+    // endpoint or a mirror answers with a shape the batch parser rejects,
+    // fall back to the marker path instead of failing the job.
+    try {
+      const native = await requestNativeBatch(job.map((item) => item.text));
+      if (native) {
+        return job.map((item, index) => ({
+          paragraphIndex: item.paragraphIndex,
+          response: { text: native.texts[index], engineTag: native.engineTag },
+        }));
+      }
+    } catch (error: any) {
+      if (isCancellationError(error)) throw error;
+      if (getThrottleCooldownMs(error) > 0) throw error;
+      logError(error);
     }
 
     const batchResponse = await request(buildBatchPayload(job));
@@ -1639,6 +1703,7 @@ async function translateParagraphs(
           setRunProgress(reader, generation, completed, pendingIndexes.length);
         }
         failureStreak = 0;
+        throttlePauses = 0;
       } catch (error: any) {
         if (isCancellationError(error)) return;
         if (isDeadObjectError(error)) {
@@ -1649,21 +1714,48 @@ async function translateParagraphs(
         }
         if (!isCurrentRun(reader, generation, doc)) return;
 
+        // A rate-limit error is not a paragraph failure: requeue the job and
+        // wait out the cooldown once, twice at most, so a throttling endpoint
+        // pauses the run instead of painting every paragraph red.
+        const cooldownMs = getThrottleCooldownMs(error);
+        if (cooldownMs > 0 && throttlePauses < 2) {
+          throttlePauses += 1;
+          for (const item of job) remaining.add(item.paragraphIndex);
+          for (const item of job) {
+            const liveBlock = paragraphs[item.paragraphIndex].block;
+            if (liveBlock?.parentNode) {
+              setBlockState(
+                liveBlock,
+                "paused",
+                getString("paragraph-throttle-cooldown", {
+                  args: { seconds: String(Math.max(1, Math.round(cooldownMs / 1000))) },
+                }),
+              );
+            }
+          }
+          try {
+            await cancellableDelay(cooldownMs, cancellation);
+          } catch (cancelError: any) {
+            if (isCancellationError(cancelError)) return;
+          }
+          continue;
+        }
+
         failureStreak += 1;
+        const failureDetail =
+          cooldownMs > 0
+            ? getString("paragraph-throttle-stopped", { args: { detail: String(error?.message || error) } })
+            : getString("paragraph-translate-failed", {
+                args: { detail: String(error?.message || error) },
+              });
         for (const item of job) {
           const liveBlock = paragraphs[item.paragraphIndex].block;
           if (liveBlock?.parentNode) {
-            setBlockState(
-              liveBlock,
-              "error",
-              getString("paragraph-translate-failed", {
-                args: { detail: String(error?.message || error) },
-              }),
-            );
+            setBlockState(liveBlock, "error", failureDetail);
           }
         }
 
-        if (failureStreak >= maxErrors) {
+        if (failureStreak >= maxErrors || cooldownMs > 0) {
           aborted = true;
           markUnfinishedPaused(doc, paragraphs);
           cancelRun(reader);

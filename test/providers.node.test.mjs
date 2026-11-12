@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   buildGoogleQuery,
+  buildGoogleQueryMulti,
   normalizeGoogleEndpoint,
+  parseGoogleMultiResponse,
   parseGoogleResponse,
 } from "../src/providers/googleProtocol.ts";
 
@@ -335,4 +337,40 @@ test("extractGeminiErrorDetail reads Google API error messages and truncates the
   assert.equal(extractGeminiErrorDetail("plain failure"), "plain failure");
   assert.equal(extractGeminiErrorDetail(null), "");
   assert.equal(extractGeminiErrorDetail("x".repeat(400)).length, 300);
+});
+
+test("buildGoogleQueryMulti appends one q per segment", () => {
+  const query = buildGoogleQueryMulti("en", "zh-CN", ["Hello", "World & more", ""]);
+  const params = new URLSearchParams(query);
+  assert.equal(params.get("client"), "gtx");
+  assert.equal(params.get("sl"), "en");
+  assert.equal(params.get("tl"), "zh-CN");
+  assert.deepEqual(params.getAll("q"), ["Hello", "World & more", ""]);
+});
+
+test("buildGoogleQuery keeps a single q for the single-segment path", () => {
+  const query = buildGoogleQuery({ source: "auto", target: "zh-CN", text: "Hello" });
+  const params = new URLSearchParams(query);
+  assert.deepEqual(params.getAll("q"), ["Hello"]);
+});
+
+test("parseGoogleMultiResponse returns one translation per segment in order", () => {
+  const payload = [
+    [[["你好", "Hello"]]],
+    [[["世界", "World"]]],
+  ];
+  assert.deepEqual(parseGoogleMultiResponse(payload, 2), ["你好", "世界"]);
+});
+
+test("parseGoogleMultiResponse rejects wrong counts, gaps and bad shapes", () => {
+  assert.equal(parseGoogleMultiResponse([[[["你好", "Hello"]]]], 2), null);
+  assert.equal(parseGoogleMultiResponse([[[["你好", "Hello"]]], null], 2), null);
+  assert.equal(parseGoogleMultiResponse([[[["你好", "Hello"]]], [[["", "x"]]]], 2), null);
+  assert.equal(parseGoogleMultiResponse("nope", 1), null);
+  assert.deepEqual(parseGoogleMultiResponse([], 0), []);
+});
+
+test("parseGoogleResponse still handles single-segment payloads", () => {
+  assert.equal(parseGoogleResponse([[["你好", "Hello"]]]), "你好");
+  assert.equal(parseGoogleResponse([[[", ", "Hello"], ["世界", " World"]]]), ", 世界");
 });
