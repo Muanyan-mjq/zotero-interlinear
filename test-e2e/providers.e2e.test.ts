@@ -384,7 +384,7 @@ describe("provider e2e", function () {
     } catch (error) {
       rethrowDiagnosable(error);
     } finally {
-      await controlMock({ googleThrottle: false, googleCaptcha: false });
+      await controlMock({ googleThrottle: false, googleCaptcha: false, googleThrottleClients: [] });
       restorePrefs(saved);
     }
   });
@@ -437,7 +437,7 @@ describe("provider e2e", function () {
       }
       await trace(`throttle instanceof GoogleThrottleError = ${throttle instanceof GoogleThrottleError}`);
       assert.instanceOf(throttle, GoogleThrottleError, "429 must map to a throttle error");
-      assert.isAbove(throttle!.cooldownMs, 0, "throttle error carries a cooldown");
+      assert.equal(throttle!.cooldownMs, 0, "pool failure is handed to the router, not the runner");
 
       // The captcha redirect must fail fast — one request, no retry hammering.
       await controlMock({ googleThrottle: false, googleCaptcha: true });
@@ -465,7 +465,7 @@ describe("provider e2e", function () {
           `captchas=${captchaAfter.googleCaptchas - captchaBefore.googleCaptchas}`,
       );
       assert.instanceOf(captcha, GoogleThrottleError, "captcha must map to a throttle error");
-      assert.equal(captcha!.cooldownMs, 60000, "captcha cooldown is one minute");
+      assert.equal(captcha!.cooldownMs, 0, "captcha is a pool failure, not a run-wide pause");
       assert.equal(
         captchaAfter.googleCaptchas - captchaBefore.googleCaptchas,
         1,
@@ -502,4 +502,5 @@ describe("provider e2e", function () {
       restorePrefs(saved);
     }
   });
+
 });

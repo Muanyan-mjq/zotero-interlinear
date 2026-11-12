@@ -42,6 +42,14 @@ import {
   getFontFavorites,
   getGlossaryText,
   getGoogleBaseURL,
+  getFreeAutoFallback,
+  getFreeBackend,
+  getGoogleClient,
+  getLibreTranslateApiKey,
+  getLibreTranslateURL,
+  getMyMemoryEmail,
+  getMyMemoryURL,
+  DEFAULT_MYMEMORY_URL,
   getHoverDelayMs,
   getHoverModifier,
   getToggleShortcut,
@@ -94,6 +102,12 @@ import {
   setGeminiTemperature,
   setGlossaryText,
   setGoogleBaseURL,
+  setFreeAutoFallback,
+  setFreeBackend,
+  setGoogleClient,
+  setLibreTranslateURL,
+  setMyMemoryEmail,
+  setMyMemoryURL,
   setHoverDelayMs,
   setHoverModifier,
   setToggleShortcut,
@@ -206,9 +220,15 @@ import {
 import {
   testClaudeConnection,
   testGeminiConnection,
-  testGoogleConnection,
   testOpenAIConnection,
 } from "../providers";
+import {
+  getFreeActiveBackend,
+  getFreeBackendStates,
+  resetFreeBackends,
+  testFreeConnection,
+  type FreeConfig,
+} from "../providers/free";
 import { version as addonVersion } from "../../package.json";
 import { logError, redactForDisplay } from "../utils/log";
 import { assessEndpoint } from "../utils/endpointSafety";
@@ -3177,6 +3197,7 @@ const SECRET_FIELDS: SecretField[] = [
   { name: "openai", inputId: "interlinear-openai-api-key", pref: SECRET_PREFS.openai },
   { name: "claude", inputId: "interlinear-claude-api-key", pref: SECRET_PREFS.claude },
   { name: "gemini", inputId: "interlinear-gemini-api-key", pref: SECRET_PREFS.gemini },
+  { name: "libre", inputId: "interlinear-libre-api-key", pref: SECRET_PREFS.libreTranslate },
 ];
 
 /**
@@ -3362,6 +3383,29 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-google-base-label", "provider-google-base-label"],
     ["interlinear-google-base-help", "provider-google-base-help"],
     ["interlinear-google-help", "provider-google-help"],
+    ["interlinear-free-backend-label", "provider-free-backend-label"],
+    ["interlinear-free-backend-help", "provider-free-backend-help"],
+    ["interlinear-free-backend-auto", "provider-free-backend-auto"],
+    ["interlinear-free-backend-google-it", "provider-free-backend-google-it"],
+    ["interlinear-free-backend-google-at", "provider-free-backend-google-at"],
+    ["interlinear-free-backend-google-gtx", "provider-free-backend-google-gtx"],
+    ["interlinear-free-backend-google-chrome", "provider-free-backend-google-chrome"],
+    ["interlinear-free-backend-google-firefox", "provider-free-backend-google-firefox"],
+    ["interlinear-free-backend-mymemory", "provider-free-backend-mymemory"],
+    ["interlinear-free-backend-libre", "provider-free-backend-libre"],
+    ["interlinear-free-fallback-label", "provider-free-fallback-label"],
+    ["interlinear-free-fallback-help", "provider-free-fallback-help"],
+    ["interlinear-free-client-label", "provider-free-client-label"],
+    ["interlinear-free-client-help", "provider-free-client-help"],
+    ["interlinear-free-mymemory-label", "provider-free-mymemory-label"],
+    ["interlinear-free-mymemory-help", "provider-free-mymemory-help"],
+    ["interlinear-free-mymemory-url-label", "provider-free-mymemory-url-label"],
+    ["interlinear-free-mymemory-url-help", "provider-free-mymemory-url-help"],
+    ["interlinear-free-libre-url-label", "provider-free-libre-url-label"],
+    ["interlinear-free-libre-url-help", "provider-free-libre-url-help"],
+    ["interlinear-free-libre-key-label", "provider-free-libre-key-label"],
+    ["interlinear-free-libre-key-help", "provider-free-libre-key-help"],
+    ["interlinear-free-status-label", "provider-free-status-label"],
     ["interlinear-openai-title", "provider-openai-title"],
     ["interlinear-openai-endpoint-label", "provider-openai-endpoint-label"],
     ["interlinear-openai-endpoint-help", "provider-openai-endpoint-help"],
@@ -3869,6 +3913,26 @@ function saveSettings(doc: Document): string[] {
   setGoogleBaseURL(
     readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL,
   );
+  setFreeBackend(
+    getElement<HTMLSelectElement>(doc, "interlinear-free-backend")?.value || "auto",
+  );
+  setFreeAutoFallback(
+    getElement<HTMLInputElement>(doc, "interlinear-free-fallback")?.checked ?? true,
+  );
+  setGoogleClient(
+    getElement<HTMLSelectElement>(doc, "interlinear-free-client")?.value || "it",
+  );
+  setMyMemoryEmail(readInputText(doc, "interlinear-free-mymemory-email"));
+  setMyMemoryURL(
+    readInputText(doc, "interlinear-free-mymemory-url") || DEFAULT_MYMEMORY_URL,
+  );
+  setLibreTranslateURL(readInputText(doc, "interlinear-free-libre-url"));
+  const libreKey = readSecretInput(doc, SECRET_FIELDS[3]);
+  if (libreKey !== undefined) {
+    setSecret(SECRET_PREFS.libreTranslate, libreKey, secretWriteOptions());
+  }
+  // A changed service selection invalidates the cooldowns from the old chain.
+  resetFreeBackends();
   setOpenAIEndpoint(
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT,
   );
@@ -4042,9 +4106,26 @@ async function testOllama(doc: Document): Promise<void> {
   }
 }
 
+
+/** Show which free service is currently serving requests and which are cooling down. */
+function refreshFreeStatus(doc: Document): void {
+  const value = getElement<HTMLElement>(doc, "interlinear-free-status-value");
+  if (!value) return;
+  const active = getFreeActiveBackend();
+  const cooling = getFreeBackendStates().filter((state) => !state.available);
+  const parts = [active || getString("provider-free-status-none")];
+  if (cooling.length) {
+    parts.push(
+      cooling
+        .map((state) => `${state.id} (${state.seconds}s)`)
+        .join(", "),
+    );
+  }
+  value.textContent = parts.join(" · ");
+}
+
 async function testGoogle(doc: Document): Promise<void> {
-  const baseURL =
-    readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL;
+  await whenSecretsReady();
   const targetLanguage =
     getElement<HTMLSelectElement>(doc, "interlinear-target-language")?.value ||
     getTargetLanguage();
@@ -4054,13 +4135,29 @@ async function testGoogle(doc: Document): Promise<void> {
   if (button) button.disabled = true;
   setTestStatus(doc, "google", "running", getString("provider-test-running"));
   try {
-    const text = await testGoogleConnection(baseURL, targetLanguage);
+    const config: FreeConfig = {
+      backend:
+        getElement<HTMLSelectElement>(doc, "interlinear-free-backend")?.value || "auto",
+      autoFallback:
+        getElement<HTMLInputElement>(doc, "interlinear-free-fallback")?.checked ?? true,
+      googleClient:
+        getElement<HTMLSelectElement>(doc, "interlinear-free-client")?.value || "it",
+      googleBaseURL:
+        readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL,
+      myMemoryEmail: readInputText(doc, "interlinear-free-mymemory-email"),
+      myMemoryUrl: readInputText(doc, "interlinear-free-mymemory-url") || DEFAULT_MYMEMORY_URL,
+      libreURL: readInputText(doc, "interlinear-free-libre-url"),
+      libreKey:
+        readSecretInput(doc, SECRET_FIELDS[3]) ?? getLibreTranslateApiKey(),
+    };
+    const text = await testFreeConnection(targetLanguage, config);
     setTestStatus(
       doc,
       "google",
       "success",
       getString("provider-test-success", { args: { text } }),
     );
+    refreshFreeStatus(doc);
   } catch (error: any) {
     setTestStatus(
       doc,
@@ -4438,6 +4535,20 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (url) url.value = getOllamaURL();
   if (model) model.value = getOllamaModel();
   if (googleBaseURL) googleBaseURL.value = getGoogleBaseURL();
+  const freeBackend = getElement<HTMLSelectElement>(doc, "interlinear-free-backend");
+  const freeFallback = getElement<HTMLInputElement>(doc, "interlinear-free-fallback");
+  const freeClient = getElement<HTMLSelectElement>(doc, "interlinear-free-client");
+  const myMemoryEmail = getElement<HTMLInputElement>(doc, "interlinear-free-mymemory-email");
+  const myMemoryUrl = getElement<HTMLInputElement>(doc, "interlinear-free-mymemory-url");
+  const libreURL = getElement<HTMLInputElement>(doc, "interlinear-free-libre-url");
+  const libreKey = getElement<HTMLInputElement>(doc, "interlinear-libre-api-key");
+  if (freeBackend) freeBackend.value = getFreeBackend();
+  if (freeFallback) freeFallback.checked = getFreeAutoFallback();
+  if (freeClient) freeClient.value = getGoogleClient();
+  if (myMemoryEmail) myMemoryEmail.value = getMyMemoryEmail();
+  if (myMemoryUrl) myMemoryUrl.value = getMyMemoryURL();
+  if (libreURL) libreURL.value = getLibreTranslateURL();
+  if (libreKey) libreKey.value = getLibreTranslateApiKey();
   if (openAIEndpoint) openAIEndpoint.value = getOpenAIEndpoint();
   if (openAIModel) openAIModel.value = getOpenAIModel();
   if (openAIApiKey) openAIApiKey.value = getOpenAIApiKey();
@@ -4506,6 +4617,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
 
   fillAppearanceLabels(doc);
   fillProviderLabels(doc);
+  refreshFreeStatus(doc);
   fillStaticLabels(doc);
   const footerNote = getElement<HTMLElement>(doc, "interlinear-footer-note");
   if (footerNote) {

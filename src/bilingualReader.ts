@@ -47,7 +47,7 @@ import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { GoogleThrottleError } from "./providers/google";
 import { CancellationToken } from "./cancellationToken";
-import { parseShortcut } from "./shortcut";
+import { matchesShortcut, parseShortcut } from "./shortcut";
 import {
   buildTranslationCSS,
   resolveTextDirection,
@@ -87,6 +87,7 @@ import {
   getInternalReader,
   getReaderFrameDocument,
   getReaders,
+  getSDTViewDocument,
   getSDTViews,
   setReadingMode,
 } from "./zoteroCompat";
@@ -127,13 +128,21 @@ interface InteractionWatcher {
   timeouts: ReturnType<typeof setTimeout>[];
   doc: Document | null;
   onLoad: ((event: Event) => void) | null;
+  /** Observers watch for `#sdt-content` appearing after reading mode is enabled. */
+  observers: MutationObserver[];
+  observedDocs: Document[];
+  onBootstrapKeyDown: ((event: KeyboardEvent) => void) | null;
 }
 
 const runStates = new WeakMap<object, RunState>();
 const toggleStates = new WeakMap<object, ToggleState>();
 const interactionControllers = new WeakMap<object, ReaderInteractions[]>();
 const interactionWatchers = new WeakMap<object, InteractionWatcher>();
-const INTERACTION_ATTACH_DELAYS_MS = [0, 150, 500, 1500, 3000];
+// Short bounded retries cover the reader's own mount sequence. Anything
+// later is handled by the MutationObserver below and by ensureReadingMode(),
+// which attaches the controller directly on every path that enables reading
+// mode. No permanent polling loop, and no long-lived timers.
+const INTERACTION_ATTACH_DELAYS_MS = [0, 150, 500, 1500, 3000, 6000, 10000];
 const IFRAME_LOAD_RETRY_DELAYS_MS = [60, 400, 1200];
 // Shared by the full-document scheduler and on-demand triggers so the same
 // paragraph is never requested twice at once.
@@ -307,8 +316,7 @@ async function translateTextLimited(
 
 function getSDTDocument(reader: any): Document | null {
   try {
-    const view = getActiveSDTView(reader);
-    return view?._iframeDocument || view?._iframe?.contentDocument || null;
+    return getSDTViewDocument(getActiveSDTView(reader));
   } catch (_) {
     return null;
   }
@@ -505,7 +513,12 @@ function setRunProgress(
 
 async function ensureReadingMode(reader: any): Promise<Document> {
   let doc = getSDTDocument(reader);
-  if (doc?.querySelector("#sdt-content")) return doc;
+  if (doc?.querySelector("#sdt-content")) {
+    // Any path that turns reading mode on must make the per-paragraph
+    // triggers available; otherwise only a full-document run attached them.
+    ensureReaderInteractions(reader, doc);
+    return doc;
+  }
 
   if (!getInternalReader(reader)) {
     throw new Error(getString("error-reader-unavailable"));
@@ -516,7 +529,10 @@ async function ensureReadingMode(reader: any): Promise<Document> {
 
   for (let i = 0; i < 150; i++) {
     doc = getSDTDocument(reader);
-    if (doc?.querySelector("#sdt-content")) return doc;
+    if (doc?.querySelector("#sdt-content")) {
+      ensureReaderInteractions(reader, doc);
+      return doc;
+    }
     await Zotero.Promise.delay(100);
   }
 
@@ -1212,7 +1228,7 @@ function getReaderSDTDocuments(reader: any): Document[] {
   const views = [...getSDTViews(reader), getActiveSDTView(reader)];
   for (const view of views) {
     try {
-      const doc = view?._iframeDocument || view?._iframe?.contentDocument;
+      const doc = getSDTViewDocument(view);
       if (doc && !docs.includes(doc)) docs.push(doc);
     } catch (_) {
       // A split view's iframe may already have been destroyed.
@@ -1228,69 +1244,158 @@ function attachInteractionsToReaderDocument(reader: any, doc: Document): boolean
   return true;
 }
 
+function isReadingModeReady(reader: any): boolean {
+  return getReaderSDTDocuments(reader).some((doc) => {
+    try {
+      return !!doc.querySelector("#sdt-content");
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+/**
+ * Zotero opens PDFs in the plain PDF view and only creates `#sdt-content`
+ * when reading mode is enabled. Watching both the outer reader document and
+ * every SDT document means the controller attaches whenever reading mode is
+ * turned on, including long after the reader mounted.
+ */
+function observeForContent(
+  reader: any,
+  state: InteractionWatcher,
+  doc: Document,
+): void {
+  if (!doc || state.observedDocs.includes(doc)) return;
+  const Observer = (globalThis as any).MutationObserver;
+  if (typeof Observer !== "function") return;
+  try {
+    const observer = new Observer(() => {
+      try {
+        // Once this document has a controller there is nothing left to do.
+        // Without this guard every reader DOM mutation would re-run the whole
+        // attach scan, which is needless work on a live reader.
+        if (hasReaderInteractions(reader, doc)) return;
+        if (doc.querySelector("#sdt-content")) tryAttachInteractions(reader, state);
+      } catch (_) {
+        // The iframe can be torn down while a mutation is being delivered.
+      }
+    });
+    observer.observe(doc.documentElement || doc, { childList: true, subtree: true });
+    state.observedDocs.push(doc);
+    state.observers.push(observer);
+  } catch (_) {
+    // Some test documents have no MutationObserver in their realm.
+  }
+}
+
+function tryAttachInteractions(reader: any, state: InteractionWatcher): boolean {
+  let attached = false;
+  for (const doc of getReaderSDTDocuments(reader)) {
+    try {
+      observeForContent(reader, state, doc);
+      if (attachInteractionsToReaderDocument(reader, doc)) attached = true;
+    } catch (error) {
+      logError(error as Error);
+    }
+  }
+  try {
+    const outerDoc = getReaderFrameDocument(reader);
+    if (outerDoc) observeForContent(reader, state, outerDoc);
+  } catch (_) {
+    // The reader window can disappear while it is being inspected.
+  }
+  return attached;
+}
+
+function clearInteractionRetries(state: InteractionWatcher): void {
+  for (const timeout of state.timeouts) {
+    try {
+      clearTimeout(timeout);
+    } catch (_) {
+      // The main window may already be shutting down.
+    }
+  }
+  state.timeouts = [];
+}
+
+function scheduleInteractionRetries(
+  reader: any,
+  state: InteractionWatcher,
+  delays: number[],
+): void {
+  clearInteractionRetries(state);
+  for (const delay of delays) {
+    state.timeouts.push(
+      setTimeout(() => {
+        try {
+          if (tryAttachInteractions(reader, state)) clearInteractionRetries(state);
+        } catch (error) {
+          logError(error as Error);
+        }
+      }, delay),
+    );
+  }
+}
+
 /**
  * Attach the hover/shortcut/selection controller as soon as a reader exposes
- * its SDT document. Interactions used to be attached only from prepareAndRun,
- * so a reader that had never run a full translation ignored hover and the
- * shortcut entirely. Reading mode (and each split-view pane) can also be
- * enabled after the reader mounts, so watch iframe loads and retry briefly.
+ * its SDT document. This must be re-entrant: a watcher created before reading
+ * mode was enabled used to short-circuit every later attempt, which left
+ * hover and shortcuts dead until a full-document run happened to attach them.
  */
 export function watchReaderInteractions(reader: any): void {
   if (!reader || reader.type !== "pdf" || reader._isUninitialized) return;
-  if (interactionWatchers.has(reader)) return;
 
-  const state: InteractionWatcher = { timeouts: [], doc: null, onLoad: null };
+  const existing = interactionWatchers.get(reader);
+  if (existing) {
+    tryAttachInteractions(reader, existing);
+    scheduleInteractionRetries(reader, existing, INTERACTION_ATTACH_DELAYS_MS);
+    return;
+  }
+
+  const state: InteractionWatcher = {
+    timeouts: [],
+    doc: null,
+    onLoad: null,
+    observers: [],
+    observedDocs: [],
+    onBootstrapKeyDown: null,
+  };
   interactionWatchers.set(reader, state);
 
-  const tryAttach = () => {
-    for (const doc of getReaderSDTDocuments(reader)) {
-      try {
-        attachInteractionsToReaderDocument(reader, doc);
-      } catch (error) {
-        logError(error as Error);
-      }
-    }
-  };
-
-  const clearScheduledRetries = () => {
-    for (const timeout of state.timeouts) {
-      try {
-        clearTimeout(timeout);
-      } catch (_) {
-        // The main window may already be shutting down.
-      }
-    }
-    state.timeouts = [];
-  };
-
-  const scheduleRetries = (delays: number[]) => {
-    clearScheduledRetries();
-    for (const delay of delays) {
-      state.timeouts.push(
-        setTimeout(() => {
-          try {
-            tryAttach();
-          } catch (error) {
-            logError(error as Error);
-          }
-        }, delay),
-      );
-    }
-  };
-
-  tryAttach();
-  scheduleRetries(INTERACTION_ATTACH_DELAYS_MS);
+  tryAttachInteractions(reader, state);
+  scheduleInteractionRetries(reader, state, INTERACTION_ATTACH_DELAYS_MS);
 
   try {
-    const outerDoc = getReaderFrameDocument(reader) as Document | undefined;
+    const outerDoc = getReaderFrameDocument(reader) as Document | null;
     if (outerDoc) {
       state.doc = outerDoc;
+      observeForContent(reader, state, outerDoc);
       state.onLoad = (event: Event) => {
         const target = event?.target as Element | null;
         if (target?.localName !== "iframe") return;
-        scheduleRetries(IFRAME_LOAD_RETRY_DELAYS_MS);
+        tryAttachInteractions(reader, state);
+        scheduleInteractionRetries(reader, state, IFRAME_LOAD_RETRY_DELAYS_MS);
       };
       outerDoc.addEventListener("load", state.onLoad, true);
+
+      // In the plain PDF view there is no SDT document to listen on yet. Let
+      // the single-paragraph shortcut switch into reading mode on demand,
+      // without ever starting a full-document run.
+      state.onBootstrapKeyDown = (event: KeyboardEvent) => {
+        try {
+          if (isReadingModeReady(reader)) return;
+          if (!getInternalReader(reader) || !getShortcutEnabled()) return;
+          const spec = getShortcutSpec();
+          if (!spec || !matchesShortcut(event, spec)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void enterParagraphTranslationMode(reader);
+        } catch (_) {
+          // A detached reader must never break the reader's own key handling.
+        }
+      };
+      outerDoc.addEventListener("keydown", state.onBootstrapKeyDown, true);
     }
   } catch (_) {
     // The reader window can disappear while it is being inspected.
@@ -1302,18 +1407,31 @@ function stopWatchingReaderInteractions(reader: any): void {
   if (!state) return;
   interactionWatchers.delete(reader);
 
-  for (const timeout of state.timeouts) {
+  clearInteractionRetries(state);
+  for (const observer of state.observers) {
     try {
-      clearTimeout(timeout);
+      observer.disconnect();
     } catch (_) {
-      // The main window may already be shutting down.
+      // The observed document may already be gone.
     }
   }
-  if (state.doc && state.onLoad) {
-    try {
-      state.doc.removeEventListener("load", state.onLoad, true);
-    } catch (_) {
-      // The reader document may already be gone.
+  state.observers = [];
+  state.observedDocs = [];
+
+  if (state.doc) {
+    if (state.onLoad) {
+      try {
+        state.doc.removeEventListener("load", state.onLoad, true);
+      } catch (_) {
+        // The reader document may already be gone.
+      }
+    }
+    if (state.onBootstrapKeyDown) {
+      try {
+        state.doc.removeEventListener("keydown", state.onBootstrapKeyDown, true);
+      } catch (_) {
+        // The reader document may already be gone.
+      }
     }
   }
 }
@@ -1421,12 +1539,17 @@ function setBlockState(
   }
 }
 
-function markUnfinishedPaused(doc: Document, paragraphs: ReaderParagraph[]): void {
+function markUnfinishedPaused(
+  doc: Document,
+  paragraphs: ReaderParagraph[],
+  message?: string,
+): void {
+  const text = message || getString("paragraph-paused");
   for (const paragraph of paragraphs) {
     if (paragraph.translation) continue;
     const block = ensureTranslationBlock(doc, paragraph);
     if (!block || block.dataset.state === "error") continue;
-    setBlockState(block, "paused", getString("paragraph-paused"));
+    setBlockState(block, "paused", text);
   }
 }
 
@@ -1521,6 +1644,7 @@ async function translateParagraphs(
   let completed = 0;
   let failureStreak = 0;
   let throttlePauses = 0;
+  let lastCooldownAt = 0;
   let aborted = false;
   let nextStartAt = Date.now();
 
@@ -1718,8 +1842,15 @@ async function translateParagraphs(
         // wait out the cooldown once, twice at most, so a throttling endpoint
         // pauses the run instead of painting every paragraph red.
         const cooldownMs = getThrottleCooldownMs(error);
-        if (cooldownMs > 0 && throttlePauses < 2) {
-          throttlePauses += 1;
+        if (cooldownMs > 0 && throttlePauses < 3) {
+          // Concurrent workers can hit the same throttle in the same second;
+          // count it as one run-wide pause, not one per worker.
+          const now = Date.now();
+          if (now - lastCooldownAt > 1000) {
+            throttlePauses += 1;
+            lastCooldownAt = now;
+          }
+          const pauseMs = Math.min(cooldownMs, 60_000);
           for (const item of job) remaining.add(item.paragraphIndex);
           for (const item of job) {
             const liveBlock = paragraphs[item.paragraphIndex].block;
@@ -1728,13 +1859,13 @@ async function translateParagraphs(
                 liveBlock,
                 "paused",
                 getString("paragraph-throttle-cooldown", {
-                  args: { seconds: String(Math.max(1, Math.round(cooldownMs / 1000))) },
+                  args: { seconds: String(Math.max(1, Math.round(pauseMs / 1000))) },
                 }),
               );
             }
           }
           try {
-            await cancellableDelay(cooldownMs, cancellation);
+            await cancellableDelay(pauseMs, cancellation);
           } catch (cancelError: any) {
             if (isCancellationError(cancelError)) return;
           }
@@ -1757,7 +1888,11 @@ async function translateParagraphs(
 
         if (failureStreak >= maxErrors || cooldownMs > 0) {
           aborted = true;
-          markUnfinishedPaused(doc, paragraphs);
+          markUnfinishedPaused(
+            doc,
+            paragraphs,
+            cooldownMs > 0 ? getString("paragraph-throttle-paused") : undefined,
+          );
           cancelRun(reader);
           dispatchToggle(reader, "run-paused");
           return;
@@ -1833,6 +1968,28 @@ async function prepareAndRun(reader: any): Promise<void> {
     flushTranslationCacheIndex();
     const liveRoot = getDocumentRoot(getSDTDocument(reader) || doc);
     if (liveRoot) delete liveRoot.dataset.interlinearRunning;
+  }
+}
+
+/**
+ * Turn reading mode on and make the per-paragraph triggers live WITHOUT
+ * starting a full-document run. After this, hover, the shortcut, Alt-click
+ * and the selection popup translate only the paragraph the user points at.
+ * Deliberately does not dispatch a toggle event: an `empty` reader must keep
+ * presenting the toolbar button as "translate the whole document".
+ */
+export async function enterParagraphTranslationMode(reader: any): Promise<void> {
+  try {
+    const doc = await ensureReadingMode(reader);
+    if (!getDocumentRoot(doc)) throw new Error(getString("error-reading-mode-page"));
+    // Only inject the styles so the hover highlight is visible. Display modes
+    // and the highlight-alignment observer are installed lazily by
+    // prepareOnDemandReading() on the first real paragraph translation;
+    // installing them early previously broke Zotero's native highlight layout.
+    installStyles(doc);
+    ensureReaderInteractions(reader, doc);
+  } catch (error: any) {
+    reportToggleError(reader, error);
   }
 }
 
@@ -1919,6 +2076,11 @@ function openBilingualToolbarMenu(
 ): void {
   const running = isBilingualRunning(reader);
   const entries: ReaderMenuEntry[] = [
+    {
+      action: "paragraph-mode",
+      label: getString("toolbar-menu-paragraph-mode"),
+    },
+    "separator",
     { action: "refresh", label: getString("toolbar-menu-refresh") },
     {
       action: "cancel",
@@ -1935,7 +2097,9 @@ function openBilingualToolbarMenu(
     y,
     entries,
     onSelect: (action) => {
-      if (action === "refresh") {
+      if (action === "paragraph-mode") {
+        void enterParagraphTranslationMode(reader);
+      } else if (action === "refresh") {
         void refreshBilingualReading(reader);
       } else if (action === "cancel") {
         cancelBilingualReading(reader);
@@ -2124,7 +2288,7 @@ export function cleanupBilingualReader(reader: any): void {
 
   for (const view of getSDTViews(reader)) {
     try {
-      const doc = view?._iframeDocument || view?._iframe?.contentDocument;
+      const doc = getSDTViewDocument(view);
       if (doc) clearTranslations(doc);
     } catch (_) {
       // A split view's iframe may already have been destroyed.

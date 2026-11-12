@@ -31,7 +31,13 @@ import {
   DEFAULT_GEMINI_MODEL,
   normalizeGeminiModel,
 } from "./providers/geminiProtocol";
-import { DEFAULT_GOOGLE_BASE_URL, normalizeGoogleEndpoint } from "./providers/googleProtocol";
+import {
+  DEFAULT_GOOGLE_BASE_URL,
+  DEFAULT_GOOGLE_CLIENT,
+  GOOGLE_CLIENTS,
+  normalizeGoogleClient,
+  normalizeGoogleEndpoint,
+} from "./providers/googleProtocol";
 import { normalizeChatCompletionsEndpoint } from "./providers/openaiProtocol";
 import { buildLanguageDirective } from "./providers/prompts";
 import type { ProviderId } from "./providers/types";
@@ -104,6 +110,28 @@ export const SOURCE_LANGUAGES = [
 export const TARGET_LANGUAGES = SOURCE_LANGUAGES.filter(
   (code) => code !== "auto",
 ) as readonly string[];
+/**
+ * Selectable free translation services. `auto` rotates through the healthy
+ * Google client pools first, then MyMemory, then a user-supplied
+ * LibreTranslate instance. A specific value pins the run to that service.
+ */
+export const FREE_BACKENDS = [
+  "auto",
+  "google:it",
+  "google:at",
+  "google:gtx",
+  "google:dict-chrome-ex",
+  "google:firefox-a",
+  "mymemory",
+  "libretranslate",
+] as const;
+export type FreeBackendId = (typeof FREE_BACKENDS)[number];
+export const DEFAULT_FREE_BACKEND: FreeBackendId = "auto";
+export const DEFAULT_FREE_AUTO_FALLBACK = true;
+export const DEFAULT_LIBRE_TRANSLATE_URL = "";
+export const DEFAULT_MYMEMORY_URL = "https://api.mymemory.translated.net/get";
+export { DEFAULT_GOOGLE_CLIENT, GOOGLE_CLIENTS };
+
 export const DEFAULT_REQUEST_GAP_MS = 250;
 export const DEFAULT_MAX_CONCURRENT = 2;
 export const DEFAULT_MAX_CHARS_PER_REQUEST = 2800;
@@ -122,6 +150,13 @@ const ENGINE_PREF = `${BASE}.engine`;
 const OLLAMA_URL_PREF = `${BASE}.ollama.url`;
 const OLLAMA_MODEL_PREF = `${BASE}.ollama.model`;
 const GOOGLE_BASE_URL_PREF = `${BASE}.google.baseUrl`;
+const FREE_BACKEND_PREF = `${BASE}.free.backend`;
+const FREE_AUTO_FALLBACK_PREF = `${BASE}.free.autoFallback`;
+const FREE_GOOGLE_CLIENT_PREF = `${BASE}.free.googleClient`;
+const FREE_MYMEMORY_EMAIL_PREF = `${BASE}.free.myMemoryEmail`;
+const FREE_MYMEMORY_URL_PREF = `${BASE}.free.myMemoryUrl`;
+const FREE_LIBRE_URL_PREF = `${BASE}.free.libreTranslateUrl`;
+const LIBRE_API_KEY_PREF = SECRET_PREFS.libreTranslate;
 const OPENAI_ENDPOINT_PREF = `${BASE}.openai.endpoint`;
 const OPENAI_MODEL_PREF = `${BASE}.openai.model`;
 const OPENAI_API_KEY_PREF = SECRET_PREFS.openai;
@@ -284,6 +319,65 @@ export function setGoogleBaseURL(url: string): void {
   setStringPref(GOOGLE_BASE_URL_PREF, url.trim() || DEFAULT_GOOGLE_BASE_URL);
 }
 
+export function getFreeBackend(): FreeBackendId {
+  const raw = getStringPref(FREE_BACKEND_PREF, DEFAULT_FREE_BACKEND) as FreeBackendId;
+  return FREE_BACKENDS.includes(raw) ? raw : DEFAULT_FREE_BACKEND;
+}
+
+export function setFreeBackend(value: string): void {
+  const raw = value.trim() as FreeBackendId;
+  setStringPref(FREE_BACKEND_PREF, FREE_BACKENDS.includes(raw) ? raw : DEFAULT_FREE_BACKEND);
+}
+
+export function getFreeAutoFallback(): boolean {
+  return getBoolPref(FREE_AUTO_FALLBACK_PREF, DEFAULT_FREE_AUTO_FALLBACK);
+}
+
+export function setFreeAutoFallback(value: boolean): void {
+  setBoolPref(FREE_AUTO_FALLBACK_PREF, value);
+}
+
+export function getGoogleClient(): string {
+  return normalizeGoogleClient(getStringPref(FREE_GOOGLE_CLIENT_PREF, DEFAULT_GOOGLE_CLIENT));
+}
+
+export function setGoogleClient(value: string): void {
+  setStringPref(FREE_GOOGLE_CLIENT_PREF, normalizeGoogleClient(value));
+}
+
+/** Optional contact address raises MyMemory's anonymous daily quota. */
+export function getMyMemoryEmail(): string {
+  return getStringPref(FREE_MYMEMORY_EMAIL_PREF, "");
+}
+
+export function setMyMemoryEmail(value: string): void {
+  setStringPref(FREE_MYMEMORY_EMAIL_PREF, value.trim());
+}
+
+export function getMyMemoryURL(): string {
+  return getStringPref(FREE_MYMEMORY_URL_PREF, DEFAULT_MYMEMORY_URL);
+}
+
+export function setMyMemoryURL(value: string): void {
+  setStringPref(FREE_MYMEMORY_URL_PREF, value.trim() || DEFAULT_MYMEMORY_URL);
+}
+
+export function getLibreTranslateURL(): string {
+  return getStringPref(FREE_LIBRE_URL_PREF, DEFAULT_LIBRE_TRANSLATE_URL);
+}
+
+export function setLibreTranslateURL(value: string): void {
+  setStringPref(FREE_LIBRE_URL_PREF, value.trim());
+}
+
+export function getLibreTranslateApiKey(): string {
+  return getSecret(LIBRE_API_KEY_PREF).trim();
+}
+
+export function setLibreTranslateApiKey(value: string): void {
+  setSecret(LIBRE_API_KEY_PREF, value);
+}
+
 export function getOpenAIEndpoint(): string {
   return getStringPref(OPENAI_ENDPOINT_PREF, DEFAULT_OPENAI_ENDPOINT);
 }
@@ -439,7 +533,12 @@ export function setGeminiApiKey(apiKey: string): void {
 
 // Error messages and debug output must never carry a key this session holds in
 // memory. The logger calls this lazily, so rotating a key needs no re-wiring.
-setLogSecretsProvider(() => [getOpenAIApiKey(), getClaudeApiKey(), getGeminiApiKey()]);
+setLogSecretsProvider(() => [
+  getOpenAIApiKey(),
+  getClaudeApiKey(),
+  getGeminiApiKey(),
+  getLibreTranslateApiKey(),
+]);
 
 export function getGeminiPrompt(): string {
   return getRawStringPref(GEMINI_PROMPT_PREF).trim() || DEFAULT_OPENAI_PROMPT;
@@ -937,7 +1036,10 @@ export function getCacheEngineTag(): string {
     )}${language}${glossary}`;
   }
   // Google is also the fallback cache namespace for removed backend values.
-  return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${language}${glossary}`;
+  const backend = getFreeBackend();
+  const family =
+    backend === "auto" || backend.startsWith("google:") ? "" : `:${backend}`;
+  return `google:${normalizeGoogleEndpoint(getGoogleBaseURL())}${family}${language}${glossary}`;
 }
 
 /**

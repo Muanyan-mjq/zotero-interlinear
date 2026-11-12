@@ -22,6 +22,7 @@ export const SECRET_PREFS = {
   openai: "extensions.zotero.interlinear.openai.apiKey",
   claude: "extensions.zotero.interlinear.claude.apiKey",
   gemini: "extensions.zotero.interlinear.gemini.apiKey",
+  libreTranslate: "extensions.zotero.interlinear.libreTranslate.apiKey",
 } as const;
 
 export type SecretPrefKey = (typeof SECRET_PREFS)[keyof typeof SECRET_PREFS];

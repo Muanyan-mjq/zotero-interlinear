@@ -9,23 +9,28 @@ import {
   parseGoogleResponse,
 } from "../src/providers/googleProtocol.ts";
 
-test("normalizeGoogleEndpoint fills the default and the translate_a/single path", () => {
+test("normalizeGoogleEndpoint defaults to the batched translate_a/t path", () => {
   assert.equal(
     normalizeGoogleEndpoint(""),
-    "https://translate.googleapis.com/translate_a/single",
+    "https://translate.googleapis.com/translate_a/t",
   );
   assert.equal(
     normalizeGoogleEndpoint("translate.googleapis.com"),
-    "https://translate.googleapis.com/translate_a/single",
+    "https://translate.googleapis.com/translate_a/t",
   );
   assert.equal(
     normalizeGoogleEndpoint("https://mirror.example.com/"),
-    "https://mirror.example.com/translate_a/single",
+    "https://mirror.example.com/translate_a/t",
   );
   assert.equal(
     normalizeGoogleEndpoint("http://127.0.0.1:8080"),
-    "http://127.0.0.1:8080/translate_a/single",
+    "http://127.0.0.1:8080/translate_a/t",
   );
+  assert.equal(
+    normalizeGoogleEndpoint("https://mirror.example.com/translate_a/t"),
+    "https://mirror.example.com/translate_a/t",
+  );
+  // Legacy single endpoints are preserved so custom mirrors keep working.
   assert.equal(
     normalizeGoogleEndpoint("https://mirror.example.com/translate_a/single"),
     "https://mirror.example.com/translate_a/single",
@@ -39,7 +44,7 @@ test("buildGoogleQuery encodes source, target and text", () => {
     text: "Hello world & 你好",
   });
   const params = new URLSearchParams(query);
-  assert.equal(params.get("client"), "gtx");
+  assert.equal(params.get("client"), "it");
   assert.equal(params.get("sl"), "auto");
   assert.equal(params.get("tl"), "zh-CN");
   assert.equal(params.get("dt"), "t");
@@ -342,7 +347,7 @@ test("extractGeminiErrorDetail reads Google API error messages and truncates the
 test("buildGoogleQueryMulti appends one q per segment", () => {
   const query = buildGoogleQueryMulti("en", "zh-CN", ["Hello", "World & more", ""]);
   const params = new URLSearchParams(query);
-  assert.equal(params.get("client"), "gtx");
+  assert.equal(params.get("client"), "it");
   assert.equal(params.get("sl"), "en");
   assert.equal(params.get("tl"), "zh-CN");
   assert.deepEqual(params.getAll("q"), ["Hello", "World & more", ""]);
@@ -373,4 +378,24 @@ test("parseGoogleMultiResponse rejects wrong counts, gaps and bad shapes", () =>
 test("parseGoogleResponse still handles single-segment payloads", () => {
   assert.equal(parseGoogleResponse([[["你好", "Hello"]]]), "你好");
   assert.equal(parseGoogleResponse([[[", ", "Hello"], ["世界", " World"]]]), ", 世界");
+});
+
+test("buildGoogleQueryMulti honors the chosen quota pool and rejects unknown clients", () => {
+  const query = buildGoogleQueryMulti("en", "zh-CN", ["A", "B"], "at");
+  assert.equal(new URLSearchParams(query).get("client"), "at");
+  assert.equal(
+    new URLSearchParams(buildGoogleQueryMulti("en", "zh-CN", ["A"], "bogus")).get("client"),
+    "it",
+  );
+});
+
+test("parseGoogleMultiResponse accepts the translate_a/t string array shape", () => {
+  assert.deepEqual(parseGoogleMultiResponse(["你好", "世界"], 2), ["你好", "世界"]);
+  assert.equal(parseGoogleMultiResponse(["你好"], 2), null);
+  assert.equal(parseGoogleMultiResponse(["你好", ""], 2), null);
+  assert.equal(parseGoogleMultiResponse(["你好", 42], 2), null);
+});
+
+test("parseGoogleResponse accepts the translate_a/t single-result array", () => {
+  assert.equal(parseGoogleResponse(["你好"]), "你好");
 });

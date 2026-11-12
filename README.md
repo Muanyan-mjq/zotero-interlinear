@@ -12,7 +12,7 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 
 ## Features
 
-- **Five built-in translation services.** Google Translate works out of the box with no API key. OpenAI-compatible endpoints, Anthropic Claude, Google Gemini, and Ollama are one settings page away. No companion plugin is required.
+- **Five built-in translation services.** Free Google Translate works out of the box with no API key (rotating several independent quota pools, with MyMemory and self-hosted LibreTranslate as fallbacks). OpenAI-compatible endpoints, Anthropic Claude, Google Gemini, and Ollama are one settings page away. No companion plugin is required.
 - **Four layouts.** Translation below the source, side-by-side columns, translation only, or source only. A dedicated display-mode button cycles through them; side-by-side keeps the first lines aligned without disturbing Zotero's native highlights.
 - **One toolbar toggle.** The main toolbar button starts a translation run, then shows or hides the result. While a run is in progress, clicking it pauses and hides; clicking again shows the translations and resumes unfinished paragraphs. Each reader keeps its own state.
 - **Translate as you read.** Rest the pointer on a paragraph, press your custom shortcut, Alt-click, or select text — each triggers a single-paragraph translation without starting a full-document run.
@@ -84,9 +84,30 @@ Open **Edit → Settings → Interlinear**. The page uses five tabs; the save ba
 
 > **Privacy and keys.** Translating sends paragraph text to whichever service you configure — that is unavoidable, so do not translate sensitive documents with a service you do not trust. API keys are a separate story: Interlinear encrypts them with Zotero's OS key store (macOS Keychain, Windows DPAPI, Linux libsecret) and keeps only the `oskv1:` ciphertext in Zotero preferences. Keys are never written to logs, cache keys, debug output or exported appearance files, and they are sent in headers rather than URLs. Requests to non-loopback endpoints must use HTTPS unless you explicitly confirm a plain-HTTP host, and credential-bearing requests never follow redirects. Because the encryption key lives in your OS account, a profile copied to another machine or OS user cannot decrypt the stored key — re-enter it there. On Linux without a Secret Service, Interlinear keeps the key for the current session only by default; saving it unencrypted is possible but must be confirmed in the settings page and is then marked as unencrypted. Keys stored as plaintext by 0.6.0 and earlier are encrypted in place on first start, and the plaintext form stays readable until you save the key again.
 
+
+### Free translation services (no API key)
+
+Under **Services → Google** you can pick a specific service or keep **Auto
+rotate** (default), which tries Google's `it`, `at`, `gtx`, `dict-chrome-ex`
+and `firefox-a` quota pools, then MyMemory and a configured LibreTranslate
+instance. A throttled pool is skipped within the same batch instead of failing
+the paragraph. You can also choose the preferred pool, toggle automatic
+fallback, set custom endpoints, and see which service is active or cooling
+down. "Test connection" uses the current form values without saving first.
+
+The default `translate_a/t` endpoint carries several paragraphs per request
+(about 6× fewer requests than per-paragraph calls) and is paced to one request
+per second. Free endpoints throttle by IP, so very large runs may still enter a
+cooldown: the run pauses with a countdown and resumes automatically instead of
+marking every paragraph as failed. Translated paragraphs are cached. For
+consistently large workloads, use a model backend instead.
+
+> **Privacy:** MyMemory adds submitted text to its public translation memory.
+> Do not use it for sensitive documents.
+
 ### Network and proxy
 
-The default Google endpoint needs a working connection to `translate.googleapis.com`. Interlinear sends every request through Zotero's own HTTP layer (`Zotero.HTTP.request`), so it uses whatever proxy Zotero uses — there is no separate proxy setting in the plugin, and it cannot bypass Zotero's proxy configuration. Whether Zotero itself follows the system proxy depends on Zotero's network preferences and your OS settings (*not independently verified here*).
+The default Google endpoint needs a working connection to `translate.googleapis.com`; the MyMemory and LibreTranslate fallbacks need their own endpoints reachable. Interlinear sends every request through Zotero's own HTTP layer (`Zotero.HTTP.request`), so it uses whatever proxy Zotero uses — there is no separate proxy setting in the plugin, and it cannot bypass Zotero's proxy configuration. Whether Zotero itself follows the system proxy depends on Zotero's network preferences and your OS settings (*not independently verified here*).
 
 If "Test connection" fails: check that your system proxy or TUN mode is running, try another translation backend (OpenAI-compatible, Claude, Gemini or a local Ollama), and only then consider a mirror address you trust. Failure messages now say which of these is likely — timeout, DNS, refused/reset connection, HTTP status, rate limiting, redirect, or unparsable response.
 

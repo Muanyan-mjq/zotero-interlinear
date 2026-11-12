@@ -4,17 +4,38 @@
 export const DEFAULT_GOOGLE_BASE_URL = "https://translate.googleapis.com";
 
 /**
- * Accept a base URL (with or without scheme/path) and return the endpoint that
- * accepts `client=gtx` queries. A full endpoint is kept verbatim so users can
- * point the provider at a mirror with a non-standard path.
+ * Google's free endpoint is split into per-`client` quota pools. A pool that
+ * has been throttled for an IP does not affect the others, and `translate_a/t`
+ * answers one translation per `q` value in a plain string array — which makes
+ * it a much cheaper batch path than `translate_a/single`.
+ */
+export const GOOGLE_CLIENTS = [
+  "it",
+  "at",
+  "gtx",
+  "dict-chrome-ex",
+  "firefox-a",
+] as const;
+export type GoogleClient = (typeof GOOGLE_CLIENTS)[number];
+export const DEFAULT_GOOGLE_CLIENT: GoogleClient = "it";
+
+export function normalizeGoogleClient(raw: string): GoogleClient {
+  const value = String(raw || "").trim() as GoogleClient;
+  return GOOGLE_CLIENTS.includes(value) ? value : DEFAULT_GOOGLE_CLIENT;
+}
+
+/**
+ * Accept a base URL or a full endpoint and return a usable `translate_a/t`
+ * URL. Legacy `/translate_a/single` URLs are preserved so that a user-supplied
+ * mirror keeps working with the response parser for that shape.
  */
 export function normalizeGoogleEndpoint(raw: string): string {
   let url = String(raw || "").trim();
   if (!url) url = DEFAULT_GOOGLE_BASE_URL;
   if (!/^https?:\/\//iu.test(url)) url = `https://${url}`;
   url = url.replace(/\/+$/, "");
-  if (/\/translate_a\/single$/iu.test(url)) return url;
-  return `${url}/translate_a/single`;
+  if (/\/translate_a\/(?:single|t)$/iu.test(url)) return url;
+  return `${url}/translate_a/t`;
 }
 
 export interface GoogleQueryInput {
@@ -28,18 +49,19 @@ export function buildGoogleQuery(input: GoogleQueryInput): string {
 }
 
 /**
- * The `client=gtx` endpoint accepts the `q` parameter more than once and
- * answers with one result per value, in order. Batching segments into a
- * single request cuts the request count per document by the batch size,
- * which matters because the endpoint throttles by IP.
+ * `translate_a/t` accepts the `q` parameter more than once and answers with
+ * one translated string per value, in order. Batching segments into a single
+ * request cuts the request count per document by the batch size, which matters
+ * because the free endpoint throttles by IP.
  */
 export function buildGoogleQueryMulti(
   source: string,
   target: string,
   texts: string[],
+  client: string = DEFAULT_GOOGLE_CLIENT,
 ): string {
   const params = new URLSearchParams();
-  params.set("client", "gtx");
+  params.set("client", normalizeGoogleClient(client));
   params.set("sl", source || "auto");
   params.set("tl", target);
   params.set("dt", "t");
@@ -54,16 +76,18 @@ export function parseGoogleResponse(payload: any): string | null {
 }
 
 /**
- * Parse a multi-`q` response: an array with one `[[[translated, ...], ...]]`
- * payload per requested segment, in order. Returns null when the shape or the
- * count does not match so callers can treat it as a hard failure instead of
- * guessing at the alignment.
+ * Parse a multi-`q` response. `translate_a/t` returns a plain `string[]` with
+ * one entry per segment; the older `translate_a/single` endpoint returns one
+ * nested `[[[translated, ...], ...]]` payload per segment. Both shapes are
+ * accepted, but a wrong count or a bad shape returns null so callers can fall
+ * back instead of guessing at paragraph alignment.
  */
 export function parseGoogleMultiResponse(payload: any, expectedCount: number): string[] | null {
   if (!Array.isArray(payload) || payload.length !== expectedCount) return null;
+
   const results: string[] = [];
   for (const entry of payload) {
-    const text = parseSingleResult(entry);
+    const text = typeof entry === "string" ? entry : parseSingleResult(entry);
     if (!text || !text.trim()) return null;
     results.push(text.trim());
   }
@@ -72,6 +96,10 @@ export function parseGoogleMultiResponse(payload: any, expectedCount: number): s
 
 /** Concatenate the `dt=t` sentence segments of one `q` result. */
 function parseSingleResult(payload: any): string | null {
+  // `translate_a/t` with a single `q` returns a bare string array.
+  if (Array.isArray(payload) && payload.length && typeof payload[0] === "string") {
+    return payload.join("");
+  }
   const segments = payload?.[0];
   if (!Array.isArray(segments)) return null;
 

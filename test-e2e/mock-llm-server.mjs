@@ -8,10 +8,15 @@ const responseText = "MOCK-LLM-OK";
 const state = {
   // Return 429 for the first request to each LLM path, to exercise retries.
   firstHitFlaky: true,
-  // Return 429 for every /translate_a/single request until cleared.
+  // Return 429 for every free Google request until cleared.
   googleThrottle: false,
+  // Return 429 only for these `client` quota pools, to exercise pool rotation.
+  googleThrottleClients: [],
   // Return a 302 to Google's "sorry" captcha until cleared.
   googleCaptcha: false,
+  google429Style: "plain",
+  myMemoryFail: false,
+  libreFail: false,
 };
 
 const hitCounts = new Map();
@@ -22,6 +27,9 @@ const stats = {
   googleSegments: 0,
   googleThrottled: 0,
   googleCaptchas: 0,
+  googleByClient: {},
+  myMemoryRequests: 0,
+  libreRequests: 0,
 };
 
 function bump(map, key) {
@@ -52,8 +60,12 @@ const server = http.createServer((request, response) => {
       return;
     }
 
-    if (/\/translate_a\/single(?:\?|$)/u.test(url)) {
+    if (/\/translate_a\/(?:single|t)(?:\?|$)/u.test(url)) {
+      const params = new URLSearchParams(body);
+      const client = params.get("client") || "gtx";
       stats.googleRequests += 1;
+      stats.googleByClient[client] = (stats.googleByClient[client] || 0) + 1;
+
       if (state.googleCaptcha) {
         stats.googleCaptchas += 1;
         response.statusCode = 302;
@@ -61,7 +73,11 @@ const server = http.createServer((request, response) => {
         response.end("");
         return;
       }
-      if (state.googleThrottle) {
+      const blocked =
+        state.googleThrottle ||
+        (Array.isArray(state.googleThrottleClients) &&
+          state.googleThrottleClients.includes(client));
+      if (blocked) {
         stats.googleThrottled += 1;
         response.statusCode = 429;
         if (state.google429Style === "llm") {
@@ -77,15 +93,59 @@ const server = http.createServer((request, response) => {
         return;
       }
 
-      const params = new URLSearchParams(body);
       const segments = params.getAll("q");
       stats.googleSegments += segments.length;
-      // One result per q, in order: each entry is the regular single-q
-      // payload `[[[translated, original, ...], ...], ...]`.
-      const results = segments.map((text) => [[["ZH:" + text, text, null, null, 1]]]);
-      const payload = segments.length === 1 ? results[0] : results;
+      const isBatched = /\/translate_a\/t(?:\?|$)/u.test(url);
+      // `translate_a/t` answers with a plain string array; the legacy
+      // `/single` endpoint wraps each result in the nested dt=t shape.
+      const payload = isBatched
+        ? segments.map((text) => `ZH:${text}`)
+        : segments.length === 1
+          ? [[[`ZH:${segments[0]}`, segments[0], null, null, 1]]]
+          : segments.map((text) => [[[`ZH:${text}`, text, null, null, 1]]]);
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(payload));
+      return;
+    }
+
+    // MyMemory free API.
+    if (url.startsWith("/get?")) {
+      stats.myMemoryRequests += 1;
+      const q = new URLSearchParams(url.slice(url.indexOf("?") + 1)).get("q") || "";
+      response.setHeader("Content-Type", "application/json");
+      if (state.myMemoryFail) {
+        response.end(JSON.stringify({ quotaFinished: true, responseStatus: 429 }));
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          responseData: { translatedText: `MM:${q}`, match: 0 },
+          quotaFinished: false,
+          responseStatus: 200,
+        }),
+      );
+      return;
+    }
+
+    // LibreTranslate self-hosted API.
+    if (url === "/translate" && request.method === "POST") {
+      stats.libreRequests += 1;
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        parsed = {};
+      }
+      const segments = Array.isArray(parsed.q) ? parsed.q : [parsed.q];
+      response.setHeader("Content-Type", "application/json");
+      if (state.libreFail) {
+        response.statusCode = 429;
+        response.end(JSON.stringify({ error: "simulated LibreTranslate failure" }));
+        return;
+      }
+      response.end(
+        JSON.stringify({ translatedText: segments.map((text) => `LT:${String(text)}`) }),
+      );
       return;
     }
 
@@ -127,4 +187,4 @@ const server = http.createServer((request, response) => {
   });
 });
 
-server.listen(port, "0.0.0.0", () => console.log(`mock-llm listening on 0.0.0.1:${port}`));
+server.listen(port, "0.0.0.0", () => console.log(`mock-llm listening on ${host}:${port}`));

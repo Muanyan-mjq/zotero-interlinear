@@ -10,6 +10,31 @@ reproduced here.
 
 ## [Unreleased]
 
+### Added
+
+- Free translation is now a configurable service chain. Google's free endpoint
+  has independent per-`client` quota pools (`it`, `at`, `gtx`,
+  `dict-chrome-ex`, `firefox-a`); the default uses the batched
+  `translate_a/t` endpoint with one request per batch of paragraphs. When a
+  pool is throttled, the router switches to a healthy pool within the same
+  batch instead of failing every paragraph.
+- Two more free backends: MyMemory (no key, configurable endpoint, optional
+  contact address for a higher daily quota) and LibreTranslate (custom server
+  URL with an optional API key stored in the OS key store).
+- Settings for free services: pin one service or keep auto rotation, choose the
+  preferred Google pool, toggle automatic fallback, set custom endpoints, and
+  see the active service plus any pools that are cooling down. "Test
+  connection" now uses the current form values without saving first.
+
+### Fixed
+
+- A whole run no longer leaves every paragraph stuck on a "retry in N seconds"
+  message: concurrent workers share one run-wide cooldown, the wait is capped,
+  and a run that exhausts every free service shows an actionable paused state.
+- Google's `client=gtx` pool being blocked for an IP no longer makes free
+  translation unusable; the router rotates pools and falls back to other free
+  services automatically.
+
 ### Fixed
 
 - Full-document Google translation no longer collapses into per-paragraph
