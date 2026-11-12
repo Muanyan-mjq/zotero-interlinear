@@ -62,6 +62,10 @@ documentation of this plugin's UI.
 
 ## Install
 
+> **Restart Zotero after installing or updating.** The settings pane and the reader toolbar are
+> registered at startup; opening the settings before restarting can show an empty Interlinear pane
+> (the labels are filled in at runtime). One restart is enough.
+
 1. Download the latest `interlinear.xpi` from [Releases](https://github.com/Muanyan-mjq/zotero-interlinear/releases).
 2. In Zotero: **Tools → Plugins → gear icon → Install Plugin From File…**, then pick the `.xpi`.
 3. Restart Zotero if prompted.

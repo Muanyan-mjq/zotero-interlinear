@@ -60,6 +60,9 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 ## 安装
 
+> **安装或更新后请重启 Zotero。** 设置页与阅读器工具栏是在启动时注册的；不重启就打开设置，可能看到
+> Interlinear 面板是空白的（文字是运行时注入的）。重启一次即可。
+
 1. 从 [Releases](https://github.com/Muanyan-mjq/zotero-interlinear/releases) 下载最新的 `interlinear.xpi`。
 2. 在 Zotero 中打开 **工具 → 插件 → 右上角齿轮 → 从文件安装插件…**，选择该 `.xpi`。
 3. 如有提示，重启 Zotero。
