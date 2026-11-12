@@ -402,6 +402,7 @@ export type FluentMessageId =
   | 'provider-engine-label'
   | 'provider-engine-ollama'
   | 'provider-engine-openai'
+  | 'provider-error-captcha'
   | 'provider-error-claude-empty'
   | 'provider-error-claude-endpoint'
   | 'provider-error-claude-http'

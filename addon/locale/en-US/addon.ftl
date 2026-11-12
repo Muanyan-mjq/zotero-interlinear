@@ -571,3 +571,4 @@ network-hint-http = The service rejected the request: check the endpoint, model 
 network-hint-parse = The service returned data this backend cannot read: check that the endpoint matches the selected backend, or try another one.
 network-hint-empty = The service returned no translation: retry, or try another backend.
 network-hint-unknown = The request failed: check your system proxy or TUN mode, try another translation backend, or retry later.
+provider-error-captcha = The translation service asked for a human check (it treated these requests as automated traffic). Wait a few minutes, lower the concurrency or request gap in the settings, or switch to another backend.
