@@ -65,6 +65,51 @@ async function waitForStoredSecret(prefKey: string): Promise<string> {
   return "";
 }
 
+/**
+ * Guard the reporter channel. The scaffold's mocha reporter posts results to
+ * `http://localhost:<port>/update` through `Zotero.HTTP.request`; tests replace
+ * that function with doubles. If a test hangs while its double is installed,
+ * the timeout "fail" event would also travel through the double,
+ * `JSON.parse(undefined)` would throw inside the reporter, and the runner would
+ * never receive the "end" event — the whole test process would hang forever
+ * (this exact hang froze CI twice). Intercept every assignment and route only
+ * the reporter's `/update` endpoint to the real implementation. Matching all
+ * localhost traffic would break the Ollama/OpenAI providers, whose default
+ * endpoints live on 127.0.0.1:11434 and must reach the test double.
+ */
+before(function () {
+  const HTTP = Zotero.HTTP as any;
+  const real = HTTP.request;
+  const wrapped = Symbol("wrappedHttpRequest");
+  let current: (...args: any[]) => any = real;
+  const isReporter = (value: unknown): boolean =>
+    /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/update(?:\?.*)?$/u.test(String(value));
+  const wrap = (fn: (...args: any[]) => any) => {
+    const wrapper = (...args: any[]) => {
+      if (args.some((arg) => isReporter(arg))) return real.call(HTTP, ...args);
+      return fn.call(HTTP, ...args);
+    };
+    (wrapper as any)[wrapped] = fn;
+    return wrapper;
+  };
+  Object.defineProperty(HTTP, "request", {
+    configurable: true,
+    get() {
+      return current;
+    },
+    set(fn: (...args: any[]) => any) {
+      if (typeof fn !== "function") {
+        current = real;
+        return;
+      }
+      // Tests save `Zotero.HTTP.request` before replacing it and restore that
+      // value later. Unwrap our own proxies so a restored value delegates to
+      // the original double instead of calling itself.
+      current = fn[wrapped] || wrap(fn);
+    },
+  });
+});
+
 describe("startup", function () {
   it("should have plugin instance defined", function () {
     assert.isNotEmpty(Zotero[config.addonInstance]);
@@ -1886,11 +1931,19 @@ describe("startup", function () {
         },
       };
       let requests = 0;
-      (Zotero.HTTP as any).request = async () => {
+      // Answer one result per `q`, the way `translate_a/t` does; the plugin
+      // batches both paragraphs into a single request.
+      (Zotero.HTTP as any).request = async (
+        _method: string,
+        _url: string,
+        options: any,
+      ) => {
         requests += 1;
+        const body = String(options?.body || "");
+        const count = Math.max(1, (body.match(/(?:^|&)q=/gu) || []).length);
         return {
           status: 200,
-          response: [[["显示模式集成测试译文。", "source", null, null]]],
+          response: Array.from({ length: count }, () => "显示模式集成测试译文。"),
         };
       };
 
@@ -2271,7 +2324,7 @@ describe("startup", function () {
 
       const translated = doc.querySelector(".interlinear-translation");
       assert.equal(requestedMethod, "POST");
-      assert.match(requestedURL, /translate_a\/single$/u);
+      assert.match(requestedURL, /translate_a\/t$/u);
       assert.include(requestedBody, "sl=en");
       assert.include(requestedBody, "tl=zh-CN");
       assert.equal(translated?.textContent, "This 基因 is useful.");
@@ -3330,7 +3383,13 @@ describe("startup", function () {
       const actions = Array.from(menu.querySelectorAll("button[data-action]")).map(
         (button) => button.getAttribute("data-action"),
       );
-      assert.deepEqual(actions, ["refresh", "cancel", "export", "settings"]);
+      assert.deepEqual(actions, [
+        "paragraph-mode",
+        "refresh",
+        "cancel",
+        "export",
+        "settings",
+      ]);
       const cancel = menu.querySelector('[data-action="cancel"]') as HTMLButtonElement;
       assert.isTrue(cancel.disabled, "Cancel is only available while a run is active");
 

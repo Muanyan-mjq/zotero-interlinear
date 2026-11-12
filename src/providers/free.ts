@@ -65,6 +65,8 @@ const TRANSIENT_COOLDOWN_MS = 30_000;
 const MIN_ALL_COOLDOWN_MS = 15_000;
 
 const disabledUntil = new Map<string, number>();
+/** Why a backend is cooling down: true when it was actually throttled. */
+const cooldownThrottled = new Map<string, boolean>();
 let activeBackendId = "";
 
 export function readFreeConfig(): FreeConfig {
@@ -89,6 +91,7 @@ export function getFreeActiveBackend(): string {
 
 export function resetFreeBackends(): void {
   disabledUntil.clear();
+  cooldownThrottled.clear();
   activeBackendId = "";
 }
 
@@ -428,6 +431,18 @@ function cooldownFor(error: unknown): number {
   return TRANSIENT_COOLDOWN_MS;
 }
 
+/**
+ * True when a failure looks like IP/endpoint throttling rather than a bad
+ * response. Only throttling justifies parking the whole run: a shape mismatch
+ * or a rejected payload must fail fast so the caller can fall back to the
+ * per-segment path instead of waiting out a cooldown it cannot cure.
+ */
+function isThrottleFailure(error: unknown): boolean {
+  if (error instanceof GoogleThrottleError) return true;
+  const message = String((error as any)?.message || error || "");
+  return /\b429\b|quota|rate.?limit|too many requests/iu.test(message);
+}
+
 export async function translateFree(
   texts: string[],
   context: ProviderContext,
@@ -435,10 +450,16 @@ export async function translateFree(
 ): Promise<string[]> {
   const chain = buildFreeChain(config);
   const now = Date.now();
+  let sawThrottle = false;
   const available = chain.filter((backend) => (disabledUntil.get(backend.id) || 0) <= now);
 
   if (!available.length) {
     const soonest = Math.min(...chain.map((backend) => disabledUntil.get(backend.id) || 0));
+    // Only a real throttle justifies parking the run. Cooldowns left behind
+    // by parse/connection failures must fail fast so the caller can retry the
+    // paragraph another way instead of waiting out a timer.
+    const throttled = chain.some((backend) => cooldownThrottled.get(backend.id) === true);
+    if (!throttled) throw new Error(getString("free-all-unavailable"));
     throw new GoogleThrottleError(
       getString("free-all-unavailable"),
       Math.max(MIN_ALL_COOLDOWN_MS, soonest - now),
@@ -456,13 +477,23 @@ export async function translateFree(
         throw new Error(getString("provider-error-google-empty"));
       }
       disabledUntil.delete(backend.id);
+      cooldownThrottled.delete(backend.id);
       activeBackendId = backend.id;
       return translated;
     } catch (error: any) {
+      const throttled = isThrottleFailure(error);
+      if (throttled) sawThrottle = true;
       disabledUntil.set(backend.id, Date.now() + cooldownFor(error));
+      cooldownThrottled.set(backend.id, throttled);
       if (activeBackendId === backend.id) activeBackendId = "";
     }
   }
+
+  // Nothing is throttled, so every service answered but rejected the payload
+  // (for example a response shape this build cannot parse). Surface a plain
+  // error: the caller falls back to per-segment requests immediately instead
+  // of pausing the run for a cooldown that would not change the outcome.
+  if (!sawThrottle) throw new Error(getString("free-all-unavailable"));
 
   const soonest = Math.min(...available.map((backend) => disabledUntil.get(backend.id) || 0));
   throw new GoogleThrottleError(

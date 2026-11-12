@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
+## [0.8.1] - 2026-11-12
+
+### Fixed
+
+- A free-service failure that is not throttling (for example a response shape
+  this build cannot parse) now fails fast instead of parking the whole run in a
+  cooldown that could not change the outcome.
+- The CI test runner no longer hangs when a test times out while a
+  `Zotero.HTTP.request` double is installed. The layout regression tests also no
+  longer depend on `requestAnimationFrame` firing in a headless reader window.
+
 ## [0.8.0] - 2026-11-12
 
 ### Added
@@ -69,9 +80,6 @@ reproduced here.
 - Google's `client=gtx` pool being blocked for an IP no longer makes free
   translation unusable; the router rotates pools and falls back to other free
   services automatically.
-
-### Fixed
-
 - Full-document Google translation no longer collapses into per-paragraph
   "translation failed" after a couple of articles. Three interacting causes
   were fixed:
@@ -89,7 +97,7 @@ reproduced here.
     clear rate-limit explanation) if throttling persists.
 - Model backends (OpenAI-compatible, Claude, Gemini, Ollama) now retry
   429/5xx responses themselves with 1s/2s/4s backoff instead of failing the
-    paragraph on the first response.
+  paragraph on the first response.
 
 ## [0.7.0] - 2026-11-12
 
