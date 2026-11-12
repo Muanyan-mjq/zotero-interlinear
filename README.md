@@ -68,6 +68,20 @@ documentation of this plugin's UI.
 
 Requires **Zotero 10 (desktop)**. See [Acknowledgements](#acknowledgements) if you are coming from the original plugin.
 
+### Platform support
+
+| Platform | Status |
+|---|---|
+| Windows 10/11 | Hand-tested with Zotero 10.0.8 and Zotero 11 dev builds (the screenshot set above was captured there). |
+| macOS | Built in CI; no hands-on run yet. The plugin has no platform-specific code, and keys use the macOS Keychain through Zotero's OS key store. |
+| Linux | Built in CI and the integration suite runs on `ubuntu-latest`, so the reader/settings flow is exercised there. Keys need a Secret Service (libsecret); without one the plugin keeps the key for the session only. |
+
+API keys are encrypted with the OS key store on all three platforms (Keychain, DPAPI,
+libsecret). If that store is missing — most often a minimal Linux desktop without a Secret
+Service — the settings page says so and offers session-only storage instead of writing
+plaintext. Copies of a profile moved to another machine or OS user cannot decrypt the stored
+key; enter it again there.
+
 ## Configuration
 
 Open **Edit → Settings → Interlinear**. The page uses five tabs; the save bar and tab strip stay visible while you scroll, and modified fields show an unsaved-changes hint:

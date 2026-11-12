@@ -4,7 +4,7 @@ import { registerReaderToolbar, unregisterReaderToolbar } from "./readerToolbar"
 import { registerChatPane, unregisterChatPane } from "./chatPane";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { migrateLegacyPreferences } from "./settings";
-import { initSecrets } from "./secrets";
+import { initSecrets, isKeystoreAvailable } from "./secrets";
 import { flushTranslationCacheIndex } from "./translationCache";
 import { cleanupAllReadingLayouts } from "./readingLayout";
 import { logError } from "./utils/log";
@@ -66,6 +66,12 @@ async function onStartup() {
   }
 
   await Promise.all(Zotero.getMainWindows().map((win) => onMainWindowLoad(win)));
+
+  // Helps bug reports from macOS/Linux, where the OS key store may be absent.
+  Zotero.debug(
+    `Interlinear: platform=${Zotero.isMac ? "mac" : Zotero.isWin ? "win" : "linux"} ` +
+      `zotero=${Zotero.version} keystore=${isKeystoreAvailable() ? "available" : "unavailable"}`,
+  );
 
   if (addon.data.alive) addon.data.initialized = true;
 }

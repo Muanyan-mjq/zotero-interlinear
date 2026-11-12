@@ -66,6 +66,18 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 仅支持 **Zotero 10 桌面版**。从原插件迁移过来的用户请先看[致谢](#致谢)一节。
 
+### 平台支持
+
+| 平台 | 状态 |
+|---|---|
+| Windows 10/11 | 已在 Zotero 10.0.8 与 Zotero 11 dev 构建上实机验证（上面的截图即来自该环境）。 |
+| macOS | CI 能构建；尚未实机运行。代码没有平台分支，密钥走 macOS Keychain（经 Zotero 的 OS key store）。 |
+| Linux | CI 能构建，且集成测试跑在 `ubuntu-latest` 上，阅读器/设置页流程有覆盖。密钥需要 Secret Service（libsecret）；没有时只在本次会话使用。 |
+
+三个平台的密钥都通过系统钥匙串加密（Keychain / DPAPI / libsecret）。如果钥匙串不可用
+（最常见的是没有 Secret Service 的精简 Linux 桌面），设置页会明确提示，并提供“仅本次会话”的选项，
+不会静默写明文。把 profile 拷到另一台机器或另一个系统用户后无法解密，需要重新输入。
+
 ## 配置
 
 打开 **编辑 → 设置 → Interlinear**。设置页分为五个标签页，顶部保存栏与标签栏在滚动时保持可见；有改动未保存时会显示提示：

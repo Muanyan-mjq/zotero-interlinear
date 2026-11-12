@@ -555,7 +555,7 @@ settings-secret-status-session = 仅本次会话有效
 settings-secret-status-reentry = 需要重新输入
 settings-secret-clear = 清除密钥
 settings-secret-cleared = 密钥已清除
-settings-secret-keystore-warning = 系统钥匙串不可用，无法加密保存这个密钥。可以只在本次会话使用，或以未加密方式写入 Zotero 偏好（不推荐）。
+settings-secret-keystore-warning = 系统钥匙串不可用，无法加密保存这个密钥。Linux 上通常是 Secret Service（libsecret）没有运行。可以只在本次会话使用，或以未加密方式写入 Zotero 偏好（不推荐）。
 settings-secret-keep-session = 仅本次会话
 settings-secret-save-unencrypted = 仍然不加密保存
 
