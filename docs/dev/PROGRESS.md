@@ -1660,3 +1660,17 @@
 ### 未目视验证
 
 - 真机 PDF 上的阅读模式切换、左右分栏、插入/删除译文后的高亮几何：集成测试只断言 DOM 与几何数值，未目视。
+
+## Step 9：面向新手的使用文档（docs/guide/GUIDE-zh-CN.md、GUIDE-en.md）
+
+### 基线与产出范围
+
+- 新建分支 `docs/user-guide`，从 `feat/network-hints` @ `4fab6fb`（2026-11-12 08:37:36 +0800，`test: annotate the private-key fixture inline`）切出；该提交比 `main` @ `f2f7da8` 领先 14 个提交，包含密钥加密、端点安全与网络失败提示三组改动。
+- 文档对应版本取 `package.json` 的 `version`（`0.6.0`），并在正文注明“以 Releases 页面最新版为准”。
+- 交付：中文主文档、英文对应版、真实截图（`docs/guide/images/`）、`docs/dev/GUIDE-VERIFY.md`、`docs/dev/GUIDE-TODO.md`，以及两个 README 的入口链接与 CHANGELOG 条目。
+- 发布时间状态：GitHub 上现有 Release 早于本分支的改动，本次保留不动。凡依赖“新版发布”才能确定的内容（Releases 页面截图、xpi 文件名、版本号）一律写入 `docs/dev/GUIDE-TODO.md`，正文只用中性写法。
+
+### 约定
+
+- 每步单独提交，前缀 `docs:`；不 push、不动 remote 与 tag、不改功能代码、不新增依赖。
+- 截图工具与标注脚本放在仓库之外的临时目录；仓库内只增加最终图片与文档。
