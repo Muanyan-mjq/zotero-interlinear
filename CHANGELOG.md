@@ -39,6 +39,14 @@ reproduced here.
 - `SECURITY.md` with the private vulnerability reporting path and the threat
   model boundaries.
 
+### Upgrade notes
+
+- Restart Zotero after installing this version. The settings pane is now bootstrapped from a
+  registered script instead of an inline `onload` handler, and that registration only takes effect
+  on the next start; opening the settings right after installing shows an empty pane.
+- API keys stored in plaintext by 0.6.0 and earlier are encrypted in place on first start. Keys
+  cannot be read by 0.6.0 afterwards, so backing up `prefs.js` before downgrading is advisable.
+
 ## [0.6.0] - 2026-11-10
 
 ### Added
