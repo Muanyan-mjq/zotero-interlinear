@@ -571,3 +571,4 @@ network-hint-http = 服务拒绝了请求：请检查端点、模型与密钥，
 network-hint-parse = 服务返回了此后端无法解析的数据：请确认端点与所选后端匹配，或改用其他后端。
 network-hint-empty = 服务没有返回译文：请重试，或改用其他后端。
 network-hint-unknown = 请求失败：请检查系统代理或 TUN 模式，或改用其他翻译后端、稍后重试。
+provider-error-captcha = 翻译服务要求人机校验（它把这些请求当成了自动流量）。请等几分钟再试，或在设置里调低并发／加大请求间隔，或改用其他翻译后端。

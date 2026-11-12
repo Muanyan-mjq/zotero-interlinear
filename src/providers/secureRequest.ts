@@ -9,6 +9,7 @@
 // only answers for `Location` (see chrome/content/zotero/xpcom/http.js).
 
 import { getString } from "../utils/locale";
+import { isCaptchaRedirect } from "../utils/redirect";
 
 export function isRedirectStatus(status: unknown): boolean {
   return typeof status === "number" && status >= 300 && status < 400;
@@ -25,6 +26,7 @@ export function getRedirectLocation(xhr: any): string {
 
 export function redirectErrorMessage(xhr: any): string {
   const location = getRedirectLocation(xhr);
+  if (isCaptchaRedirect(location)) return getString("provider-error-captcha");
   return location
     ? getString("provider-error-redirect", { args: { location } })
     : getString("provider-error-redirect-unknown");
