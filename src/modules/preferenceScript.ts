@@ -4080,7 +4080,9 @@ async function testOpenAI(doc: Document): Promise<void> {
   const endpoint =
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT;
   const model = readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL;
-  const apiKey = readInputText(doc, "interlinear-openai-api-key");
+  // A saved key is rendered as a mask; sending that mask to the provider is
+  // exactly how every "Test connection" used to fail with 401.
+  const apiKey = readSecretInput(doc, SECRET_FIELDS[0]) ?? getOpenAIApiKey();
   const temperature = readNumberInput(
     doc,
     "interlinear-openai-temperature",
@@ -4118,7 +4120,7 @@ async function testClaude(doc: Document): Promise<void> {
   const endpoint =
     readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint();
   const model = readInputText(doc, "interlinear-claude-model") || getClaudeModel();
-  const apiKey = readInputText(doc, "interlinear-claude-api-key") || getClaudeApiKey();
+  const apiKey = readSecretInput(doc, SECRET_FIELDS[1]) ?? getClaudeApiKey();
   const temperature = readNumberInput(
     doc,
     "interlinear-claude-temperature",
@@ -4156,7 +4158,7 @@ async function testGemini(doc: Document): Promise<void> {
   const baseURL =
     readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL();
   const model = readInputText(doc, "interlinear-gemini-model") || getGeminiModel();
-  const apiKey = readInputText(doc, "interlinear-gemini-api-key") || getGeminiApiKey();
+  const apiKey = readSecretInput(doc, SECRET_FIELDS[2]) ?? getGeminiApiKey();
   const temperature = readNumberInput(
     doc,
     "interlinear-gemini-temperature",
