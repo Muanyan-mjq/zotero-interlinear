@@ -42,5 +42,5 @@ template's reader item-pane section example is kept at
 
 The Interlinear icon (red Z and A/文 translation card) was provided by this
 project's author. All sizes under `addon/content/icons/` are locally rescaled
-from `Zotero Translation Icon.png`; no external network resources are used at
+from `assets/zotero-translation-icon.png`; no external network resources are used at
 runtime.
