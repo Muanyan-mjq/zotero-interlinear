@@ -555,7 +555,7 @@ settings-secret-status-session = This session only
 settings-secret-status-reentry = Re-enter this key
 settings-secret-clear = Clear key
 settings-secret-cleared = Key cleared
-settings-secret-keystore-warning = The OS key store is unavailable, so this key cannot be encrypted. Keep it for this session only, or save it unencrypted in Zotero preferences (not recommended).
+settings-secret-keystore-warning = The OS key store is unavailable, so this key cannot be encrypted. On Linux this usually means no Secret Service (libsecret) is running. Keep the key for this session only, or save it unencrypted in Zotero preferences (not recommended).
 settings-secret-keep-session = Keep for this session
 settings-secret-save-unencrypted = Save unencrypted
 
