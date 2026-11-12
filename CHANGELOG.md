@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
+## [Unreleased]
+
+### Security
+
+- API keys are now encrypted with Zotero's OS key store (macOS Keychain,
+  Windows DPAPI, Linux libsecret) and stored as `oskv1:` ciphertext instead of
+  plaintext. Existing plaintext keys are encrypted in place on first start.
+  When the key store is unavailable the key is kept for the session only; saving
+  it unencrypted requires an explicit inline confirmation and stays marked as
+  unencrypted in the settings page.
+- Requests that carry a key no longer follow redirects; a 3xx response is
+  reported instead of silently sending the key to another host.
+- Plain-HTTP endpoints are limited to loopback and private networks; anything
+  else needs a second confirmation that lists the host.
+- Errors, debug output and connection-test results are scrubbed of credentials
+  before they are shown or logged.
+
+### Changed
+
+- The settings pane boots from a registered script instead of an inline
+  `onload` handler, ahead of Zotero's baseline chrome CSP.
+- API key fields show a masked value (`••••••••` plus the last four characters),
+  hide themselves again eight seconds after being revealed, trim pasted values,
+  and have a "Clear key" button with an encrypted/session-only/unencrypted
+  status line.
+
+### Added
+
+- `SECURITY.md` with the private vulnerability reporting path and the threat
+  model boundaries.
+
 ## [0.6.0] - 2026-11-10
 
 ### Added

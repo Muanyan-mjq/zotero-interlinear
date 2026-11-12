@@ -4,6 +4,7 @@
 import { getString } from "./utils/locale";
 import { openReaderMenu } from "./readerMenu";
 import { DEFAULT_SHORTCUT, matchesShortcut, parseShortcut, type ShortcutSpec } from "./shortcut";
+import { logError } from "./utils/log";
 
 const SOURCE_SELECTOR = "[data-ref-path]";
 const TRANSLATION_CLASS = "interlinear-translation";
@@ -70,7 +71,7 @@ function invokeParagraph(
 ): void {
   const report = (error: unknown) => {
     try {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     } catch (_) {
       // Outside Zotero (unit harness) there is nowhere to report.
     }

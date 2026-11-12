@@ -8,6 +8,8 @@ import {
   parseGoogleResponse,
 } from "./googleProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
 
 export interface GoogleConfig {
   baseURL: string;
@@ -40,21 +42,23 @@ export async function requestGoogleTranslation(
       headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
       body,
       responseType: "text",
+      ...NO_REDIRECT_OPTIONS,
       timeout: config.timeoutMs,
     });
   } catch (error: any) {
     const failed = error?.xmlhttp || error?.xhr;
     const detail = responseDetail(getXhrResponseBody(failed)) || error?.message || "";
     throw new Error(
-      getString("provider-error-google-network", { args: { detail: String(detail) } }),
+      getString("provider-error-google-network", { args: { detail: redactSecrets(detail) } }),
     );
   }
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     const detail = responseDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(
       getString("provider-error-google-http", {
-        args: { status: String(xhr?.status || "unknown"), detail },
+        args: { status: String(xhr?.status || "unknown"), detail: redactSecrets(detail) },
       }),
     );
   }

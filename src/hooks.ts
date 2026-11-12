@@ -4,14 +4,19 @@ import { registerReaderToolbar, unregisterReaderToolbar } from "./readerToolbar"
 import { registerChatPane, unregisterChatPane } from "./chatPane";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { migrateLegacyPreferences } from "./settings";
+import { initSecrets } from "./secrets";
 import { flushTranslationCacheIndex } from "./translationCache";
 import { cleanupAllReadingLayouts } from "./readingLayout";
+import { logError } from "./utils/log";
 
 async function registerPreferencesPane(): Promise<void> {
   await Zotero.PreferencePanes.register({
     pluginID: addon.data.config.addonID,
     id: "interlinear-preferences",
     src: "content/preferences.xhtml",
+    // Zotero's baseline chrome CSP will block inline event handlers, so the
+    // pane boots from a registered script instead of an `onload` attribute.
+    scripts: ["content/preferences-init.js"],
     stylesheets: ["content/preferences.css"],
     label: "Interlinear",
   });
@@ -45,6 +50,9 @@ async function onStartup() {
 
   for (const initialize of [
     migrateLegacyPreferences,
+    // Decrypt stored API keys before anything can ask for one. The promise is
+    // also awaited at every request entry point (see whenSecretsReady()).
+    initSecrets,
     initLocale,
     registerPreferencesPane,
     registerChatPane,
@@ -53,7 +61,7 @@ async function onStartup() {
     try {
       await initialize();
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 

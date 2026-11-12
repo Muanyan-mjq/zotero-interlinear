@@ -10,6 +10,9 @@ import {
   normalizeGeminiModel,
 } from "./geminiProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import { describeFailure } from "./errorHints";
 
 export interface GeminiConfig {
   baseURL: string;
@@ -21,14 +24,18 @@ export interface GeminiConfig {
 }
 
 function httpError(status: number | undefined, detail: string): string {
+  detail = redactSecrets(detail);
   if (status) {
+    if (status === 429) {
+      return `${detail ? getString("provider-error-gemini-http", { args: { status: String(status), detail } }) : getString("provider-error-gemini-http-status", { args: { status: String(status) } })} ${describeFailure({ status }).hint}`;
+    }
     return detail
       ? getString("provider-error-gemini-http", {
           args: { status: String(status), detail },
         })
       : getString("provider-error-gemini-http-status", { args: { status: String(status) } });
   }
-  return getString("provider-error-gemini-network", { args: { detail } });
+  return `${getString("provider-error-gemini-network", { args: { detail } })} ${describeFailure({ message: detail }).hint}`;
 }
 
 export async function requestGeminiTranslation(
@@ -60,6 +67,7 @@ export async function requestGeminiTranslation(
       headers,
       body: JSON.stringify(body),
       responseType: "text",
+      ...NO_REDIRECT_OPTIONS,
       timeout: config.timeoutMs,
     });
   } catch (error: any) {
@@ -70,6 +78,7 @@ export async function requestGeminiTranslation(
   }
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     const detail =
       extractGeminiErrorDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(httpError(xhr?.status, detail));

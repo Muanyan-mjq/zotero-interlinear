@@ -1,0 +1,5 @@
+# 只忽略原始投放的图片，README 本身可以被跟踪
+*.png
+*.jpg
+*.jpeg
+*.webp

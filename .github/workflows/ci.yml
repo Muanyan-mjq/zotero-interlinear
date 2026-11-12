@@ -21,6 +21,8 @@ jobs:
         uses: zotero-plugin-dev/workflows/setup-js@main
       - name: Run Lint
         run: npm run lint:check
+      - name: Scan for committed secrets
+        run: npm run check:secrets
 
   build:
     strategy:

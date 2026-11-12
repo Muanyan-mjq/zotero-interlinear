@@ -181,13 +181,13 @@ interaction-shortcut-invalid = 快捷键无效，已恢复为默认值。请使�
 provider-google-title = Google 翻译
 provider-google-base-label = 服务地址
 provider-google-base-help = 默认 https://translate.googleapis.com。若无法直连，可填入你信任的镜像或代理地址；插件会自动补全 /translate_a/single。
-provider-google-help = 使用免费 client=gtx 接口，无需 API 密钥。请求会发送到上面填写的地址。
+provider-google-help = 使用免费 client=gtx 接口，无需 API 密钥。请求会发送到上面填写的地址。如果连不上，请检查系统代理或 TUN 模式是否开启，或改用其他翻译后端。
 provider-openai-title = OpenAI 兼容接口
 provider-openai-endpoint-label = 接口地址
 provider-openai-endpoint-help = 完整 Chat Completions 地址，例如 http://127.0.0.1:11434/v1/chat/completions 或 https://api.openai.com/v1/chat/completions。
 provider-openai-model-label = 模型
 provider-openai-api-key-label = API 密钥
-provider-openai-api-key-help = 留空表示本地或无需鉴权的服务。密钥以明文形式保存在 Zotero 偏好设置中，不会写入日志或缓存键。
+provider-openai-api-key-help = 留空表示本地或无需鉴权的服务。密钥使用系统钥匙串加密保存，不会写入日志、缓存键或导出文件。
 provider-openai-temperature-label = 温度
 provider-openai-temperature-help = 0–2，默认 0.2。较低的数值让译文更稳定。
 provider-openai-prompt-label = 系统提示词
@@ -197,7 +197,7 @@ provider-claude-endpoint-label = 接口地址
 provider-claude-endpoint-help = Messages API 地址，默认 https://api.anthropic.com/v1/messages；也可填写兼容的中转地址。
 provider-claude-model-label = 模型
 provider-claude-api-key-label = API 密钥
-provider-claude-api-key-help = 通过 x-api-key 请求头发送。密钥以明文形式保存在 Zotero 偏好设置中，不会写入日志或缓存键。
+provider-claude-api-key-help = 通过 x-api-key 请求头发送。密钥使用系统钥匙串加密保存，不会写入日志、缓存键或导出文件。
 provider-claude-temperature-label = 温度
 provider-claude-temperature-help = 0–1，默认 0.2。较低的数值让译文更稳定。
 provider-claude-prompt-label = 系统提示词
@@ -207,7 +207,7 @@ provider-gemini-base-label = 服务地址
 provider-gemini-base-help = 默认 https://generativelanguage.googleapis.com；插件会自动补全 /v1beta/models/<model>:generateContent。
 provider-gemini-model-label = 模型
 provider-gemini-api-key-label = API 密钥
-provider-gemini-api-key-help = 通过 x-goog-api-key 请求头发送，不会出现在 URL 中。密钥以明文形式保存在 Zotero 偏好设置中，不会写入日志或缓存键。
+provider-gemini-api-key-help = 通过 x-goog-api-key 请求头发送，不会出现在 URL 中。密钥使用系统钥匙串加密保存，不会写入日志、缓存键或导出文件。
 provider-gemini-temperature-label = 温度
 provider-gemini-temperature-help = 0–2，默认 0.2。较低的数值让译文更稳定。
 provider-gemini-prompt-label = 系统提示词
@@ -541,3 +541,33 @@ interaction-auto-translate-cached = 仅此前翻译过的论文（命中缓存�
 interaction-auto-translate-always = 总是翻译（可能产生 API 费用）
 interaction-auto-translate-warning = “总是”会在打开 PDF 时启动全文翻译，可能向服务商发送大量请求。
 appearance-advanced-summary = 高级外观（装饰、分隔线、色带、块布局、导出）
+
+# Credentials and endpoints
+provider-error-redirect = 端点重定向到了 { $location }。请在设置里直接填写最终地址，不要依赖重定向。
+provider-error-redirect-unknown = 端点发生了重定向。请在设置里直接填写最终地址，不要依赖重定向。
+settings-endpoint-key-target-help = 请求会把 API 密钥发送到这个地址。只填写你信任的端点。
+settings-save-insecure-warning = 以下端点使用明文 HTTP，API 密钥会以未加密方式发送：{ $hosts }。建议改用 HTTPS，或确认你信任当前网络。
+settings-save-insecure-confirm = 仍然保存
+settings-save-insecure-cancel = 取消
+settings-secret-status-encrypted = 已使用系统钥匙串加密
+settings-secret-status-plaintext = 未加密保存
+settings-secret-status-session = 仅本次会话有效
+settings-secret-status-reentry = 需要重新输入
+settings-secret-clear = 清除密钥
+settings-secret-cleared = 密钥已清除
+settings-secret-keystore-warning = 系统钥匙串不可用，无法加密保存这个密钥。可以只在本次会话使用，或以未加密方式写入 Zotero 偏好（不推荐）。
+settings-secret-keep-session = 仅本次会话
+settings-secret-save-unencrypted = 仍然不加密保存
+
+# 失败提示（每类一句话，不写具体镜像域名）
+network-hint-timeout = 服务没有及时响应：请检查系统代理或 TUN 模式是否开启，或改用其他翻译后端、稍后重试。
+network-hint-dns = 域名无法解析：请检查端点拼写，以及系统代理与 DNS 是否正常。
+network-hint-refused = 连接被拒绝：端点可能没有在监听，或被代理拦截。请检查地址或改用其他后端。
+network-hint-reset = 连接被意外断开：代理或 VPN 可能在干扰，服务也可能主动断开。请重试或改用其他后端。
+network-hint-connection = 无法连接到服务：请检查系统代理或 TUN 模式，或改用其他翻译后端。
+network-hint-rate-limit = 服务正在限流：请稍后再试，或改用其他后端。
+network-hint-redirect = 端点发生了重定向：请在设置里直接填写最终地址，不要依赖重定向。
+network-hint-http = 服务拒绝了请求：请检查端点、模型与密钥，或改用其他后端。
+network-hint-parse = 服务返回了此后端无法解析的数据：请确认端点与所选后端匹配，或改用其他后端。
+network-hint-empty = 服务没有返回译文：请重试，或改用其他后端。
+network-hint-unknown = 请求失败：请检查系统代理或 TUN 模式，或改用其他翻译后端、稍后重试。

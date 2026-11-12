@@ -210,6 +210,9 @@ import {
   testOpenAIConnection,
 } from "../providers";
 import { version as addonVersion } from "../../package.json";
+import { logError, redactForDisplay } from "../utils/log";
+import { assessEndpoint } from "../utils/endpointSafety";
+import { SECRET_PREFS, clearSecret, getSecret, getSecretStatus, isKeystoreAvailable, setSecret, whenSecretsReady } from "../secrets";
 
 const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
@@ -2769,7 +2772,7 @@ function applyAppearancePreset(
     refreshTranslationStyles();
     refreshDisplayModes();
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
   const message = getString("appearance-preset-applied", { args: { name: label } });
   setPresetStatus(doc, message);
@@ -2943,7 +2946,7 @@ function registerAppearancePresets(doc: Document): void {
         refreshTranslationStyles();
         refreshDisplayModes();
       } catch (error) {
-        Zotero.logError(error as Error);
+        logError(error as Error);
       }
       setPresetStatus(doc, getString("appearance-undo-done"), "success");
     },
@@ -3011,7 +3014,7 @@ async function importAppearance(doc: Document): Promise<void> {
     setPresetStatus(
       doc,
       getString("appearance-preset-import-error", {
-        args: { reason: String(error?.message || error) },
+        args: { reason: redactForDisplay(error?.message || error) },
       }),
       "error",
     );
@@ -3036,7 +3039,7 @@ async function exportAppearance(doc: Document): Promise<void> {
     setPresetStatus(
       doc,
       getString("appearance-preset-export-error", {
-        args: { reason: String(error?.message || error) },
+        args: { reason: redactForDisplay(error?.message || error) },
       }),
       "error",
     );
@@ -3164,6 +3167,97 @@ function registerSettingsTabs(doc: Document): void {
   setActiveTab(doc, "service");
 }
 
+interface SecretField {
+  name: string;
+  inputId: string;
+  pref: string;
+}
+
+const SECRET_FIELDS: SecretField[] = [
+  { name: "openai", inputId: "interlinear-openai-api-key", pref: SECRET_PREFS.openai },
+  { name: "claude", inputId: "interlinear-claude-api-key", pref: SECRET_PREFS.claude },
+  { name: "gemini", inputId: "interlinear-gemini-api-key", pref: SECRET_PREFS.gemini },
+];
+
+/**
+ * How to persist keys on the next save when the OS key store is unavailable.
+ * Set by the inline confirmation right before `performSave()` runs.
+ */
+let secretSaveMode: "session" | "plaintext" = "session";
+
+/** `••••••••1234` when a stored key exists, `••••••••` when it cannot be read. */
+function maskSecret(value: string): string {
+  const tail = value.length >= 4 ? value.slice(-4) : "";
+  return `••••••••${tail}`;
+}
+
+function secretStatusText(status: string): string {
+  switch (status) {
+    case "encrypted":
+      return getString("settings-secret-status-encrypted");
+    case "plaintext":
+      return getString("settings-secret-status-plaintext");
+    case "session":
+      return getString("settings-secret-status-session");
+    case "needs-reentry":
+      return getString("settings-secret-status-reentry");
+    default:
+      return "";
+  }
+}
+
+/**
+ * Refresh the status line, the clear button and the masked value of every key
+ * field. Called on load, after saving and after clearing.
+ */
+function applySecretState(doc: Document): void {
+  for (const field of SECRET_FIELDS) {
+    const input = getElement<HTMLInputElement>(doc, field.inputId);
+    const status = getElement<HTMLElement>(doc, `interlinear-${field.name}-key-status`);
+    const clear = getElement<HTMLButtonElement>(doc, `interlinear-${field.name}-key-clear`);
+    const state = getSecretStatus(field.pref);
+
+    if (status) {
+      status.textContent = secretStatusText(state);
+      status.dataset.state = state;
+    }
+    if (clear) {
+      clear.textContent = getString("settings-secret-clear");
+      clear.disabled = state === "missing";
+    }
+    if (!input) continue;
+
+    // Only re-mask when the user is not actively typing into this field.
+    const focused = doc.activeElement === input;
+    if (state === "missing" || state === "needs-reentry") {
+      if (!focused && input.dataset.masked === "true") {
+        input.value = "";
+        delete input.dataset.masked;
+      }
+      continue;
+    }
+    if (focused) continue;
+    input.value = maskSecret(getSecret(field.pref));
+    input.dataset.masked = "true";
+  }
+}
+
+/** `undefined` means "leave the stored key alone" (the field showed a mask). */
+function readSecretInput(doc: Document, field: SecretField): string | undefined {
+  const input = getElement<HTMLInputElement>(doc, field.inputId);
+  if (!input) return undefined;
+  // Only treat it as an untouched mask when the value still *is* the mask;
+  // tests and scripts may write a real value without firing an input event.
+  if (input.dataset.masked === "true" && input.value === maskSecret(getSecret(field.pref))) {
+    return undefined;
+  }
+  return input.value.trim();
+}
+
+/**
+ * Masked display, focus-to-edit, 8s auto re-mask, trim-on-input and the clear
+ * button. Registered once per pane.
+ */
 function registerSecretToggles(doc: Document): void {
   const show = getString("settings-show-secret");
   const hide = getString("settings-hide-secret");
@@ -3185,8 +3279,58 @@ function registerSecretToggles(doc: Document): void {
       } catch (_) {
         // Selection is a nicety; some input types reject it.
       }
+      if (reveal) {
+        // Do not leave a key on screen indefinitely.
+        const win = doc.defaultView;
+        win?.setTimeout(() => {
+          if (target.type !== "text") return;
+          target.type = "password";
+          button.textContent = show;
+          button.setAttribute("aria-pressed", "false");
+        }, 8000);
+      }
     });
   }
+
+  for (const field of SECRET_FIELDS) {
+    const input = getElement<HTMLInputElement>(doc, field.inputId);
+    const clear = getElement<HTMLButtonElement>(doc, `interlinear-${field.name}-key-clear`);
+
+    input?.addEventListener("focus", () => {
+      if (input.dataset.masked !== "true") return;
+      input.value = "";
+      delete input.dataset.masked;
+    });
+
+    input?.addEventListener("input", () => {
+      delete input.dataset.masked;
+      // Keys never contain leading or trailing whitespace; trimming here also
+      // avoids a silent trim on save.
+      if (input.value !== input.value.trim()) input.value = input.value.trim();
+      markDirty(doc, input);
+    });
+
+    input?.addEventListener("blur", () => {
+      // An untouched empty field gets its mask back instead of looking unset.
+      if (input.value || input.dataset.masked === "true") return;
+      const state = getSecretStatus(field.pref);
+      if (state === "missing" || state === "needs-reentry") return;
+      input.value = maskSecret(getSecret(field.pref));
+      input.dataset.masked = "true";
+    });
+
+    clear?.addEventListener("click", () => {
+      clearSecret(field.pref);
+      if (input) {
+        input.value = "";
+        delete input.dataset.masked;
+      }
+      applySecretState(doc);
+      setSaveState(doc, "saved", getString("settings-secret-cleared"), 2500);
+    });
+  }
+
+  applySecretState(doc);
 }
 
 function registerDirtyTracking(doc: Document): void {
@@ -3549,6 +3693,152 @@ function readInputText(doc: Document, id: string, fallback = ""): string {
   return input ? input.value : fallback;
 }
 
+/** Endpoints whose requests would carry an API key. */
+const KEY_TARGET_ENDPOINT_IDS = [
+  "interlinear-openai-endpoint",
+  "interlinear-claude-endpoint",
+  "interlinear-gemini-base-url",
+] as const;
+
+/** Every endpoint that can be pointed at an arbitrary host. */
+const CONFIRMABLE_ENDPOINT_IDS = [
+  "interlinear-google-base-url",
+  ...KEY_TARGET_ENDPOINT_IDS,
+] as const;
+
+interface InsecureEndpoint {
+  fieldId: string;
+  host: string;
+}
+
+/**
+ * Plain-HTTP endpoints that would leak a credential beyond the machine or LAN.
+ * See src/utils/endpointSafety.ts for the policy and its unit tests.
+ */
+function findInsecureEndpoints(doc: Document): InsecureEndpoint[] {
+  const found: InsecureEndpoint[] = [];
+  for (const fieldId of CONFIRMABLE_ENDPOINT_IDS) {
+    const value = getElement<HTMLInputElement>(doc, fieldId)?.value?.trim() || "";
+    if (!value) continue;
+    const assessment = assessEndpoint(value);
+    if (!assessment.needsConfirmation) continue;
+    found.push({ fieldId, host: assessment.host || value });
+  }
+  return found;
+}
+
+/** One hint per key-bearing endpoint: where the key is going. */
+function installKeyTargetHints(doc: Document): void {
+  const hint = getString("settings-endpoint-key-target-help");
+  for (const fieldId of KEY_TARGET_ENDPOINT_IDS) {
+    const hintId = `${fieldId}-key-target`;
+    if (doc.getElementById(hintId)) continue;
+    const input = getElement<HTMLInputElement>(doc, fieldId);
+    const field = input?.closest(".interlinear-field");
+    if (!field?.parentElement) continue;
+    const paragraph = createElement(doc, "p", "interlinear-help", hintId);
+    paragraph.textContent = hint;
+    field.after(paragraph);
+  }
+}
+
+function secretWriteOptions(): { sessionOnly?: boolean; allowPlaintext?: boolean } {
+  if (isKeystoreAvailable()) return {};
+  return secretSaveMode === "plaintext" ? { allowPlaintext: true } : { sessionOnly: true };
+}
+
+/**
+ * The OS key store is unusable (typically Linux without a Secret Service).
+ * Offer session-only storage (default) or an explicit unencrypted save. The
+ * plugin never falls back to plaintext on its own.
+ */
+function showKeystoreConfirm(
+  doc: Document,
+  onSession: () => void,
+  onPlaintext: () => void,
+): void {
+  const box = getElement<HTMLElement>(doc, "interlinear-save-confirm");
+  if (!box) return;
+  box.textContent = "";
+
+  const text = createElement(doc, "div", "interlinear-save-confirm-text");
+  text.textContent = getString("settings-secret-keystore-warning");
+
+  const actions = createElement(doc, "div", "interlinear-save-confirm-actions");
+  const session = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  session.type = "button";
+  session.textContent = getString("settings-secret-keep-session");
+  session.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    onSession();
+  });
+
+  const plaintext = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  plaintext.type = "button";
+  plaintext.textContent = getString("settings-secret-save-unencrypted");
+  plaintext.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    onPlaintext();
+  });
+
+  const cancel = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  cancel.type = "button";
+  cancel.textContent = getString("settings-save-insecure-cancel");
+  cancel.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    setSaveState(doc, "dirty", getString("settings-unsaved"));
+  });
+
+  actions.append(session, plaintext, cancel);
+  box.append(text, actions);
+  box.hidden = false;
+  session.focus();
+}
+
+function hideSaveConfirm(doc: Document): void {
+  const box = getElement<HTMLElement>(doc, "interlinear-save-confirm");
+  if (!box) return;
+  box.hidden = true;
+  box.textContent = "";
+}
+
+/**
+ * Inline, non-modal confirmation. The system dialog equivalents (`alert`/
+ * `confirm`) are deliberately not used: they block the whole Zotero window.
+ */
+function showSaveConfirm(doc: Document, endpoints: InsecureEndpoint[], onConfirm: () => void): void {
+  const box = getElement<HTMLElement>(doc, "interlinear-save-confirm");
+  if (!box) return;
+  box.textContent = "";
+
+  const text = createElement(doc, "div", "interlinear-save-confirm-text");
+  text.textContent = getString("settings-save-insecure-warning", {
+    args: { hosts: endpoints.map((entry) => entry.host).join(", ") },
+  });
+
+  const actions = createElement(doc, "div", "interlinear-save-confirm-actions");
+  const confirm = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  confirm.type = "button";
+  confirm.textContent = getString("settings-save-insecure-confirm");
+  confirm.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    onConfirm();
+  });
+
+  const cancel = createElement(doc, "button", "interlinear-button interlinear-button-small");
+  cancel.type = "button";
+  cancel.textContent = getString("settings-save-insecure-cancel");
+  cancel.addEventListener("click", () => {
+    hideSaveConfirm(doc);
+    setSaveState(doc, "dirty", getString("settings-unsaved"));
+  });
+
+  actions.append(confirm, cancel);
+  box.append(text, actions);
+  box.hidden = false;
+  confirm.focus();
+}
+
 function saveSettings(doc: Document): string[] {
   const engineValue = getElement<HTMLSelectElement>(doc, "interlinear-engine")?.value;
   const validEngines: TranslationEngine[] = [
@@ -3583,7 +3873,8 @@ function saveSettings(doc: Document): string[] {
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT,
   );
   setOpenAIModel(readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL);
-  setOpenAIApiKey(readInputText(doc, "interlinear-openai-api-key"));
+  const openaiKey = readSecretInput(doc, SECRET_FIELDS[0]);
+  if (openaiKey !== undefined) setSecret(SECRET_PREFS.openai, openaiKey, secretWriteOptions());
   setOpenAIPrompt(readInputText(doc, "interlinear-openai-prompt") || DEFAULT_OPENAI_PROMPT);
   setOpenAITemperature(
     readNumberInput(doc, "interlinear-openai-temperature", DEFAULT_OPENAI_TEMPERATURE),
@@ -3592,14 +3883,16 @@ function saveSettings(doc: Document): string[] {
     readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint(),
   );
   setClaudeModel(readInputText(doc, "interlinear-claude-model") || getClaudeModel());
-  setClaudeApiKey(readInputText(doc, "interlinear-claude-api-key"));
+  const claudeKey = readSecretInput(doc, SECRET_FIELDS[1]);
+  if (claudeKey !== undefined) setSecret(SECRET_PREFS.claude, claudeKey, secretWriteOptions());
   setClaudePrompt(readInputText(doc, "interlinear-claude-prompt") || getClaudePrompt());
   setClaudeTemperature(
     readNumberInput(doc, "interlinear-claude-temperature", DEFAULT_CLAUDE_TEMPERATURE),
   );
   setGeminiBaseURL(readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL());
   setGeminiModel(readInputText(doc, "interlinear-gemini-model") || getGeminiModel());
-  setGeminiApiKey(readInputText(doc, "interlinear-gemini-api-key"));
+  const geminiKey = readSecretInput(doc, SECRET_FIELDS[2]);
+  if (geminiKey !== undefined) setSecret(SECRET_PREFS.gemini, geminiKey, secretWriteOptions());
   setGeminiPrompt(readInputText(doc, "interlinear-gemini-prompt") || getGeminiPrompt());
   setGeminiTemperature(
     readNumberInput(doc, "interlinear-gemini-temperature", DEFAULT_GEMINI_TEMPERATURE),
@@ -3741,7 +4034,7 @@ async function testOllama(doc: Document): Promise<void> {
       "ollama",
       "error",
       getString("ollama-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3774,7 +4067,7 @@ async function testGoogle(doc: Document): Promise<void> {
       "google",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3783,6 +4076,7 @@ async function testGoogle(doc: Document): Promise<void> {
 }
 
 async function testOpenAI(doc: Document): Promise<void> {
+  await whenSecretsReady();
   const endpoint =
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT;
   const model = readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL;
@@ -3811,7 +4105,7 @@ async function testOpenAI(doc: Document): Promise<void> {
       "openai",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3820,6 +4114,7 @@ async function testOpenAI(doc: Document): Promise<void> {
 }
 
 async function testClaude(doc: Document): Promise<void> {
+  await whenSecretsReady();
   const endpoint =
     readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint();
   const model = readInputText(doc, "interlinear-claude-model") || getClaudeModel();
@@ -3848,7 +4143,7 @@ async function testClaude(doc: Document): Promise<void> {
       "claude",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3857,6 +4152,7 @@ async function testClaude(doc: Document): Promise<void> {
 }
 
 async function testGemini(doc: Document): Promise<void> {
+  await whenSecretsReady();
   const baseURL =
     readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL();
   const model = readInputText(doc, "interlinear-gemini-model") || getGeminiModel();
@@ -3885,7 +4181,7 @@ async function testGemini(doc: Document): Promise<void> {
       "gemini",
       "error",
       getString("provider-test-failed", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       }),
     );
   } finally {
@@ -3922,7 +4218,7 @@ async function importGlossary(doc: Document): Promise<void> {
     const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
     if (status) {
       status.textContent = getString("glossary-status-error", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       });
     }
   } finally {
@@ -3959,7 +4255,7 @@ async function exportGlossary(doc: Document): Promise<void> {
     const status = getElement<HTMLElement>(doc, "interlinear-glossary-status");
     if (status) {
       status.textContent = getString("glossary-status-error", {
-        args: { detail: String(error?.message || error) },
+        args: { detail: redactForDisplay(error?.message || error) },
       });
     }
   } finally {
@@ -4249,6 +4545,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   }
   updateShortcutConflict(doc);
   registerSettingsTabs(doc);
+  installKeyTargetHints(doc);
   registerSecretToggles(doc);
   registerDirtyTracking(doc);
   setSaveState(doc, "saved", getString("settings-status-saved"));
@@ -4262,7 +4559,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     markDirty(doc, engine);
   });
 
-  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
+  const performSave = (): void => {
     try {
       const warnings = saveSettings(doc);
       clearDirtyTabs(doc);
@@ -4277,9 +4574,56 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
         doc,
         "error",
         getString("settings-status-error", {
-          args: { detail: String(error?.message || error) },
+          args: { detail: redactForDisplay(error?.message || error) },
         }),
       );
+    }
+  };
+
+  const performSaveAndRefresh = (): void => {
+    performSave();
+    // Keys are persisted asynchronously; the status line and masks refresh once
+    // the ciphertext is verified.
+    const win = doc.defaultView;
+    win?.setTimeout(() => applySecretState(doc), 150);
+    win?.setTimeout(() => applySecretState(doc), 800);
+  };
+
+  getElement<HTMLButtonElement>(doc, "interlinear-save")?.addEventListener("click", () => {
+    const typedKeys = SECRET_FIELDS.map((field) => readSecretInput(doc, field)).filter(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    );
+    if (typedKeys.length && !isKeystoreAvailable()) {
+      showKeystoreConfirm(
+        doc,
+        () => {
+          secretSaveMode = "session";
+          performSaveAndRefresh();
+        },
+        () => {
+          secretSaveMode = "plaintext";
+          performSaveAndRefresh();
+        },
+      );
+      return;
+    }
+
+    // A key sent over plain HTTP to a host outside the machine/LAN is worth a
+    // second look. Ask inline, then save only after the user confirms.
+    const insecure = findInsecureEndpoints(doc);
+    if (insecure.length) {
+      showSaveConfirm(doc, insecure, performSaveAndRefresh);
+      return;
+    }
+    hideSaveConfirm(doc);
+    performSaveAndRefresh();
+  });
+
+  doc.addEventListener("input", (event) => {
+    const target = event.target as HTMLElement | null;
+    const id = target?.id;
+    if (id && (CONFIRMABLE_ENDPOINT_IDS as readonly string[]).includes(id)) {
+      hideSaveConfirm(doc);
     }
   });
 

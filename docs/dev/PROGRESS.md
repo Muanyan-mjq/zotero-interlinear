@@ -1371,3 +1371,306 @@
 2. 右键阅读器工具栏图标是否仍然无响应（历史问题）。
 3. 若愿意提供官方 API key：分别测试 OpenAI/Claude/Gemini 的“测试连接”和一段真实翻译。
 4. 取色器在 800px 以内窄窗口中的弹出位置与滚动是否顺手。
+
+# Zotero 10/11 兼容加固 + API 密钥安全（feat/hardening）
+
+## 基线
+
+- 从 `main` @ `f2f7da8`（docs: refresh appearance screenshots from the GUI harness）切出 `feat/hardening`，其上叠加调研分支的 `7588b10`（两份 RESEARCH 文档）。基线内 `feat/hardening` 与 `main` 的差异仅为 `docs/dev/RESEARCH-zotero11.md`、`docs/dev/RESEARCH-key-security.md`。
+- 基线测试（切分支前实测）：`build` 通过、`lint:check` 通过、`test:unit` 173 pass、`test:review` 在 Zotero 10.0.8 与 Zotero 11.0-dev.5 上均 59 pass。
+- 测试环境：Zotero 10 = `C:/Program Files\Zotero\zotero.exe`；Zotero 11 = `%TEMP%\z11\Zotero_win-x64\zotero.exe`（官方 dev 渠道 ZIP，`platform.ini` 为 `Milestone=153.0`）。两者都通过 `scripts/test-review.mjs` 使用 `.scaffold/test/profile` 隔离 profile，未触碰日常使用的 Zotero profile。
+- 每个 Step 均执行 `build` / `lint:check` / `test:unit` / `test:review`（Zotero 10 与 11 各一次）。删除类命令需临时关闭本地文件删除保护（`CODEBUDDY_SAFE_DELETE_ENABLED=0`），只影响 scaffold 自己的测试目录。
+
+## Step 1：设置页 CSP 迁移
+
+### 做了什么
+
+- **去掉内联 `onload`**：`addon/content/preferences.xhtml` 的根节点只剩 `<groupbox id="interlinear-settings-root">`，不再有 `onload="…onPrefsEvent('load', …)"`。
+- **改用注册脚本引导**：`src/hooks.ts` 的 `Zotero.PreferencePanes.register()` 增加 `scripts: ["content/preferences-init.js"]`；新增 `addon/content/preferences-init.js` 完成原 onload 的工作。
+- **时序差异（查证后处理）**：读 Zotero 11 dev 构建的 `chrome/content/zotero/preferences/preferences.js::_loadPane()` 后确认两件事：
+  1. `pane.scope = new Cu.Sandbox(window, { sandboxPrototype: window, sameZoneAs: window })`，脚本用 `Services.scriptloader.loadSubScript(script, pane.scope)` 加载 —— 所以脚本里的 `window`/`document` 通过原型链解析到**设置窗口本体**，能拿到 `document.getElementById(...)`。
+  2. 脚本在 **`Zotero.File.getContentsFromURL(pane.src)` 与 `pane.container.append(fragment)` 之前**执行，因此脚本运行时面板 DOM 还不存在，不存在可监听的 load 事件。`preferences-init.js` 改为轮询等待 `#interlinear-settings-root`（50ms 间隔、15s 超时），再调 `hooks.onPrefsEvent("load", { window })`。
+- **重复加载**：`registerPrefsScripts()` 已有 `root.dataset.initialized === "true"` 守卫、`installPreferencesBrand()` 已有 `#interlinear-brand-icon` 守卫；`_loadPane()` 本身按 `pane.loaded` 去重，切换标签不会重复执行脚本，因此不额外加状态。
+- **全仓核对**：`addon/` 下 `.xhtml/.html` 现在 0 个内联事件属性、0 个内联 `<script>`、0 个 `javascript:` URL；`src/` 里注入的工具栏/右键菜单/聊天面板/划词弹窗/预览/导出 HTML 全部用 DOM API 或模板字符串构建，0 命中（导出 HTML 只有内联 `<style>`，`script-src` 不拦 style）。
+- **静态测试**：新增 `test/inlineHandlers.node.test.mjs`（4 条用例），扫描 `addon/**/*.{xhtml,html}` 与 `src/**/*.ts` 的内联事件属性、内联 `<script>`、`javascript:` URL、`setAttribute("on…")`，并断言设置页确实注册了 `preferences-init.js`、脚本里确实有等待根节点的逻辑。已加入 `npm run test:unit` 列表。
+- **测试适配**：面板初始化从「插入 DOM 时同步触发」变成「插入后异步引导」，19 处 `openPreferences()` 之后新增 `await waitForPrefsReady(win)`（等待 `dataset.initialized === "true"`，与既有「五标签切换」用例同一信号）。这是同步就绪信号，没有放宽任何断言。
+
+### CSP 开关复测（Zotero 11 dev，隔离 profile）
+
+- 做法：向 `.scaffold/test/profile/prefs.js` 追加 `user_pref("security.chrome_baseline_csp.enabled", true)` 后跑 `test:review`。
+- 结果：迁移**前**跑一次仍是 59 passed（没有出现设置页失效）；迁移**后**再跑同样 59 passed。
+- 结论：**无法证明该构建真的启用了基线 CSP**（若启用，迁移前那一次的内联 `onload` 理应被拦）。可能原因：该 pref 在此 dev 构建里未生效；或面板片段经 `parseXULToFragment` + `importNode` 插入，内联处理器在无 CSP 的惰性文档里编译，插入后不被复查。**未验证的推断，已记入待决定**。实验后已把该 pref 从测试 profile 移除，避免污染后续步骤。
+
+### 改动文件
+
+`addon/content/preferences.xhtml`、`addon/content/preferences-init.js`（新）、`src/hooks.ts`、`test/inlineHandlers.node.test.mjs`（新）、`test/startup.test.ts`、`package.json`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：177 pass / 0 fail（新增 4 条静态用例）。
+- `npm run test:review`：Zotero 10.0.8 **59 passed**；Zotero 11.0-dev.5 **59 passed**。
+- 首次尝试时 Zotero 10 报 1 fail、Zotero 11 报 4 fail（均为「断言紧跟在 `openPreferences` 之后，读到未回填的表单值」），按上面的 `waitForPrefsReady` 修好后两版本全绿。
+
+### 未目视验证
+
+- 真实 GUI 里打开设置→Interlinear 的首屏时序（脚本轮询期间是否出现一帧空白）。headless 只断言 DOM。
+- CSP 真正生效后的表现（见上）。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 打开设置→Interlinear：五个标签、表单值、预览卡片是否正常出现，无空白帧或闪烁。
+2. 快速连续切换五个标签，再关闭重开设置窗口，确认不重复绑定、不报错。
+3. 若手上有开启 `security.chrome_baseline_csp.enabled` 的 Zotero 11 构建，复测同一页面。
+
+## Step 2：P0 脱敏（redactSecrets / logError）
+
+### 做了什么
+
+- 新增 `src/utils/redact.ts`（无 import，供 Node 类型剥离直接加载）：
+  - `redactSecrets(text, knownSecrets)`：先替换本次会话持有的密钥原文（≥4 字符才处理，避免误伤短词），再用形状正则遮蔽 `sk-…`、`sk-ant-…`、`AIza…`、`Bearer <token>`、`x-api-key: <token>`、`x-goog-api-key: <token>`、`Authorization: <token>`（`Authorization` 用负向前瞻避免吞掉后面的 `Bearer`，保证输出仍是 `Authorization: Bearer ***`）。
+  - `redactError(error, knownSecrets)`：保留 `name`/`stack`，只替换其中的密钥。
+- 新增 `src/utils/log.ts`：`logError()`（统一走 `Zotero.logError(redactError(...))`，永不抛错）、`redactForDisplay()`（UI 文案脱敏）、`setLogSecretsProvider()`（由 `settings.ts` 注册，惰性读取三个 key）。
+- **接入点**：
+  - 5 个 provider 的错误格式化：`openai.ts`/`claude.ts`/`gemini.ts`/`chat.ts` 的 `httpError()` 入口统一 `detail = redactSecrets(detail)`；`google.ts` 两处 `detail` 直接包 `redactSecrets()`。
+  - `src/modules/preferenceScript.ts`：10 处把错误原文塞进状态的 `String(error?.message || error)` 全部改为 `redactForDisplay(...)`（三个 provider 的连接测试 + 术语表/预设/导入等失败提示）。
+  - 全仓 `Zotero.logError(` → `logError(`（9 个文件、27 处），统一脱敏后再交给 Zotero。
+  - 把 `src/utils` 纳入 `lint:check` / `lint:fix` 的扫描范围。
+- **单测**：`test/redact.node.test.mjs`（9 条），覆盖已知密钥多次出现、三种密钥形状、头部回显（文本与 JSON 两种写法）、`redactError` 保留 stack、nullish/非字符串输入、以及 7 条“无密钥文本不得改写”的正例（含 `task-management`、`disk-usage`、中文错误文案、sha512 摘要、模型名）。断言方式为“输出中不得出现原文，也不得出现密钥的任意 8 字符窗口”。
+
+### 改动文件
+
+`src/utils/redact.ts`（新）、`src/utils/log.ts`（新）、`src/providers/{openai,claude,gemini,google,chat}.ts`、`src/settings.ts`、`src/modules/preferenceScript.ts`、`src/{bilingualReader,chatPane,hooks,readerInteractions,readerToolbar,readerUI,readingLayout}.ts`、`test/redact.node.test.mjs`（新）、`package.json`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：186 pass / 0 fail（新增 9 条）。
+- `npm run test:review`：Zotero 10.0.8 **59 passed**；Zotero 11.0-dev.5 **59 passed**。
+
+### 未目视验证 / 不确定
+
+- 真实服务返回的 401 报文里，密钥形状若不是 `sk-`/`AIza` 前缀（例如自定义网关自己生成的 token），只能依赖“已知密钥原文替换”这一层——只要本次会话确实持有该 key，就能遮住；**未有真实 401 响应做过端到端验证**。
+- `Authorization` 头部回显的 JSON 形式（带转义引号）只做了字符串级验证，未用真实响应体验证。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 在设置页填入一个错误 key（如 `sk-test-000…`），点“测试连接”：失败提示里不应出现完整 key 或 8 位以上片段。
+2. 打开帮助→调试输出，确认日志里没有 key。
+3. 触发一次需要报错的路径（例如把 endpoint 填成不存在的域名），确认提示可读、没有被过度打码。
+
+## Step 3：HTTPS/回环校验 + 拒绝重定向
+
+### 做了什么
+
+- 新增 `src/utils/endpointSafety.ts`（无 import，可被 Node 直接加载）：`assessEndpoint()` 判定 `https` 放行、`http` 仅允许 loopback（`localhost`/`*.localhost`/`127.0.0.0/8`/`::1`/`::ffff:127.0.0.1`）与私网（`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、`fc00::/7`、`fe80::/10`），其余 `http://` 标记为 `public-http` 需要确认。
+  - 处理了 `new URL()` 把 `::ffff:127.0.0.1` 归一化成 `::ffff:7f00:1` 的情况（否则 IPv4-mapped 回环会被误判成公网）。
+  - 明确不做“字符串前缀匹配”：`127.0.0.1.evil.com`、`localhost.evil.com`、`192.168.1.1.evil.com` 都判为公网。
+- **保存时二次确认（内联，不用系统弹窗）**：`preferences.xhtml` 新增 `#interlinear-save-confirm` 容器（`role=alert`、默认隐藏），`preferenceScript.ts` 新增 `findInsecureEndpoints()` / `showSaveConfirm()`；点保存时若存在公网 `http://` 端点，先展示“哪些主机、为什么”，用户点“仍然保存”才真正写入，点“取消”回到未保存状态。改了端点输入框会收起该提示。
+- **端点提示**：openai / claude / gemini 三个带密钥的 endpoint 下方动态插入 `settings-endpoint-key-target-help`（“请求会把 API 密钥发送到这个地址，只填写你信任的端点”），插入是幂等的（按 id 去重）。
+- **拒绝重定向**：新增 `src/providers/secureRequest.ts`（`NO_REDIRECT_OPTIONS = { followRedirects: false }`、`isRedirectStatus()`、`getRedirectLocation()`、`redirectErrorMessage()`），openai/claude/gemini/google/chat/ollama 六个请求全部带上该选项，并在非 2xx 分支最前面判断 3xx → 抛“端点发生了重定向，请在设置里直接填写最终地址”。依据是 `xpcom/http.js`：`followRedirects:false` 时 Zotero 在 `asyncOnChannelRedirect` 里取消通道，并返回 `status=3xx` + 只支持 `Location` 的替身对象，且**把重定向当 success**，所以必须在 provider 里显式判 3xx。
+- **单测**：`test/endpointSafety.node.test.mjs`（8 条）覆盖 https/回环/私网/公网/仿冒/非法值/IPv6/带端口/带 userinfo/大小写；Ollama 默认 `http://127.0.0.1:11434` 有专门用例确认不被误伤。
+- **集成测试**：新增「should refuse to follow a redirect that would resend the key」——用测试替身让 `Zotero.HTTP.request` 返回 302（与 Zotero 真实返回形态一致），断言：抛错、只发生 1 次请求（第二个主机从未被请求）、`options.followRedirects === false`、报错是重定向消息、错误信息不含密钥。
+
+### 改动文件
+
+`src/utils/endpointSafety.ts`（新）、`src/providers/secureRequest.ts`（新）、`src/providers/{openai,claude,gemini,google,chat,ollama}.ts`、`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/{en-US,zh-CN}/addon.ftl`（各 +6 键，535 → 541）、`typings/i10n.d.ts`（构建生成）、`test/endpointSafety.node.test.mjs`（新）、`test/startup.test.ts`、`package.json`。
+
+### 测试结果
+
+- `npm run build`：通过（需先 `npx zotero-plugin build` 重新生成 `typings/i10n.d.ts`，否则 tsc 不认识新键）。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：194 pass / 0 fail（新增 8 条）。
+- `npm run test:review`：Zotero 10.0.8 **60 passed**；Zotero 11.0-dev.5 **60 passed**。
+- 首次跑红的原因：断言 `message` 含重定向地址，但集成测试里 `getString()` 会退化为消息 id（`_getString` 在 `addon` 全局不存在时返回 `interlinear-<id>`），改为断言消息 id 后通过。**这是测试环境的既有行为，不是回归。**
+
+### 未目视验证 / 不确定
+
+- 内联确认区的真实观感（宽度、换行、深浅主题对比度）未目视。
+- 真实服务发生 302 时的行为只做了替身测试，没有对真实公网端点验证（避免向第三方发请求）。
+- 是否该对 `http://` 的 Google 免费接口也提示：当前一并提示（它也会把原文发出去），未与产品确认。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 把 OpenAI endpoint 改成 `http://api.example.com/v1/chat/completions` 后点保存：出现内联警告，点“仍然保存”才写入，点“取消”保持未保存。
+2. 改成 `http://127.0.0.1:11434/v1/chat/completions`：不应出现警告（回环放行）。
+3. 三个 endpoint 输入框下方都能看到“密钥会发送到这个地址”的提示；切换深浅主题确认对比度。
+4. 若有一个会 302 的端点（可用本地代理模拟）：测试连接应报“端点发生了重定向”，而不是静默跟随。
+
+## Step 4：OSKeyStore 存储（src/secrets.ts）
+
+### 做了什么
+
+- 新增 `src/secrets.ts`，只使用 Zotero 10 与 11 **共有**的接口（`Zotero.OSKeyStore.available / isEncrypted / encrypt / decrypt`），不碰 10 专有的 `confirmUnencryptedFallback`、`_usable`、`_error`。每次调用都有特性检测 + try/catch。
+- **存储形态**：仍写原来的三个偏好键，值变成 `oskv1:<ciphertext>`（Zotero 自己给同步 API key 用的同一前缀）。底层由 Mozilla `OSKeyStore.sys.mjs` 提供密钥，即 macOS Keychain / Windows DPAPI / Linux libsecret。
+- **同步读取**：`initSecrets()` 在启动时把所有已加密值解密进内存 `Map`；`getSecret()` 保持同步（缓存优先，未命中回落到“非前缀的明文”，绝不把密文当密钥返回）。`translateText()`、聊天发送、三个“测试连接”入口在首次使用前 `await whenSecretsReady()`。
+- **写入**：`setSecret()` 先更新缓存再异步加密落盘，**回读确认以 `oskv1:` 开头**才算成功；失败时把原值写回（不会毁掉一个还能用的密钥），并记录 `lastWriteError` 供 UI 读取。
+- **迁移**：`migratePlaintextSecrets()` 幂等（第二次看到前缀就跳过），失败保留明文、只提示一次、不阻塞翻译。旧明文读取路径保留（至少保留一个大版本，见 README）。
+- **三态**：
+  - 可用 → 加密落盘；
+  - 不可用（无 `Zotero.OSKeyStore`，如 Linux 无 Secret Service）→ **不写任何明文**，值只留在内存（`session` 状态），并 `warn("keystore-unavailable")` 通知 UI；
+  - 解密失败（换机器/换系统用户/密文损坏）→ `needs-reentry`，**不清空 pref**，`getSecret()` 返回空字符串（provider 会报“请先填写密钥”），等用户重新输入。
+- **测试**：`test/startup.test.ts` 新增 `describe("API key storage")` 6 条（加密落盘、幂等迁移、钥匙串不可用时不写明文、垃圾密文不清空、初始化后同步读取、清除密钥）；测试里 key 一律是 `sk-test-000111222333444555`。
+
+### 改动文件
+
+`src/secrets.ts`（新）、`src/settings.ts`、`src/hooks.ts`、`src/bilingualReader.ts`、`src/chatPane.ts`、`src/modules/preferenceScript.ts`、`test/startup.test.ts`、`package.json`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过（`src/secrets.ts` 已加入 lint 列表）。
+- `npm run test:unit`：194 pass / 0 fail（本步未新增 node 单测，逻辑在集成层验证）。
+- `npm run test:review`：Zotero 10.0.8 **66 passed**；Zotero 11.0-dev.5 **66 passed**（钥匙串在两边都可用，6 条用例未被 skip）。
+
+### 偏差与说明
+
+- **集成测试里有两个不同的模块实例**：设置页跑在打包后的插件里，而测试直接 import `src/`，两边各有自己的内存缓存。因此断言“保存后密钥可用”不能读测试侧 `getSecret()`，改为轮询 `Zotero.Prefs.get(key, true)` 并断言以 `oskv1:` 开头（`waitForStoredSecret()`）。同理，Gemini 聊天用例改为通过 `setSecret()` 写入，而不是直接改偏好（否则缓存不会更新）。
+- 首轮跑红 2 条，都是上述原因，不是功能缺陷；调整后两版本全绿。
+
+### 未实测（按约定不猜）
+
+- macOS 钥匙串授权弹窗的时序与是否阻塞 UI。
+- Linux 无 Secret Service 时的真实表现：代码走 `session` 分支，但没有真机验证；也没有验证 Zotero 10 的 `Zotero.OSKeyStore.available` 在该环境下返回 false 还是 `encrypt` 抛错。
+- profile 换机器/换 OS 用户后的 `needs-reentry` 真实路径（只用 `oskv1:not-a-real-ciphertext` 模拟过）。
+- 崩溃时内存中的明文是否会进入转储：未验证，属平台行为。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 填一个假 key 保存后，`prefs.js` 里该键的值应以 `oskv1:` 开头、不含明文。
+2. 重启 Zotero：设置页应显示“已使用系统钥匙串加密”，翻译仍能带 key 请求（可用“测试连接”看 401 而不是“请先填写密钥”）。
+3. 把 `prefs.js` 里的值改成 `oskv1:garbage` 后重启：应显示“需要重新输入”，且该键不被清空。
+4. 若在 Linux 上：无 libsecret 时应显示“仅本次会话有效”，且 `prefs.js` 不出现明文。
+
+## Step 5：设置页密钥 UI
+
+### 做了什么
+
+- **三个密钥字段**（openai / claude / gemini）各新增一个状态文字（`role=status`、`aria-live=polite`）和一个“清除密钥”按钮。
+- **掩码显示**：已保存的密钥在输入框里显示 `••••••••` + 末四位（长度为 4 以内则只显示掩码），并打上 `data-masked="true"`；聚焦即清空等待新输入；失焦且仍为空时把掩码恢复，避免“看起来没设置”。
+- **显示/隐藏 8 秒自动回遮蔽**：点“显示”后 8 秒自动切回 `password` 并复位按钮文案与 `aria-pressed`。
+- **输入即 trim**：`input` 事件里立刻去掉首尾空白，避免“看着一样、保存时被静默改掉”。
+- **清除密钥**：同步清内存缓存 + 删偏好 + 清空输入框 + 刷新状态，并在保存状态行提示“密钥已清除”。
+- **四种状态**：`已使用系统钥匙串加密` / `未加密保存` / `仅本次会话有效` / `需要重新输入`，用 `data-state` 控制图标（✓ 或 !）与对比度；空状态不占位。
+- **钥匙串不可用时的二次确认（内联，非系统弹窗）**：点保存时若用户填了新密钥且 `isKeystoreAvailable() === false`，在 `#interlinear-save-confirm` 里给出三个按钮：`仅本次会话`（默认、聚焦）/ `仍然不加密保存` / `取消`。选“不加密”后 `setSecret(..., { allowPlaintext: true })`，随后状态持续显示“未加密保存”。**任何路径都不会静默写明文。**
+- **保存时不覆盖未改动的密钥**：`readSecretInput()` 在“仍是掩码”时返回 `undefined`，`saveSettings` 跳过写入；为防止程序化赋值被误判成掩码，判定条件是“`data-masked` 为真**且**值仍等于当前掩码”。
+- **保存后刷新**：密钥是异步落盘的，保存后 150ms 与 800ms 各刷新一次状态与掩码（不阻塞保存状态提示）。
+- **文案**：新增 9 个键（en/zh 各一次，535 → 550，两边一致）；同时把三条 `provider-*-api-key-help` 从“明文保存”改为“加密保存”，避免与新行为矛盾。
+
+### 改动文件
+
+`src/modules/preferenceScript.ts`、`addon/content/preferences.xhtml`、`addon/content/preferences.css`、`addon/locale/{en-US,zh-CN}/addon.ftl`、`typings/i10n.d.ts`（生成）、`test/startup.test.ts`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：194 pass / 0 fail。
+- `npm run test:review`：Zotero 10.0.8 **67 passed**；Zotero 11.0-dev.5 **67 passed**（新增「masks a stored key and clears it from the pane」，覆盖掩码、状态文字与清除按钮）。
+- 文案改动后又完整跑了一遍两版本，仍 67 / 67。
+
+### 未目视验证
+
+- 掩码字体在 13px 下的观感、`••••••••` 在窄窗口是否被截断。
+- 8 秒自动回遮蔽与“显示”按钮的交互手感。
+- 内联确认区三个按钮在 600px 下的换行与焦点顺序（代码里把第一个按钮 `focus()`，键盘 Tab 顺序按 DOM）。
+- 深浅主题下 `data-state="plaintext"`/`needs-reentry` 的警告图标对比度。
+
+### 我需要手动在 Zotero 里验证的清单
+
+1. 填入假 key 保存：输入框变成 `••••••••` + 末四位，状态显示“已使用系统钥匙串加密”。
+2. 点输入框：内容清空，可直接输入新 key；不输入直接点走：掩码恢复。
+3. 点“显示”：8 秒后自动回到遮蔽；再点“显示/隐藏”手动切换正常。
+4. 点“清除密钥”：输入框清空、`prefs.js` 中该键消失、状态文字消失。
+5. 在 Linux（无 libsecret）或临时把 `Zotero.OSKeyStore` 置空：保存时出现三个按钮的内联确认，选“仅本次会话”后状态为“仅本次会话有效”；选“仍然不加密保存”后 `prefs.js` 里是明文且状态持续显示“未加密保存”。
+
+## Step 6：安全文档
+
+### 做了什么
+
+- **README（中英）**：把一句“密钥以明文保存”的旧提示替换为完整的“隐私与密钥”段落，明确：段落文本会发给所选服务（无法避免，不要翻敏感文献）；密钥用 OS 钥匙串加密、prefs 只存 `oskv1:` 密文；不进日志/缓存键/调试输出/导出；走请求头不进 URL；非回环需 HTTPS（除非显式确认明文 HTTP 主机）；带密钥请求不跟随重定向；换机器/换 OS 用户需重新输入；Linux 无 Secret Service 的默认与“未加密保存”的显式确认；旧明文就地加密与明文读取路径保留窗口。
+- **新增 `SECURITY.md`**：GitHub 私有漏洞报告入口（`/security/advisories/new`）、支持范围（最新版本 + Zotero 10 桌面版，11 未声明）、插件会把哪些数据发到哪里、已知限制（钥匙串绑定 OS 账户、Linux 需要 Secret Service、插件无沙箱因此其他插件可读同一偏好、依赖 Zotero 内部阅读模式接口）、不在范围内的事项（Zotero/服务商/操作系统本身的问题、需要不存在 API 的加固、超大文档或恶意响应导致的 DoS）。
+- **`docs/dev/SETTINGS.md`**：三个 `apiKey` 行改为密文存储；§8 安全与校验补上密钥三态（加密 / 仅会话 / 需重新输入）与迁移策略；新增 §9“端点与网络请求”（loopback/私网白名单、不跟随重定向、统一脱敏）。
+- **`CHANGELOG.md`**：新增 `[Unreleased]`，分 Security / Changed / Added 记录本次加固（加密存储、拒绝重定向、HTTP 限制、脱敏、CSP 迁移、密钥 UI、SECURITY.md）。
+- **文案一致性**：三条 `provider-*-api-key-help` 从“明文保存”改为“使用系统钥匙串加密保存”，中英同步（见 Step 5 改动清单）。
+
+### 改动文件
+
+`README.md`、`README-zh-CN.md`、`SECURITY.md`（新）、`docs/dev/SETTINGS.md`、`CHANGELOG.md`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- 纯文档变更，无代码改动；`npm run build` 通过。
+- `lint:check` / `test:unit` / `test:review`（Zotero 10 + 11）与 Step 7 一起跑，结果见 Step 7 一节（同一代码状态，文档不影响构建产物）。
+
+## Step 7：仓库密钥扫描（无新依赖）
+
+### 做了什么
+
+- 新增 `scripts/check-secrets.mjs`（纯 Node，无 import 第三方）：
+  - 默认扫描 `git ls-files`，支持 `--staged` 与显式路径；跳过 `node_modules/`、`.scaffold/`、`docs/images`、`docs/dev/screenshots`、`package-lock.json` 与二进制后缀，单文件 >2MB 跳过。
+  - 7 类模式：OpenAI/Anthropic（`sk-`/`sk-ant-`）、Google（`AIza`）、GitHub token（`ghp_`/`github_pat_`）、Slack、AWS access key、私钥块头、`Bearer <token>`。
+  - 白名单含 `sk-test-`、`sk-ant-test-`、`AIzaTEST`、`000111`、`example.com`、`REDACTED`、`<your`、`YOUR_`；行内 `allow-secret-scan` 注释可单独豁免。
+  - 输出 `file:line  类型  前4…后2 (长度)`，**不打印完整密钥**；命中时 exit 1。
+  - 导出 `scanText()` / `isAllowed()` 供单测使用。
+- `package.json` 新增 `npm run check:secrets`；`.github/workflows/ci.yml` 在 lint 之后加一步 “Scan for committed secrets”。
+- `.gitignore` 收紧：`.env.*` 并 `!.env.example`，新增 `*.log`。
+- 单测 `test/checkSecrets.node.test.mjs`（6 条）：识别四类真实形态假值、识别私钥块、不误报 `sk-test-…`/`AIzaTEST…`/短串/sha512/中文句子、`allow-secret-scan` 生效、行号准确。
+
+### 改动文件
+
+`scripts/check-secrets.mjs`（新）、`test/checkSecrets.node.test.mjs`（新）、`package.json`、`.github/workflows/ci.yml`、`.gitignore`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `node scripts/check-secrets.mjs`：扫描 118 个跟踪文件，0 命中。
+- `npm run build`：通过；`npm run lint:check`：通过。
+- `npm run test:unit`：200 pass / 0 fail（新增 6 条）。
+- `npm run test:review`：Zotero 10 **67 passed**；Zotero 11 首次 66 passed / 1 failed（字体检测缓存断言 `['live','failed']` 不含 `cached`），**单独复跑 Zotero 11 为 67 passed**，判定为偶发（字体测量时序），与本步改动无关（本步只新增脚本与 CI/忽略规则）。
+
+### 未验证
+
+- GitHub 原生 Secret scanning + push protection 需你在仓库设置里开启，我这边无法验证是否已开。
+- CI 上的这一步尚未在真实 Actions 环境跑过（本地等价命令已验证）。
+
+## Step 8：私有 API 收敛（src/zoteroCompat.ts，纯重构）
+
+### 做了什么
+
+- 新增 `src/zoteroCompat.ts`，把散落在 5 个文件里的私有/未文档化访问集中到一处，并为每个访问点写明版本敏感注释：
+  `getInternalReader`、`isPrimaryView`、`getActiveSDTView`、`getSDTViews`、`setReadingMode`（返回 `boolean`，缺 API 时 false）、`refreshSDTView`（返回 `boolean`，缺 `_handleViewUpdate` 时 false 让调用方回退到合成 resize）、`getReaders`、`getReaderFrameWindow`、`getReaderFrameDocument`、`getSDTViewDocument`。
+- 迁移的文件：`bilingualReader.ts`（内部 reader、SDT 视图、`_setReadingMode`、`_readers`、`_iframeWindow`）、`readerUI.ts`（同上 + 偏好窗回退）、`readerToolbar.ts`（reader 列表与工具栏文档）、`chatPane.ts`（reader 列表）、`readingLayout.ts`（`_handleViewUpdate`）。
+- 全仓复查：`_internalReader` / `_primarySDTView` / `_secondarySDTView` / `_setReadingMode` / `_handleViewUpdate` / `_iframeWindow` 在 `src/` 下（除 compat 文件）**0 命中**。
+- 行为保持：`refreshSDTView` 保留原来的 `else { 合成 resize }` 回退；`setReadingMode` 保留“无内部 reader → `error-reader-unavailable`，有 reader 但无 `_setReadingMode` → `error-reading-mode-unsupported`”的两种错误区分。
+- `src/zoteroCompat.ts` 加入 lint 列表。
+
+### 改动文件
+
+`src/zoteroCompat.ts`（新）、`src/bilingualReader.ts`、`src/readerUI.ts`、`src/readerToolbar.ts`、`src/chatPane.ts`、`src/readingLayout.ts`、`package.json`、`docs/dev/PROGRESS.md`。
+
+### 测试结果
+
+- `npm run build`：通过（重构中间态曾因 `else` 缺少回退报 TS1128，已按语义补回）。
+- `npm run lint:check`：通过。
+- `npm run test:unit`：200 pass / 0 fail。
+- `npm run test:review`：Zotero 10.0.8 **67 passed**；Zotero 11.0-dev.5 **67 passed**（与重构前完全一致，无回归）。
+
+### 未目视验证
+
+- 真机 PDF 上的阅读模式切换、左右分栏、插入/删除译文后的高亮几何：集成测试只断言 DOM 与几何数值，未目视。
+
+## Step 9：面向新手的使用文档（docs/guide/GUIDE-zh-CN.md、GUIDE-en.md）
+
+### 基线与产出范围
+
+- 新建分支 `docs/user-guide`，从 `feat/network-hints` @ `4fab6fb`（2026-11-12 08:37:36 +0800，`test: annotate the private-key fixture inline`）切出；该提交比 `main` @ `f2f7da8` 领先 14 个提交，包含密钥加密、端点安全与网络失败提示三组改动。
+- 文档对应版本取 `package.json` 的 `version`（`0.6.0`），并在正文注明“以 Releases 页面最新版为准”。
+- 交付：中文主文档、英文对应版、真实截图（`docs/guide/images/`）、`docs/dev/GUIDE-VERIFY.md`、`docs/dev/GUIDE-TODO.md`，以及两个 README 的入口链接与 CHANGELOG 条目。
+- 发布时间状态：GitHub 上现有 Release 早于本分支的改动，本次保留不动。凡依赖“新版发布”才能确定的内容（Releases 页面截图、xpi 文件名、版本号）一律写入 `docs/dev/GUIDE-TODO.md`，正文只用中性写法。
+
+### 约定
+
+- 每步单独提交，前缀 `docs:`；不 push、不动 remote 与 tag、不改功能代码、不新增依赖。
+- 截图工具与标注脚本放在仓库之外的临时目录；仓库内只增加最终图片与文档。

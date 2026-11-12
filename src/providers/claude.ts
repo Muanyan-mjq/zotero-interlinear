@@ -10,6 +10,9 @@ import {
   normalizeClaudeEndpoint,
 } from "./claudeProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import { describeFailure } from "./errorHints";
 
 export interface ClaudeConfig {
   endpoint: string;
@@ -22,14 +25,18 @@ export interface ClaudeConfig {
 }
 
 function httpError(status: number | undefined, detail: string): string {
+  detail = redactSecrets(detail);
   if (status) {
+    if (status === 429) {
+      return `${detail ? getString("provider-error-claude-http", { args: { status: String(status), detail } }) : getString("provider-error-claude-http-status", { args: { status: String(status) } })} ${describeFailure({ status }).hint}`;
+    }
     return detail
       ? getString("provider-error-claude-http", {
           args: { status: String(status), detail },
         })
       : getString("provider-error-claude-http-status", { args: { status: String(status) } });
   }
-  return getString("provider-error-claude-network", { args: { detail } });
+  return `${getString("provider-error-claude-network", { args: { detail } })} ${describeFailure({ message: detail }).hint}`;
 }
 
 export async function requestClaudeTranslation(
@@ -65,6 +72,7 @@ export async function requestClaudeTranslation(
       headers,
       body: JSON.stringify(body),
       responseType: "text",
+      ...NO_REDIRECT_OPTIONS,
       timeout: config.timeoutMs,
     });
   } catch (error: any) {
@@ -75,6 +83,7 @@ export async function requestClaudeTranslation(
   }
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     const detail =
       extractClaudeErrorDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(httpError(xhr?.status, detail));

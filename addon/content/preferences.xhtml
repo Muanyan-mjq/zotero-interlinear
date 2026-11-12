@@ -1,7 +1,4 @@
-<groupbox
-  id="interlinear-settings-root"
-  onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
->
+<groupbox id="interlinear-settings-root">
   <html:div class="interlinear-page">
     <html:div class="interlinear-hero">
       <html:div id="interlinear-brand" class="interlinear-brand"></html:div>
@@ -94,6 +91,15 @@
         </html:div>
       </html:div>
     </html:div>
+
+    <!-- Inline confirmation for endpoints that would send a key over plain HTTP.
+         Rendered by preferenceScript.ts; never a system dialog. -->
+    <html:div
+      id="interlinear-save-confirm"
+      class="interlinear-save-confirm"
+      role="alert"
+      hidden="true"
+    ></html:div>
 
     <html:div class="interlinear-content">
       <!-- Service and languages -->
@@ -266,6 +272,17 @@
                 class="interlinear-button interlinear-button-small interlinear-secret-toggle"
                 data-target="interlinear-openai-api-key"
               ></html:button>
+              <html:span
+                id="interlinear-openai-key-status"
+                class="interlinear-secret-status"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+              <html:button
+                id="interlinear-openai-key-clear"
+                type="button"
+                class="interlinear-button interlinear-button-small interlinear-secret-clear"
+              ></html:button>
             </html:div>
           </html:div>
           <html:p id="interlinear-openai-api-key-help" class="interlinear-help"></html:p>
@@ -380,6 +397,17 @@
                 class="interlinear-button interlinear-button-small interlinear-secret-toggle"
                 data-target="interlinear-claude-api-key"
               ></html:button>
+              <html:span
+                id="interlinear-claude-key-status"
+                class="interlinear-secret-status"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+              <html:button
+                id="interlinear-claude-key-clear"
+                type="button"
+                class="interlinear-button interlinear-button-small interlinear-secret-clear"
+              ></html:button>
             </html:div>
           </html:div>
           <html:p id="interlinear-claude-api-key-help" class="interlinear-help"></html:p>
@@ -493,6 +521,17 @@
                 type="button"
                 class="interlinear-button interlinear-button-small interlinear-secret-toggle"
                 data-target="interlinear-gemini-api-key"
+              ></html:button>
+              <html:span
+                id="interlinear-gemini-key-status"
+                class="interlinear-secret-status"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+              <html:button
+                id="interlinear-gemini-key-clear"
+                type="button"
+                class="interlinear-button interlinear-button-small interlinear-secret-clear"
               ></html:button>
             </html:div>
           </html:div>

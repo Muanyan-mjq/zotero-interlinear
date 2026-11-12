@@ -30,6 +30,9 @@ import {
 } from "./settings";
 import { resolveUiFontFamily } from "./appearance";
 import { getLocaleID, getString } from "./utils/locale";
+import { logError } from "./utils/log";
+import { whenSecretsReady } from "./secrets";
+import { getReaders } from "./zoteroCompat";
 
 const CHAT_PANE_ID = "interlinear-chat";
 const SEND_SELECTOR = "#interlinear-chat-send";
@@ -111,7 +114,7 @@ function buildChatParagraphSelector(): string {
 }
 
 function findReader(itemID: number): any | null {
-  const readers = ((Zotero.Reader as any)?._readers || []) as any[];
+  const readers = getReaders();
   for (const reader of readers) {
     try {
       if (Number(reader?.itemID) === itemID) return reader;
@@ -296,6 +299,7 @@ async function sendQuestion(body: HTMLElement): Promise<void> {
     return;
   }
 
+  await whenSecretsReady();
   const provider = getChatProvider(getEngine());
   if (!provider) {
     setStatus(body, getString("chat-status-unsupported"));
@@ -471,7 +475,7 @@ export function registerChatPane(): void {
     });
     sectionKey = typeof key === "string" ? key : null;
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
 }
 
@@ -481,7 +485,7 @@ export function unregisterChatPane(): void {
     try {
       manager.unregisterSection(sectionKey);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
   sectionKey = null;

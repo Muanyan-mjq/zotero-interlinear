@@ -53,6 +53,8 @@ import {
   parseShortcut,
   type ShortcutSpec,
 } from "./shortcut";
+import { logError, setLogSecretsProvider } from "./utils/log";
+import { SECRET_PREFS, getSecret, setSecret } from "./secrets";
 
 export type { AppearanceSettings } from "./appearance";
 export type { DisplayMode } from "./displayMode";
@@ -122,17 +124,17 @@ const OLLAMA_MODEL_PREF = `${BASE}.ollama.model`;
 const GOOGLE_BASE_URL_PREF = `${BASE}.google.baseUrl`;
 const OPENAI_ENDPOINT_PREF = `${BASE}.openai.endpoint`;
 const OPENAI_MODEL_PREF = `${BASE}.openai.model`;
-const OPENAI_API_KEY_PREF = `${BASE}.openai.apiKey`;
+const OPENAI_API_KEY_PREF = SECRET_PREFS.openai;
 const OPENAI_PROMPT_PREF = `${BASE}.openai.prompt`;
 const OPENAI_TEMPERATURE_PREF = `${BASE}.openai.temperature`;
 const CLAUDE_ENDPOINT_PREF = `${BASE}.claude.endpoint`;
 const CLAUDE_MODEL_PREF = `${BASE}.claude.model`;
-const CLAUDE_API_KEY_PREF = `${BASE}.claude.apiKey`;
+const CLAUDE_API_KEY_PREF = SECRET_PREFS.claude;
 const CLAUDE_PROMPT_PREF = `${BASE}.claude.prompt`;
 const CLAUDE_TEMPERATURE_PREF = `${BASE}.claude.temperature`;
 const GEMINI_BASE_URL_PREF = `${BASE}.gemini.baseUrl`;
 const GEMINI_MODEL_PREF = `${BASE}.gemini.model`;
-const GEMINI_API_KEY_PREF = `${BASE}.gemini.apiKey`;
+const GEMINI_API_KEY_PREF = SECRET_PREFS.gemini;
 const GEMINI_PROMPT_PREF = `${BASE}.gemini.prompt`;
 const GEMINI_TEMPERATURE_PREF = `${BASE}.gemini.temperature`;
 const LANGUAGE_SOURCE_PREF = `${BASE}.language.source`;
@@ -302,11 +304,13 @@ export function setOpenAIModel(model: string): void {
 }
 
 export function getOpenAIApiKey(): string {
-  return getRawStringPref(OPENAI_API_KEY_PREF).trim();
+  return getSecret(OPENAI_API_KEY_PREF).trim();
 }
 
 export function setOpenAIApiKey(apiKey: string): void {
-  setStringPref(OPENAI_API_KEY_PREF, apiKey.trim());
+  // Encryption and persistence live in secrets.ts; this stays synchronous for
+  // the provider config builders and the settings form.
+  setSecret(OPENAI_API_KEY_PREF, apiKey);
 }
 
 export function getOpenAIPrompt(): string {
@@ -360,11 +364,11 @@ export function setClaudeModel(model: string): void {
 }
 
 export function getClaudeApiKey(): string {
-  return getRawStringPref(CLAUDE_API_KEY_PREF).trim();
+  return getSecret(CLAUDE_API_KEY_PREF).trim();
 }
 
 export function setClaudeApiKey(apiKey: string): void {
-  setStringPref(CLAUDE_API_KEY_PREF, apiKey.trim());
+  setSecret(CLAUDE_API_KEY_PREF, apiKey);
 }
 
 export function getClaudePrompt(): string {
@@ -426,12 +430,16 @@ export function setGeminiModel(model: string): void {
 }
 
 export function getGeminiApiKey(): string {
-  return getRawStringPref(GEMINI_API_KEY_PREF).trim();
+  return getSecret(GEMINI_API_KEY_PREF).trim();
 }
 
 export function setGeminiApiKey(apiKey: string): void {
-  setStringPref(GEMINI_API_KEY_PREF, apiKey.trim());
+  setSecret(GEMINI_API_KEY_PREF, apiKey);
 }
+
+// Error messages and debug output must never carry a key this session holds in
+// memory. The logger calls this lazily, so rotating a key needs no re-wiring.
+setLogSecretsProvider(() => [getOpenAIApiKey(), getClaudeApiKey(), getGeminiApiKey()]);
 
 export function getGeminiPrompt(): string {
   return getRawStringPref(GEMINI_PROMPT_PREF).trim() || DEFAULT_OPENAI_PROMPT;
@@ -964,7 +972,7 @@ export function migrateLegacyPreferences(): void {
         }
         rootBranch.clearUserPref(malformedKey);
       } catch (error) {
-        Zotero.logError(error as Error);
+        logError(error as Error);
       }
     }
   }
@@ -1011,13 +1019,13 @@ function migrateLegacyBranch(rootBranch: any): void {
           break;
       }
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
   try {
     rootBranch.setBoolPref(markerKey, true);
   } catch (error) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
   }
 }
 

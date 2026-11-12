@@ -10,12 +10,6 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 [English](README.md) · [更新日志](CHANGELOG.md) · [贡献指南](CONTRIBUTING.md)
 
-<!-- 截图占位（发布前在干净的 Zotero 10 配置下补拍）：
-     docs/images/toolbar-toggle.png       阅读器工具栏：Interlinear 开关、显示模式按钮与进度
-     docs/images/settings-appearance.png  设置页：实时预览卡片与保存栏
-     docs/images/side-by-side.png         左右分栏阅读效果
--->
-
 ## 功能
 
 - **内置五种翻译服务。** Google 翻译开箱即用、无需密钥；OpenAI 兼容接口、Anthropic Claude、Google Gemini、Ollama 在设置页填好即可使用，不依赖任何其他插件。
@@ -29,6 +23,40 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 - **译文外观自定义与实时预览。** 六套内置方案（默认、护眼纸张、学术衬线、高对比、暗色优化、极简）可一键应用并撤销；支持检测本机字体的可搜索字体列表、收藏、最多 6 个备选字体的字体栈构建器、按目标语言自动选字体；自实现 HSV 取色器（色相/饱和度/透明度/RGB/HSL/HEX）、浅深分别配色、最近使用与“我的颜色”；文字装饰（下划线/上划线/删除线及线型/粗细/偏移）、段落分隔线、色带位置/宽度/线型、译文块布局（内边距/圆角/边框/缩进/对齐/最大宽度/不透明度/原文淡化）；“我的方案”与 JSON 导入导出。
 - **翻译缓存。** 按服务、语言对与术语表区分缓存，设置页可一键清理。
 - 界面提供英文与简体中文；错误以阅读器内非阻塞提示条显示。
+
+## 截图
+
+真实 Zotero 10 窗口 + 真实翻译运行；图片就是 `docs/images/inbox/` 里的原图，未做拼接或修饰。每一对都是同一页、
+同一位置，左亮右暗。演示论文是《Attention Is All You Need》（Vaswani 等，arXiv:1706.03762）；
+译文由机器翻译生成，仅用于演示。论文按 arXiv 许可证分发（`arXiv non-exclusive distrib 1.0`，并非 CC BY），
+此处仅作为本插件界面文档展示。
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-light.png" alt="上下对照，亮色：每段原文下方紧跟中文译文" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-dark.png" alt="上下对照，暗色" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">上下对照 · 亮色</td>
+    <td align="center">上下对照 · 暗色</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-light.png" alt="左右双栏，亮色：左侧原文、右侧译文" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-dark.png" alt="左右双栏，暗色" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">左右双栏 · 亮色</td>
+    <td align="center">左右双栏 · 暗色</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-split-light.png" alt="左右分屏，亮色：两个窗格独立滚动" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-split-dark.png" alt="左右分屏，暗色" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">左右分屏 · 亮色</td>
+    <td align="center">左右分屏 · 暗色</td>
+  </tr>
+</table>
 
 ## 安装
 
@@ -48,7 +76,13 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 - **术语表**：导入 / 导出术语文件。
 - **高级**：翻译范围（正文/标题/图注/列表项/旁注）、跳过末尾页数、速度与可靠性参数、打开论文时自动翻译（关/仅缓存/总是）、翻译缓存用量与清理，以及版本与项目主页。
 
-> **隐私提示。** 开启翻译即表示段落文本会发送给你选择的服务。API 密钥以明文保存在 Zotero 偏好设置中，不会写入日志或缓存键。敏感文档请勿使用不可信的服务翻译。
+> **隐私与密钥。** 开启翻译即表示段落文本会发送给你配置的翻译服务——这一点无法避免，敏感文档请勿使用不可信的服务。API 密钥是另一回事：Interlinear 用 Zotero 的系统钥匙串接口（macOS Keychain、Windows DPAPI、Linux libsecret）加密密钥，偏好里只保存 `oskv1:` 开头的密文。密钥不会写入日志、缓存键、调试输出或导出的外观文件，并且通过请求头发送而不是 URL。非回环端点必须使用 HTTPS（除非你在设置页明确确认某个明文 HTTP 主机），带密钥的请求也不会跟随重定向。由于加密密钥绑定在你的系统账户上，把 profile 拷贝到另一台机器或另一个系统用户后无法解密——需要重新输入。Linux 上没有 Secret Service 时，默认只在本次会话使用密钥；以未加密方式保存是可能的，但必须在设置页内二次确认，之后会持续标记为“未加密”。0.6.0 及更早版本以明文保存的密钥会在首次启动时就地加密，明文读取路径保留到你下次保存该密钥为止。
+
+### 网络与代理
+
+默认的 Google 端点需要能连通 `translate.googleapis.com`。Interlinear 的所有请求都走 Zotero 自己的 HTTP 层（`Zotero.HTTP.request`），所以用的是 Zotero 使用的代理——插件没有独立的代理设置，也无法绕过 Zotero 的代理配置。Zotero 本身是否跟随系统代理，取决于 Zotero 的网络偏好与操作系统设置（**此处未独立验证**）。
+
+如果“测试连接”失败：先确认系统代理或 TUN 模式是否开启，再尝试其他翻译后端（OpenAI 兼容、Claude、Gemini 或本机 Ollama），最后才考虑你信任的镜像地址。失败提示现在会区分超时、DNS、连接被拒绝/重置、HTTP 状态码、限流、重定向与无法解析的响应，并给出对应建议。
 
 ## 使用
 

@@ -1,3 +1,6 @@
+import { logError } from "./utils/log";
+import { refreshSDTView } from "./zoteroCompat";
+
 interface LayoutObserver {
   refresh: () => void;
   dispose: () => void;
@@ -22,13 +25,11 @@ export function observeReadingLayout(view: any, doc: Document): void {
       // This is the same path Zotero uses after a reading-mode resize. It
       // invalidates both annotation range and page-rectangle caches, then
       // synchronously redraws highlights and repositions their popups.
-      if (typeof view?._handleViewUpdate === "function") {
-        view._handleViewUpdate(true);
-      } else {
+      if (!refreshSDTView(view)) {
         win.dispatchEvent(new (win as any).Event("resize"));
       }
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   };
   const schedule = () => {
@@ -83,7 +84,7 @@ export function observeReadingLayout(view: any, doc: Document): void {
   win.addEventListener("pagehide", observer.dispose);
   // Content can appear just before the SDT view finishes initialization.
   void Promise.resolve(view?.initializedPromise).then(schedule, (error) => {
-    if (!disposed) Zotero.logError(error as Error);
+    if (!disposed) logError(error as Error);
   });
   schedule();
 }

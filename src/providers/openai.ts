@@ -14,6 +14,9 @@ import {
   getXhrResponseBody,
   normalizeChatCompletionsEndpoint,
 } from "./openaiProtocol";
+import { redactSecrets } from "../utils/redact";
+import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import { describeFailure } from "./errorHints";
 
 export interface OpenAIConfig {
   endpoint: string;
@@ -25,14 +28,18 @@ export interface OpenAIConfig {
 }
 
 function httpError(status: number | undefined, detail: string): string {
+  detail = redactSecrets(detail);
   if (status) {
+    if (status === 429) {
+      return `${detail ? getString("provider-error-openai-http", { args: { status: String(status), detail } }) : getString("provider-error-openai-http-status", { args: { status: String(status) } })} ${describeFailure({ status }).hint}`;
+    }
     return detail
       ? getString("provider-error-openai-http", {
           args: { status: String(status), detail },
         })
       : getString("provider-error-openai-http-status", { args: { status: String(status) } });
   }
-  return getString("provider-error-openai-network", { args: { detail } });
+  return `${getString("provider-error-openai-network", { args: { detail } })} ${describeFailure({ message: detail }).hint}`;
 }
 
 export async function requestOpenAITranslation(
@@ -61,6 +68,7 @@ export async function requestOpenAITranslation(
       headers,
       body: JSON.stringify(body),
       responseType: "text",
+      ...NO_REDIRECT_OPTIONS,
       timeout: config.timeoutMs,
     });
   } catch (error: any) {
@@ -71,6 +79,7 @@ export async function requestOpenAITranslation(
   }
 
   if (!xhr || xhr.status < 200 || xhr.status >= 300) {
+    if (isRedirectStatus(xhr?.status)) throw new Error(redirectErrorMessage(xhr));
     const detail =
       extractOpenAIErrorDetail(getXhrResponseBody(xhr)) || String(xhr?.statusText || "");
     throw new Error(httpError(xhr?.status, detail));

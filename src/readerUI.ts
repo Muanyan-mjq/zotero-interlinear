@@ -2,26 +2,23 @@ import { buildTranslationCSS } from "./appearance";
 import { getAppearance, getTargetLanguage } from "./settings";
 import { getString } from "./utils/locale";
 import { registerToolbarHandlers } from "./toolbarEvents";
+import { logError } from "./utils/log";
+import {
+  getActiveSDTView,
+  getInternalReader,
+  getReaderFrameDocument,
+  getReaderFrameWindow,
+  getSDTViewDocument,
+} from "./zoteroCompat";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const EXPORT_BUTTON_CLASS = "interlinear-export-button";
 const PRINTER_EMOJI = "🖨️";
 
-function getInternalReader(reader: any): any {
-  return reader?._internalReader || reader;
-}
-
-function getActiveSDTView(reader: any): any {
-  const internal = getInternalReader(reader);
-  if (!internal) return null;
-  const primary = internal._lastViewPrimary !== false || !internal._secondaryView;
-  return primary ? internal._primarySDTView : internal._secondarySDTView;
-}
 
 function getSDTDocument(reader: any): Document | null {
   try {
-    const view = getActiveSDTView(reader);
-    return view?._iframeDocument || view?._iframe?.contentDocument || null;
+    return getSDTViewDocument(getActiveSDTView(reader));
   } catch (_) {
     return null;
   }
@@ -29,7 +26,7 @@ function getSDTDocument(reader: any): Document | null {
 
 function getDialogWindow(reader: any): any {
   try {
-    return reader?._iframeWindow || Zotero.getMainWindow();
+    return getReaderFrameWindow(reader) || Zotero.getMainWindow();
   } catch (_) {
     return Zotero.getMainWindow();
   }
@@ -41,7 +38,7 @@ function showMessage(reader: any, message: string): void {
     win.alert(message);
     return;
   }
-  Zotero.logError(new Error(message));
+  logError(new Error(message));
 }
 
 function confirmMessage(reader: any, message: string): boolean {
@@ -372,7 +369,7 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
     await printHTMLToPDF(html, tempFile);
     importedAttachment = await importExportedPDF(tempFile, sourceAttachment);
   } catch (error: any) {
-    Zotero.logError(error as Error);
+    logError(error as Error);
     showMessage(
       reader,
       getString("export-error-failed", {
@@ -422,7 +419,7 @@ export function renderReaderExportButton(event: any): void {
 export function cleanupReaderUI(reader: any): void {
   let doc: Document | null = null;
   try {
-    doc = reader?._iframeWindow?.document || null;
+    doc = getReaderFrameDocument(reader);
   } catch (_) {
     doc = null;
   }

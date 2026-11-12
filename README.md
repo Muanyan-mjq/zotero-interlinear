@@ -10,12 +10,6 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 
 [中文文档](README-zh-CN.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
-<!-- Screenshot placeholders (capture on a clean Zotero 10 profile before release):
-     docs/images/toolbar-toggle.png    reader toolbar with the Interlinear toggle, display-mode button, and progress
-     docs/images/settings-appearance.png  settings page with the live preview card and save bar
-     docs/images/side-by-side.png      side-by-side reading mode
--->
-
 ## Features
 
 - **Five built-in translation services.** Google Translate works out of the box with no API key. OpenAI-compatible endpoints, Anthropic Claude, Google Gemini, and Ollama are one settings page away. No companion plugin is required.
@@ -29,6 +23,42 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 - **Appearance control with live preview.** Six built-in presets (Default, Eye-friendly paper, Academic serif, High contrast, Optimized dark, Minimal) apply in one click and can be undone. Includes a searchable installed-font list with favorites, a font-stack builder with up to six fallbacks, automatic per-language font stacks, a custom HSV color picker (hue/saturation/opacity/RGB/HSL/HEX), separate light/dark colors, recent and saved colors, text decoration (underline/overline/strikethrough with style/thickness/offset), paragraph dividers, ribbon position/width/style, block layout (padding/radius/border/indent/alignment/max width/opacity/source dimming), named presets, and JSON import/export.
 - **Caching.** Translations are cached per service, language pair, and glossary, with a one-click cleanup in settings.
 - English and Simplified Chinese UI; errors appear as non-blocking notices inside the reader.
+
+## Screenshots
+
+Real Zotero 10 windows with a real translation run; the images live in `docs/images/inbox/` exactly
+as captured. Each pair is the same page and scroll position in the light and dark theme. The demo
+paper is *Attention Is All You Need* (Vaswani et al., arXiv:1706.03762); the translations are
+machine-generated and shown for illustration only. The paper is distributed under its arXiv licence
+(`arXiv non-exclusive distrib 1.0`, not a Creative Commons licence) and appears here solely as
+documentation of this plugin's UI.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-light.png" alt="Inline layout, light theme: each source paragraph followed by its Chinese translation" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-dark.png" alt="Inline layout, dark theme" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Inline — light</td>
+    <td align="center">Inline — dark</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-light.png" alt="Side-by-side layout, light theme: source left, translation right" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-dark.png" alt="Side-by-side layout, dark theme" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Side-by-side — light</td>
+    <td align="center">Side-by-side — dark</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-split-light.png" alt="Split view, light theme: two panes with independent scrolling" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-split-dark.png" alt="Split view, dark theme" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Split view — light</td>
+    <td align="center">Split view — dark</td>
+  </tr>
+</table>
 
 ## Install
 
@@ -48,7 +78,13 @@ Open **Edit → Settings → Interlinear**. The page uses five tabs; the save ba
 - **Glossary** — import/export term files.
 - **Advanced** — translation scope (body/headings/captions/list items/notes), skip trailing pages, speed and reliability knobs, auto-translate on open (off / cache only / always), translation cache usage and cleanup, plus version and project links.
 
-> **Privacy note.** Translating sends paragraph text to the service you choose. API keys are stored as plaintext in Zotero preferences; they are never written to logs or cache keys. Do not translate sensitive documents with a service you do not trust.
+> **Privacy and keys.** Translating sends paragraph text to whichever service you configure — that is unavoidable, so do not translate sensitive documents with a service you do not trust. API keys are a separate story: Interlinear encrypts them with Zotero's OS key store (macOS Keychain, Windows DPAPI, Linux libsecret) and keeps only the `oskv1:` ciphertext in Zotero preferences. Keys are never written to logs, cache keys, debug output or exported appearance files, and they are sent in headers rather than URLs. Requests to non-loopback endpoints must use HTTPS unless you explicitly confirm a plain-HTTP host, and credential-bearing requests never follow redirects. Because the encryption key lives in your OS account, a profile copied to another machine or OS user cannot decrypt the stored key — re-enter it there. On Linux without a Secret Service, Interlinear keeps the key for the current session only by default; saving it unencrypted is possible but must be confirmed in the settings page and is then marked as unencrypted. Keys stored as plaintext by 0.6.0 and earlier are encrypted in place on first start, and the plaintext form stays readable until you save the key again.
+
+### Network and proxy
+
+The default Google endpoint needs a working connection to `translate.googleapis.com`. Interlinear sends every request through Zotero's own HTTP layer (`Zotero.HTTP.request`), so it uses whatever proxy Zotero uses — there is no separate proxy setting in the plugin, and it cannot bypass Zotero's proxy configuration. Whether Zotero itself follows the system proxy depends on Zotero's network preferences and your OS settings (*not independently verified here*).
+
+If "Test connection" fails: check that your system proxy or TUN mode is running, try another translation backend (OpenAI-compatible, Claude, Gemini or a local Ollama), and only then consider a mirror address you trust. Failure messages now say which of these is likely — timeout, DNS, refused/reset connection, HTTP status, rate limiting, redirect, or unparsable response.
 
 ## Usage
 

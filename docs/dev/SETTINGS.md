@@ -14,17 +14,17 @@
 | `google.baseUrl` | string | URL | https://translate.googleapis.com | Google 免费接口/镜像地址 | 是（归一化端点进入标签） |
 | `openai.endpoint` | string | Chat Completions URL | http://127.0.0.1:11434/v1/chat/completions | OpenAI 兼容接口 | 是（端点/模型/提示词/温度哈希） |
 | `openai.model` | string | 非空 | gpt-oss:20b | 模型名 | 是 |
-| `openai.apiKey` | string | 任意 | 空 | 鉴权密钥（明文存 prefs，不进缓存键/日志） | 否 |
+| `openai.apiKey` | string | 任意 | 空 | 鉴权密钥；默认以 `oskv1:` 密文存 prefs（OS 钥匙串加密），不进缓存键/日志/导出 | 否 |
 | `openai.prompt` | string | 任意 | 内置学术翻译提示词 | 系统提示词 | 是 |
 | `openai.temperature` | number | 0–2 | 0.2 | 采样温度 | 是 |
 | `claude.endpoint` | string | Messages API URL | https://api.anthropic.com/v1/messages | Claude 接口 | 是 |
 | `claude.model` | string | 非空 | claude-sonnet-4-5 | 模型 | 是 |
-| `claude.apiKey` | string | 任意 | 空 | x-api-key（明文） | 否 |
+| `claude.apiKey` | string | 任意 | 空 | x-api-key；默认 `oskv1:` 密文 | 否 |
 | `claude.prompt` | string | 任意 | 内置提示词 | 系统提示词 | 是 |
 | `claude.temperature` | number | 0–1 | 0.2 | 温度 | 是 |
 | `gemini.baseUrl` | string | 服务地址 | https://generativelanguage.googleapis.com | Gemini 接口 | 是 |
 | `gemini.model` | string | 非空 | gemini-2.5-flash | 模型 | 是 |
-| `gemini.apiKey` | string | 任意 | 空 | x-goog-api-key（明文） | 否 |
+| `gemini.apiKey` | string | 任意 | 空 | x-goog-api-key；默认 `oskv1:` 密文 | 否 |
 | `gemini.prompt` | string | 任意 | 内置提示词 | 系统提示词 | 是 |
 | `gemini.temperature` | number | 0–2 | 0.2 | 温度 | 是 |
 | `ollama.url` | string | URL | http://127.0.0.1:11434 | Ollama 地址 | 是 |
@@ -179,4 +179,13 @@
 - 所有颜色只接受 `#RGB/#RRGGBB/#RRGGBBAA`、`rgb()/rgba()`、`hsl()/hsla()` 与纯字母命名色；拒绝分号、花括号、`url()`、`expression`、换行。
 - 字体名只接受 Unicode 字母/数字/空格/点/下划线/连字符，≤80 字符；拒绝引号/括号/逗号/分号/花括号/反斜杠/控制字符。
 - 数值在读取与保存两侧夹取；枚举走白名单；导入 JSON ≤256KB，未知键忽略并报告。
-- API Key 以明文存 Zotero preferences，不写入日志、缓存键或导出文件。
+- 密钥：默认用 `Zotero.OSKeyStore`（macOS Keychain / Windows DPAPI / Linux libsecret）加密，prefs 中保存 `oskv1:` 前缀密文；内存中缓存解密值以支持同步读取。
+  - 钥匙串不可用时**不写明文**：默认仅本次会话有效；用户可在设置页内联确认后选择“仍然不加密保存”，此时状态持续显示“未加密保存”。
+  - 解密失败（换机器/换用户/密文损坏）不清空 pref，进入“需要重新输入”。
+  - 旧明文在启动时幂等加密迁移，失败保留明文并提示一次；明文读取路径保留至少一个大版本。
+
+## 9. 端点与网络请求
+
+- `http://` 仅允许 loopback（`localhost`、`*.localhost`、`127.0.0.0/8`、`::1`、IPv4-mapped 回环）与私网（`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、`fc00::/7`、`fe80::/10`）；其它 `http://` 在保存时内联警告并要求二次确认。
+- 带密钥的请求一律 `followRedirects: false`；收到 3xx 视为错误，提示“请在设置里直接填写最终地址”。
+- 所有错误提示、`logError` 与连接测试结果经 `redactSecrets()`（已知密钥 + `sk-`/`AIza`/`Bearer`/头部回显正则）脱敏。

@@ -1,6 +1,8 @@
 import { cleanupBilingualReader, renderBilingualToolbarButtons } from "./bilingualReader";
 import { cleanupReaderUI, renderReaderExportButton } from "./readerUI";
 import { config } from "../package.json";
+import { logError } from "./utils/log";
+import { getReaderFrameDocument, getReaders } from "./zoteroCompat";
 
 const PLUGIN_ID = config.addonID;
 const STARTUP_RECONCILE_DELAYS_MS = [250, 1000, 3000];
@@ -67,17 +69,17 @@ export function resolveToolbarAppend(
 
 /** Catch readers whose toolbar mounted before plugin installation/startup. */
 export function reconcileReaderToolbars(): void {
-  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  const readers = getReaders();
   for (const reader of readers) {
     try {
       if (reader.type !== "pdf" || reader._isUninitialized) continue;
-      const doc = reader._iframeWindow?.document as Document | undefined;
+      const doc = getReaderFrameDocument(reader) as Document | undefined;
       if (!doc?.querySelector(".toolbar .custom-sections")) continue;
 
       renderReaderToolbar({ reader, doc });
     } catch (error) {
       // A reader can close or replace its iframe while being inspected.
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -109,7 +111,7 @@ function scheduleStartupReconcile(): void {
  */
 function resolveReaderDocument(event: any): Document | null {
   try {
-    const doc = event?.reader?._iframeWindow?.document as Document | undefined;
+    const doc = getReaderFrameDocument(event?.reader) as Document | undefined;
     if (doc) return doc;
   } catch (_) {
     // The reader window can disappear while its event is still being handled.
@@ -126,7 +128,7 @@ export function renderReaderToolbar(event: any): void {
     try {
       render(target);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -136,7 +138,7 @@ function cleanupReader(reader: any): void {
     try {
       cleanup(reader);
     } catch (error) {
-      Zotero.logError(error as Error);
+      logError(error as Error);
     }
   }
 }
@@ -156,11 +158,11 @@ export function unregisterReaderToolbar(): void {
     registered = false;
   }
 
-  const readers = ((Zotero.Reader as any)._readers || []) as any[];
+  const readers = getReaders();
   for (const reader of readers) {
     cleanupReader(reader);
     try {
-      reader._iframeWindow?.document?.querySelector(".interlinear-toolbar-section")?.remove();
+      getReaderFrameDocument(reader)?.querySelector(".interlinear-toolbar-section")?.remove();
     } catch (_) {
       // The reader may already have closed.
     }

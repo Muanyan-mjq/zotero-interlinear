@@ -20,7 +20,50 @@ import {
 } from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
+import { requestOpenAITranslation } from "../src/providers/openai";
 import { getString } from "../src/utils/locale";
+import {
+  SECRET_PREFS,
+  getSecret,
+  getSecretStatus,
+  initSecrets,
+  isKeystoreAvailable,
+  migratePlaintextSecrets,
+  setSecret,
+  whenSecretWritesSettled,
+} from "../src/secrets";
+
+
+/**
+ * The settings pane now boots from a script registered through
+ * `Zotero.PreferencePanes.register({ scripts })` (see hooks.ts), because
+ * Zotero's baseline chrome CSP blocks inline event handlers. That script runs
+ * before Zotero inserts the pane markup, so initialization is asynchronous and
+ * tests must wait for the pane to report itself ready instead of assuming the
+ * old inline `onload` already ran.
+ */
+async function waitForPrefsReady(win: Window | null): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const root = win?.document?.getElementById("interlinear-settings-root");
+    if (root?.dataset.initialized === "true") return;
+    await Zotero.Promise.delay(25);
+  }
+  throw new Error("settings pane did not finish initializing");
+}
+
+/**
+ * The settings pane runs inside the bundled plugin, so its in-memory key cache
+ * is a different module instance from the one these tests import. Observe the
+ * persisted value instead: ciphertext with the OS key store prefix.
+ */
+async function waitForStoredSecret(prefKey: string): Promise<string> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const value = String(Zotero.Prefs.get(prefKey, true) || "");
+    if (value) return value;
+    await Zotero.Promise.delay(50);
+  }
+  return "";
+}
 
 describe("startup", function () {
   it("should have plugin instance defined", function () {
@@ -40,6 +83,7 @@ describe("startup", function () {
   it("should load the preferences controls", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
 
     try {
@@ -184,6 +228,7 @@ describe("startup", function () {
   it("should switch the settings pane between five tabs", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) => win?.document.getElementById(id) as HTMLElement | null;
     const isHidden = (id: string) => byId(id)?.hidden ?? true;
@@ -254,6 +299,48 @@ describe("startup", function () {
     }
   });
 
+  it("masks a stored key and clears it from the pane", async function () {
+    this.timeout(15000);
+    const pref = "extensions.zotero.interlinear.openai.apiKey";
+    const previous = Zotero.Prefs.get(pref, true);
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
+    assert.exists(win);
+    const byId = (id: string) => win?.document.getElementById(id) as HTMLInputElement | null;
+
+    try {
+      const input = byId("interlinear-openai-api-key");
+      const status = win?.document.getElementById("interlinear-openai-key-status");
+      const clear = win?.document.getElementById("interlinear-openai-key-clear");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement | null;
+      assert.exists(input);
+      assert.exists(status);
+      assert.exists(clear);
+      assert.exists(save);
+
+      input!.value = "sk-test-000111222333444555";
+      save!.click();
+      await waitForStoredSecret(pref);
+
+      // The mask is applied after the (asynchronous) write is verified.
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if (String(input!.value).startsWith("••••")) break;
+        await Zotero.Promise.delay(100);
+      }
+      assert.match(String(input!.value), /^••••••••/u, "a stored key is shown masked");
+      assert.equal(input!.dataset.masked, "true");
+      assert.isNotEmpty(String(status!.textContent || "").trim());
+
+      clear!.click();
+      assert.equal(String(Zotero.Prefs.get(pref, true) || ""), "");
+      assert.equal(input!.value, "");
+    } finally {
+      win?.close();
+      if (previous === undefined) Zotero.Prefs.clear(pref, true);
+      else Zotero.Prefs.set(pref, previous as string, true);
+    }
+  });
+
   it("should keep the previous font when an invalid custom stack is saved", async function () {
     this.timeout(10000);
     const fontPref = "extensions.zotero.interlinear.appearance.fontFamily";
@@ -263,6 +350,7 @@ describe("startup", function () {
     Zotero.Prefs.set(fontPref, "Georgia, serif", true);
     Zotero.Prefs.clear(v2Pref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -302,6 +390,7 @@ describe("startup", function () {
   it("should reveal and hide API keys in the settings pane", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -393,6 +482,7 @@ describe("startup", function () {
     const previousShortcutEnabled = Zotero.Prefs.get(shortcutEnabledPref, true);
     const previousShortcut = Zotero.Prefs.get(shortcutPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
 
     try {
@@ -480,6 +570,7 @@ describe("startup", function () {
       keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
     );
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as
@@ -548,12 +639,12 @@ describe("startup", function () {
       assert.equal(Zotero.Prefs.get(keys[0], true), "claude");
       assert.equal(Zotero.Prefs.get(keys[1], true), "https://api.anthropic.com/v1/messages");
       assert.equal(Zotero.Prefs.get(keys[2], true), "claude-sonnet-4-5");
-      assert.equal(Zotero.Prefs.get(keys[3], true), "claude-secret");
+      assert.match(await waitForStoredSecret(keys[3]), /^oskv1:/u);
       assert.equal(Zotero.Prefs.get(keys[4], true), "0.5");
       assert.equal(Zotero.Prefs.get(keys[5], true), "Claude 自定义提示词。");
       assert.equal(Zotero.Prefs.get(keys[6], true), "https://generativelanguage.googleapis.com");
       assert.equal(Zotero.Prefs.get(keys[7], true), "gemini-2.5-pro");
-      assert.equal(Zotero.Prefs.get(keys[8], true), "gemini-secret");
+      assert.match(await waitForStoredSecret(keys[8]), /^oskv1:/u);
       assert.equal(Zotero.Prefs.get(keys[9], true), "0.3");
       assert.equal(Zotero.Prefs.get(keys[10], true), "Gemini 自定义提示词。");
     } finally {
@@ -572,6 +663,7 @@ describe("startup", function () {
     const previousGlossary = Zotero.Prefs.get(glossaryPref, true);
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as
@@ -680,6 +772,7 @@ describe("startup", function () {
     (Zotero.Reader as any)._readers = [reader];
 
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as
@@ -891,6 +984,7 @@ describe("startup", function () {
     };
     (Zotero.Reader as any)._readers = [reader];
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -996,6 +1090,7 @@ describe("startup", function () {
     const previousAppearance = getAppearance();
     const previousPresets = getAppearancePresets();
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1083,6 +1178,7 @@ describe("startup", function () {
       keys.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
     );
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1136,6 +1232,7 @@ describe("startup", function () {
   it("should sync hex input, reset, contrast warning and theme preview in color controls", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1228,6 +1325,7 @@ describe("startup", function () {
   it("should edit split colors, extra color roles and color palettes", async function () {
     this.timeout(20000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1349,6 +1447,7 @@ describe("startup", function () {
     const themePref = "browser.theme.toolbar-theme";
     const previousTheme = Zotero.Prefs.get(themePref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1399,6 +1498,7 @@ describe("startup", function () {
   it("should live-preview appearance changes in an isolated shadow root using the real CSS", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1455,6 +1555,7 @@ describe("startup", function () {
   it("should give source and target languages separate rows so labels do not wrap", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -1497,6 +1598,7 @@ describe("startup", function () {
     const previousFavorites = Zotero.Prefs.get(favoritesPref, true);
     Zotero.Prefs.clear(favoritesPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     const byId = (id: string) =>
       win?.document.getElementById(id) as HTMLInputElement | null;
@@ -1602,6 +1704,7 @@ describe("startup", function () {
     Zotero.Prefs.clear(detectionPref, true);
     Zotero.Prefs.clear(favoritesPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -1661,6 +1764,7 @@ describe("startup", function () {
   it("should mark unsaved changes when a numeric field changes", async function () {
     this.timeout(10000);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
     assert.exists(win);
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -2159,6 +2263,161 @@ describe("startup", function () {
         if (value === undefined) Zotero.Prefs.clear(key, true);
         else Zotero.Prefs.set(key, value, true);
       }
+    }
+  });
+
+  describe("API key storage", function () {
+    const prefKey = SECRET_PREFS.openai;
+    const fakeKey = "sk-test-000111222333444555";
+    let previous: unknown;
+
+    beforeEach(async function () {
+      previous = Zotero.Prefs.get(prefKey, true);
+      Zotero.Prefs.clear(prefKey, true);
+      await initSecrets({ force: true });
+    });
+
+    afterEach(async function () {
+      if (previous === undefined) Zotero.Prefs.clear(prefKey, true);
+      else Zotero.Prefs.set(prefKey, previous as string, true);
+      await initSecrets({ force: true });
+    });
+
+    it("encrypts stored keys with the OS key store", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      setSecret(prefKey, fakeKey);
+      await whenSecretWritesSettled();
+
+      const stored = String(Zotero.Prefs.get(prefKey, true));
+      assert.match(stored, /^oskv1:/u, "the persisted value must be ciphertext");
+      assert.notInclude(stored, fakeKey);
+      assert.equal(getSecret(prefKey), fakeKey, "the cache must serve the plaintext");
+      assert.equal(getSecretStatus(prefKey), "encrypted");
+    });
+
+    it("migrates a legacy plaintext key once and stays idempotent", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      Zotero.Prefs.set(prefKey, fakeKey, true);
+      await migratePlaintextSecrets();
+      const first = String(Zotero.Prefs.get(prefKey, true));
+      assert.match(first, /^oskv1:/u);
+
+      await migratePlaintextSecrets();
+      const second = String(Zotero.Prefs.get(prefKey, true));
+      assert.equal(second, first, "a second migration must not touch the ciphertext");
+    });
+
+    it("never writes plaintext when the key store is unavailable", async function () {
+      this.timeout(10000);
+      const originalStore = (Zotero as any).OSKeyStore;
+      try {
+        (Zotero as any).OSKeyStore = undefined;
+        setSecret(prefKey, fakeKey);
+        await whenSecretWritesSettled();
+
+        assert.equal(
+          String(Zotero.Prefs.get(prefKey, true) || ""),
+          "",
+          "an unusable key store must not fall back to plaintext",
+        );
+        assert.equal(getSecret(prefKey), fakeKey, "the key stays in memory for this session");
+        assert.equal(getSecretStatus(prefKey), "session");
+      } finally {
+        (Zotero as any).OSKeyStore = originalStore;
+      }
+    });
+
+    it("keeps an undecryptable value instead of clearing it", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      Zotero.Prefs.set(prefKey, "oskv1:not-a-real-ciphertext", true);
+      await initSecrets({ force: true });
+
+      assert.equal(getSecretStatus(prefKey), "needs-reentry");
+      assert.equal(getSecret(prefKey), "", "ciphertext must never be used as a key");
+      assert.equal(
+        String(Zotero.Prefs.get(prefKey, true)),
+        "oskv1:not-a-real-ciphertext",
+        "the value must survive so it can be read again later",
+      );
+    });
+
+    it("reads a key synchronously once initialised", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      setSecret(prefKey, fakeKey);
+      await whenSecretWritesSettled();
+      await initSecrets({ force: true });
+
+      // No await after this point: providers read keys synchronously.
+      assert.equal(getSecret(prefKey), fakeKey);
+    });
+
+    it("clears a key from memory and from the profile", async function () {
+      if (!isKeystoreAvailable()) this.skip();
+      this.timeout(10000);
+
+      setSecret(prefKey, fakeKey);
+      await whenSecretWritesSettled();
+      setSecret(prefKey, "");
+      await whenSecretWritesSettled();
+
+      assert.equal(getSecret(prefKey), "");
+      assert.equal(String(Zotero.Prefs.get(prefKey, true) || ""), "");
+    });
+  });
+
+  it("should refuse to follow a redirect that would resend the key", async function () {
+    this.timeout(10000);
+    const originalRequest = Zotero.HTTP.request;
+    const calls: Array<{ url: string; options: any }> = [];
+    // Test double: a 302 is exactly what Zotero.HTTP.request returns when
+    // followRedirects is false (see xpcom/http.js).
+    (Zotero.HTTP as any).request = async (_method: string, url: string, options: any) => {
+      calls.push({ url, options });
+      return {
+        status: 302,
+        getResponseHeader: (name: string) =>
+          String(name).toLowerCase() === "location"
+            ? "https://evil.example/v1/chat/completions"
+            : null,
+      };
+    };
+
+    try {
+      let failure: any = null;
+      try {
+        await requestOpenAITranslation(
+          {
+            endpoint: "https://api.example.com/v1/chat/completions",
+            apiKey: "sk-test-000111222333444555",
+            model: "gpt-test",
+            systemPrompt: "translate",
+            temperature: 0.2,
+            timeoutMs: 1000,
+          },
+          "hello",
+        );
+      } catch (error) {
+        failure = error;
+      }
+
+      assert.exists(failure, "a redirect must not be treated as success");
+      assert.equal(calls.length, 1, "the redirect target must never be requested");
+      assert.equal(calls[0].url, "https://api.example.com/v1/chat/completions");
+      assert.equal(calls[0].options.followRedirects, false);
+      // Integration tests import src modules directly, so getString() degrades
+      // to the message id here; assert on the redirect message either way.
+      assert.match(String(failure.message), /provider-error-redirect/u);
+      assert.notInclude(String(failure.message), "sk-test-000111222333444555");
+    } finally {
+      Zotero.HTTP.request = originalRequest;
     }
   });
 
@@ -3515,7 +3774,10 @@ describe("chat", function () {
 
     try {
       Zotero.Prefs.set(enginePref, "gemini", true);
-      Zotero.Prefs.set(keyPref, "gemini-test-key", true);
+      // Keys are read from the in-memory cache, so write through the API that
+      // keeps that cache and the profile in sync.
+      setSecret(SECRET_PREFS.gemini, "gemini-test-key");
+      await whenSecretWritesSettled();
 
       const provider = getChatProvider("gemini");
       assert.exists(provider);
@@ -3533,6 +3795,7 @@ describe("chat", function () {
       else Zotero.Prefs.set(enginePref, previousEngine, true);
       if (previousKey === undefined) Zotero.Prefs.clear(keyPref, true);
       else Zotero.Prefs.set(keyPref, previousKey, true);
+      await initSecrets({ force: true });
     }
   });
 });
