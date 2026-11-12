@@ -3,12 +3,14 @@
 
 import { getString } from "../utils/locale";
 import {
-  buildGoogleQuery,
+  buildGoogleQueryMulti,
   normalizeGoogleEndpoint,
+  parseGoogleMultiResponse,
   parseGoogleResponse,
 } from "./googleProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
+import { isCaptchaRedirect } from "../utils/redirect";
 import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
 
 export interface GoogleConfig {
@@ -16,6 +18,22 @@ export interface GoogleConfig {
   sourceLanguage: string;
   targetLanguage: string;
   timeoutMs: number;
+}
+
+/**
+ * Thrown when the free endpoint signals IP-level throttling (429 after
+ * retries, or the "sorry" captcha redirect). Carries the cooldown that the
+ * caller should wait before trying again so a whole-document run can pause
+ * once instead of failing paragraph by paragraph.
+ */
+export class GoogleThrottleError extends Error {
+  readonly cooldownMs: number;
+
+  constructor(message: string, cooldownMs: number) {
+    super(message);
+    this.name = "GoogleThrottleError";
+    this.cooldownMs = cooldownMs;
+  }
 }
 
 function responseDetail(body: unknown): string {
@@ -30,6 +48,7 @@ function responseDetail(body: unknown): string {
  * from this client and back off after a failure.
  */
 const MIN_INTERVAL_MS = 1000;
+const CAPTCHA_COOLDOWN_MS = 60_000;
 let nextSlotAt = 0;
 let consecutiveThrottles = 0;
 
@@ -47,16 +66,12 @@ async function paceGoogleRequest(attempt = 0): Promise<void> {
   if (wait > 0) await Zotero.Promise.delay(wait);
 }
 
-export async function requestGoogleTranslation(
+async function performGoogleRequest(
   config: GoogleConfig,
-  text: string,
-): Promise<string> {
+  body: string,
+  expectedCount: number,
+): Promise<any> {
   const endpoint = normalizeGoogleEndpoint(config.baseURL);
-  const body = buildGoogleQuery({
-    source: config.sourceLanguage,
-    target: config.targetLanguage,
-    text,
-  });
 
   let xhr: any;
   let lastError: any = null;
@@ -86,13 +101,16 @@ export async function requestGoogleTranslation(
     }
 
     if (isRedirectStatus(xhr?.status)) {
-      consecutiveThrottles++;
+      consecutiveThrottles = Math.max(consecutiveThrottles + 1, 3);
+      if (isCaptchaRedirect(redirectLocation(xhr))) {
+        throw new GoogleThrottleError(redirectErrorMessage(xhr), CAPTCHA_COOLDOWN_MS);
+      }
       throw new Error(redirectErrorMessage(xhr));
     }
     if (xhr && xhr.status === 429) {
       consecutiveThrottles++;
       if (attempt < 2) continue;
-      throw new Error(getString("network-hint-rate-limit"));
+      throw new GoogleThrottleError(getString("network-hint-rate-limit"), googleBackoffMs(2));
     }
     break;
   }
@@ -122,10 +140,50 @@ export async function requestGoogleTranslation(
       throw new Error(getString("provider-error-google-parse"));
     }
   }
+  return payload;
+}
 
-  const translated = parseGoogleResponse(payload);
+function redirectLocation(xhr: any): string {
+  try {
+    const location = xhr?.getResponseHeader?.("Location");
+    return typeof location === "string" ? location : "";
+  } catch (_) {
+    return "";
+  }
+}
+
+/**
+ * Translate one or more segments in a single request. The endpoint answers a
+ * multi-`q` body with one result per segment, in order; a batch of N
+ * paragraphs therefore costs one request instead of N.
+ */
+export async function requestGoogleTranslations(
+  config: GoogleConfig,
+  texts: string[],
+): Promise<string[]> {
+  if (!texts.length) return [];
+  const payload = await performGoogleRequest(
+    config,
+    buildGoogleQueryMulti(config.sourceLanguage, config.targetLanguage, texts),
+    texts.length,
+  );
+
+  if (texts.length === 1) {
+    const translated = parseGoogleResponse(payload);
+    if (!translated) throw new Error(getString("provider-error-google-empty"));
+    return [translated];
+  }
+
+  const translated = parseGoogleMultiResponse(payload, texts.length);
   if (!translated) throw new Error(getString("provider-error-google-empty"));
   return translated;
+}
+
+export async function requestGoogleTranslation(
+  config: GoogleConfig,
+  text: string,
+): Promise<string> {
+  return (await requestGoogleTranslations(config, [text]))[0];
 }
 
 export async function testGoogleConnection(
