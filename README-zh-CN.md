@@ -49,12 +49,12 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
     <td align="center">左右双栏 · 暗色</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/inbox/reader-layout-light.png" alt="左右双栏第 1 页，亮色" width="100%"></td>
-    <td width="50%"><img src="docs/images/inbox/reader-layout-dark.png" alt="左右双栏第 1 页，暗色" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-split-light.png" alt="左右分屏，亮色：两个窗格独立滚动" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-split-dark.png" alt="左右分屏，暗色" width="100%"></td>
   </tr>
   <tr>
-    <td align="center">左右双栏（第 1 页）· 亮色</td>
-    <td align="center">左右双栏（第 1 页）· 暗色</td>
+    <td align="center">左右分屏 · 亮色</td>
+    <td align="center">左右分屏 · 暗色</td>
   </tr>
 </table>
 

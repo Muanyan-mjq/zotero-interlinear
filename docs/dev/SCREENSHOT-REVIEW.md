@@ -76,10 +76,10 @@
 |---|---|---|---|---|---|---|
 | reader-inline-light.png | 1280×673 | 177KB | 0.940 | 0.061 | 是 | 采用（上下对照，无工具条残留，首行完整） |
 | reader-side-by-side-light.png | 1280×673 | 232KB | 0.926 | 0.065 | 是 | 采用（左右双栏，第 6/15 页） |
-| reader-layout-light.png | 1280×673 | 265KB | 0.917 | 0.064 | 是 | **暂不采用**：与 side-by-side 同为双栏，仅页码/滚动位置不同（1/15），疑为重复 |
+| reader-split-light.png | 1280×673 | 265KB | 0.917 | 0.064 | 是 | **暂不采用**：与 side-by-side 同为双栏，仅页码/滚动位置不同（1/15），疑为重复 |
 | reader-inline-dark.png | 1280×673 | 201KB | 0.245 | 0.047 | 否 | 未进 README（暗色） |
 | reader-side-by-side-dark.png | 1280×673 | 262KB | 0.255 | 0.049 | 否 | 未进 README（暗色） |
-| reader-layout-dark.png | 1280×673 | 293KB | 0.261 | 0.047 | 是 | 未进 README（暗色）；版式同 layout-light |
+| reader-split-dark.png | 1280×673 | 293KB | 0.261 | 0.047 | 是 | 未进 README（暗色）；版式同 layout-light |
 
 亮度判定阈值：亮色 mean ≥ 0.80、暗色 mean ≤ 0.40；实测亮色 0.917–0.940、暗色 0.245–0.261，区分干净。标准差 > 0.045 ⇒ 非纯色/空白。
 

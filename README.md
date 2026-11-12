@@ -51,12 +51,12 @@ documentation of this plugin's UI.
     <td align="center">Side-by-side — dark</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/images/inbox/reader-layout-light.png" alt="Side-by-side layout on page 1, light theme" width="100%"></td>
-    <td width="50%"><img src="docs/images/inbox/reader-layout-dark.png" alt="Side-by-side layout on page 1, dark theme" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-split-light.png" alt="Split view, light theme: two panes with independent scrolling" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-split-dark.png" alt="Split view, dark theme" width="100%"></td>
   </tr>
   <tr>
-    <td align="center">Side-by-side, page 1 — light</td>
-    <td align="center">Side-by-side, page 1 — dark</td>
+    <td align="center">Split view — light</td>
+    <td align="center">Split view — dark</td>
   </tr>
 </table>
 
