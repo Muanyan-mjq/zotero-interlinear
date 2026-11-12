@@ -52,3 +52,39 @@
 4. 工具栏按钮“译文显示中”与“已隐藏”两种状态。
 
 原因：`test-gui` 目前只驱动设置页；阅读器截图还需要导入演示 PDF、打开阅读模式并触发翻译，而本机到 `translate.googleapis.com` 的连接当前不可用（`curl` 状态 000，10s 超时），无法产出**真实**译文。按任务约定不伪造译文，因此保留 README 中的占位注释。
+
+---
+
+# 第二轮：用户提供的真实阅读器截图（2026-11-12）
+
+来源：`docs/images/inbox/`（用户手动截取，2560×1528，1.03–1.43MB/张）。处理方式只有**裁剪顶部 + 等比缩放 + 调色板量化**：
+`crop=2560:1346:0:182`（去掉菜单栏/标签栏/阅读器工具条）→ `scale=1280` → `palettegen/paletteuse dither=none` → 1280×673、177–293KB。
+未拼接、未修饰、未改内容。
+
+## 演示论文
+
+- 标题：*Attention Is All You Need*
+- 作者：Ashish Vaswani 等
+- 链接：https://arxiv.org/abs/1706.03762
+- 许可证：**arXiv non-exclusive distrib 1.0**（`http://arxiv.org/licenses/nonexclusive-dist/1.0/`）。
+  **不是 CC BY**——与任务要求的“CC BY 之类明确允许展示”不符，已如实标注在 README 图注里；如需严格合规请换一篇 CC BY 论文重拍。
+- 译文：真实机器翻译（用户在本机完成），README 注明“仅作演示”。
+
+## 逐张检查
+
+| 文件 | 处理后尺寸 | 体积 | 平均亮度 | 标准差 | 目视 | 结论 |
+|---|---|---|---|---|---|---|
+| reader-inline-light.png | 1280×673 | 177KB | 0.940 | 0.061 | 是 | 采用（上下对照，无工具条残留，首行完整） |
+| reader-side-by-side-light.png | 1280×673 | 232KB | 0.926 | 0.065 | 是 | 采用（左右双栏，第 6/15 页） |
+| reader-layout-light.png | 1280×673 | 265KB | 0.917 | 0.064 | 是 | **暂不采用**：与 side-by-side 同为双栏，仅页码/滚动位置不同（1/15），疑为重复 |
+| reader-inline-dark.png | 1280×673 | 201KB | 0.245 | 0.047 | 否 | 未进 README（暗色） |
+| reader-side-by-side-dark.png | 1280×673 | 262KB | 0.255 | 0.049 | 否 | 未进 README（暗色） |
+| reader-layout-dark.png | 1280×673 | 293KB | 0.261 | 0.047 | 是 | 未进 README（暗色）；版式同 layout-light |
+
+亮度判定阈值：亮色 mean ≥ 0.80、暗色 mean ≤ 0.40；实测亮色 0.917–0.940、暗色 0.245–0.261，区分干净。标准差 > 0.045 ⇒ 非纯色/空白。
+
+## 仍缺
+
+1. 工具栏“译文显示中 / 已隐藏”两张（README 里仍只有文字说明）。
+2. **浅色主题的设置页截图**（原 5 张设置页截图全是暗色，已 `git rm`；`settings-appearance.png` 需要重拍）。
+3. 第三种版面的确认（见上表 layout-* 的疑点）。

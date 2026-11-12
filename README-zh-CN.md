@@ -32,25 +32,18 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 ## 截图
 
-以下都是插件在隔离 profile 中运行时抓取的**真实 Zotero 10 窗口**，没有模拟图、没有拼接、没有后期修饰。
+真实 Zotero 10 窗口 + 真实翻译运行的截图，只裁掉了顶部标题栏，没有模拟图、没有后期修饰。演示论文是
+《Attention Is All You Need》（Vaswani 等，arXiv:1706.03762）；译文由机器翻译生成，仅用于演示。
+论文本身的使用条款由其 arXiv 许可证约束（`arXiv non-exclusive distrib 1.0`，并非 CC BY），
+此处仅作为本插件界面文档展示。
 
-![翻译服务与语言设置](docs/images/settings-service.png)
-*翻译后端、语言对与服务地址。所有截图里的 API 密钥输入框都刻意留空。*
+![上下对照：原文段落后跟译文](docs/images/reader-inline-light.png)
+*上下对照模式——每段原文下方紧跟其中文译文，同一列内阅读。*
 
-![译文外观：外观方案与实时预览](docs/images/settings-appearance.png)
-*六套内置方案、我的方案，以及与阅读器同一套 CSS 的实时预览。*
+![左右双栏：左侧原文、右侧译文](docs/images/reader-side-by-side-light.png)
+*左右双栏模式——同一页同一位置，左侧原文、右侧译文。*
 
-![自定义取色器](docs/images/settings-color-picker.png)
-*内置 HSV 取色器：透明度、RGB/HSL、HEX，每个颜色角色可分别设置浅色/深色值。*
-
-![显示与交互设置](docs/images/settings-display.png)
-*排版、悬停翻译与快捷键。*
-
-![窄窗口布局](docs/images/settings-narrow.png)
-*同一页面在约 800px 宽时：字段变单列，高级组保持折叠。*
-
-阅读器截图（原文/译文对照、左右双栏、工具栏显示/隐藏状态）**暂未包含**——当前抓图脚本只驱动设置页。
-仍缺的清单见 `docs/dev/SCREENSHOT-REVIEW.md`。
+仍待补充：工具栏“显示/隐藏”两种状态，以及浅色主题的设置页截图。
 
 ## 安装
 

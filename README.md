@@ -32,27 +32,19 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 
 ## Screenshots
 
-Every image below is a real Zotero 10 window captured from the plugin running in an
-isolated profile — no mockups, no compositing, no retouching.
+Real Zotero 10 windows with a real translation run — cropped top bars only, no mockups, no
+retouching. The demo paper is *Attention Is All You Need* (Vaswani et al., arXiv:1706.03762);
+translations are machine-generated for illustration only. Reuse terms of the paper are
+governed by its arXiv licence (`arXiv non-exclusive distrib 1.0`, not a Creative Commons
+licence), so these images are shown only as documentation of this plugin's UI.
 
-![Service and language settings](docs/images/settings-service.png)
-*Translation service, language pair and endpoint. API key fields are intentionally empty in every capture.*
+![Inline layout: source paragraph followed by its translation](docs/images/reader-inline-light.png)
+*Inline mode — each source paragraph is followed by its Chinese translation in the same column.*
 
-![Appearance settings with presets and live preview](docs/images/settings-appearance.png)
-*Six built-in presets, named presets, and a live preview that reuses the reader's own translation CSS.*
+![Side-by-side layout: source on the left, translation on the right](docs/images/reader-side-by-side-light.png)
+*Side-by-side mode — the same page and scroll position, source on the left, translation on the right.*
 
-![Custom colour picker](docs/images/settings-color-picker.png)
-*The built-in HSV picker: alpha, RGB/HSL, HEX, and separate light/dark values per colour role.*
-
-![Display and interaction settings](docs/images/settings-display.png)
-*Layout, hover translation and keyboard shortcuts.*
-
-![Narrow window layout](docs/images/settings-narrow.png)
-*The same pane around 800px wide: fields collapse to one column and advanced groups stay collapsed.*
-
-Reader screenshots — source/translation pairs, side-by-side columns, and the toolbar's
-shown/hidden states — are **not** included yet; the capture harness only drives the
-settings pane. What is still missing is listed in `docs/dev/SCREENSHOT-REVIEW.md`.
+Still to add: the toolbar's shown/hidden states and a light-theme capture of the settings pane.
 
 ## Install
 
