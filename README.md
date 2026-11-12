@@ -32,19 +32,39 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 
 ## Screenshots
 
-Real Zotero 10 windows with a real translation run — cropped top bars only, no mockups, no
-retouching. The demo paper is *Attention Is All You Need* (Vaswani et al., arXiv:1706.03762);
-translations are machine-generated for illustration only. Reuse terms of the paper are
-governed by its arXiv licence (`arXiv non-exclusive distrib 1.0`, not a Creative Commons
-licence), so these images are shown only as documentation of this plugin's UI.
+Real Zotero 10 windows with a real translation run; the images live in `docs/images/inbox/` exactly
+as captured. Each pair is the same page and scroll position in the light and dark theme. The demo
+paper is *Attention Is All You Need* (Vaswani et al., arXiv:1706.03762); the translations are
+machine-generated and shown for illustration only. The paper is distributed under its arXiv licence
+(`arXiv non-exclusive distrib 1.0`, not a Creative Commons licence) and appears here solely as
+documentation of this plugin's UI.
 
-![Inline layout: source paragraph followed by its translation](docs/images/reader-inline-light.png)
-*Inline mode — each source paragraph is followed by its Chinese translation in the same column.*
-
-![Side-by-side layout: source on the left, translation on the right](docs/images/reader-side-by-side-light.png)
-*Side-by-side mode — the same page and scroll position, source on the left, translation on the right.*
-
-Still to add: the toolbar's shown/hidden states and a light-theme capture of the settings pane.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-light.png" alt="Inline layout, light theme: each source paragraph followed by its Chinese translation" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-dark.png" alt="Inline layout, dark theme" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Inline — light</td>
+    <td align="center">Inline — dark</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-light.png" alt="Side-by-side layout, light theme: source left, translation right" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-dark.png" alt="Side-by-side layout, dark theme" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Side-by-side — light</td>
+    <td align="center">Side-by-side — dark</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-layout-light.png" alt="Side-by-side layout on page 1, light theme" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-layout-dark.png" alt="Side-by-side layout on page 1, dark theme" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Side-by-side, page 1 — light</td>
+    <td align="center">Side-by-side, page 1 — dark</td>
+  </tr>
+</table>
 
 ## Install
 

@@ -32,18 +32,37 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 ## 截图
 
-真实 Zotero 10 窗口 + 真实翻译运行的截图，只裁掉了顶部标题栏，没有模拟图、没有后期修饰。演示论文是
-《Attention Is All You Need》（Vaswani 等，arXiv:1706.03762）；译文由机器翻译生成，仅用于演示。
-论文本身的使用条款由其 arXiv 许可证约束（`arXiv non-exclusive distrib 1.0`，并非 CC BY），
+真实 Zotero 10 窗口 + 真实翻译运行；图片就是 `docs/images/inbox/` 里的原图，未做拼接或修饰。每一对都是同一页、
+同一位置，左亮右暗。演示论文是《Attention Is All You Need》（Vaswani 等，arXiv:1706.03762）；
+译文由机器翻译生成，仅用于演示。论文按 arXiv 许可证分发（`arXiv non-exclusive distrib 1.0`，并非 CC BY），
 此处仅作为本插件界面文档展示。
 
-![上下对照：原文段落后跟译文](docs/images/reader-inline-light.png)
-*上下对照模式——每段原文下方紧跟其中文译文，同一列内阅读。*
-
-![左右双栏：左侧原文、右侧译文](docs/images/reader-side-by-side-light.png)
-*左右双栏模式——同一页同一位置，左侧原文、右侧译文。*
-
-仍待补充：工具栏“显示/隐藏”两种状态，以及浅色主题的设置页截图。
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-light.png" alt="上下对照，亮色：每段原文下方紧跟中文译文" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-inline-dark.png" alt="上下对照，暗色" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">上下对照 · 亮色</td>
+    <td align="center">上下对照 · 暗色</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-light.png" alt="左右双栏，亮色：左侧原文、右侧译文" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-side-by-side-dark.png" alt="左右双栏，暗色" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">左右双栏 · 亮色</td>
+    <td align="center">左右双栏 · 暗色</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/inbox/reader-layout-light.png" alt="左右双栏第 1 页，亮色" width="100%"></td>
+    <td width="50%"><img src="docs/images/inbox/reader-layout-dark.png" alt="左右双栏第 1 页，暗色" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">左右双栏（第 1 页）· 亮色</td>
+    <td align="center">左右双栏（第 1 页）· 暗色</td>
+  </tr>
+</table>
 
 ## 安装
 
