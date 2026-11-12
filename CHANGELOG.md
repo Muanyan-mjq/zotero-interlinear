@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
+## [Unreleased]
+
+### Fixed
+
+- Full-document Google translation no longer collapses into per-paragraph
+  "translation failed" after a couple of articles. Three interacting causes
+  were fixed:
+  - Google segments now travel in one multi-`q` request per batch (about 6×
+    fewer requests per document), and a batch that the endpoint answers with
+    an unexpected shape falls back to per-paragraph requests instead of
+    failing.
+  - Zotero's HTTP layer retries 429/5xx responses internally for up to an
+    hour; the plugin now opts out with `noRetryOnThrottle`/`errorDelayMax: 0`
+    and applies its own pacing, backoff and cooldown instead. Throttled
+    requests used to sit in that invisible loop until the request timeout
+    killed them, which is what surfaced as endless "timeout" errors.
+  - A 429 or captcha (`/sorry/`) now pauses the whole run once — with a
+    visible cooldown message — retries automatically, and only stops (with a
+    clear rate-limit explanation) if throttling persists.
+- Model backends (OpenAI-compatible, Claude, Gemini, Ollama) now retry
+  429/5xx responses themselves with 1s/2s/4s backoff instead of failing the
+    paragraph on the first response.
+
 ## [0.7.0] - 2026-11-12
 
 ### Security

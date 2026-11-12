@@ -393,11 +393,31 @@ describe("provider e2e", function () {
     this.timeout(120000);
     const keys = [`${BASE}.google.baseUrl`, "network.proxy.type"];
     const saved = snapshotPrefs(keys);
+    const diagPath = nativePath(`${resolveRepoRoot()}/.scaffold/e2e-throttle-diag.txt`);
+    const diag: string[] = [`start=${new Date().toISOString()}`];
+    const trace = async (line: string) => {
+      diag.push(`${Date.now()} ${line}`);
+      try {
+        await Zotero.File.putContentsAsync(Zotero.File.pathToFile(diagPath), diag.join("\n"));
+      } catch (_) {
+        // Best effort only; never mask the flow under test.
+      }
+    };
+
+    const describeError = (error: any): string =>
+      [
+        `name=${String(error?.name)}`,
+        `ctor=${error?.constructor?.name}`,
+        `message=${String(error?.message)}`,
+        `cooldown=${String(error?.cooldownMs)}`,
+        `stack=${String(error?.stack).split("\n").slice(0, 4).join(" | ")}`,
+      ].join(" ");
 
     try {
       Zotero.Prefs.set("network.proxy.type", 0, true);
       Zotero.Prefs.set(`${BASE}.google.baseUrl`, MOCK, true);
       await controlMock({ googleThrottle: true, googleCaptcha: false });
+      await trace("flags set: throttle on");
 
       let throttle: any = null;
       try {
@@ -410,14 +430,18 @@ describe("provider e2e", function () {
           },
           ["Hello", "world"],
         );
+        await trace("throttle call resolved without error");
       } catch (error: any) {
         throttle = error;
+        await trace(`throttle call threw: ${describeError(error)}`);
       }
+      await trace(`throttle instanceof GoogleThrottleError = ${throttle instanceof GoogleThrottleError}`);
       assert.instanceOf(throttle, GoogleThrottleError, "429 must map to a throttle error");
       assert.isAbove(throttle!.cooldownMs, 0, "throttle error carries a cooldown");
 
       // The captcha redirect must fail fast — one request, no retry hammering.
       await controlMock({ googleThrottle: false, googleCaptcha: true });
+      await trace("flags set: captcha on");
       const captchaBefore = await readMockStats();
       let captcha: any = null;
       try {
@@ -430,10 +454,16 @@ describe("provider e2e", function () {
           },
           ["Hello", "world"],
         );
+        await trace("captcha call resolved without error");
       } catch (error: any) {
         captcha = error;
+        await trace(`captcha call threw: ${describeError(error)}`);
       }
       const captchaAfter = await readMockStats();
+      trace(
+        `captcha instanceof = ${captcha instanceof GoogleThrottleError}, ` +
+          `captchas=${captchaAfter.googleCaptchas - captchaBefore.googleCaptchas}`,
+      );
       assert.instanceOf(captcha, GoogleThrottleError, "captcha must map to a throttle error");
       assert.equal(captcha!.cooldownMs, 60000, "captcha cooldown is one minute");
       assert.equal(
@@ -444,6 +474,7 @@ describe("provider e2e", function () {
 
       // After the block clears, the same call succeeds again.
       await controlMock({ googleThrottle: false, googleCaptcha: false });
+      await trace("flags cleared");
       const recovered = await requestGoogleTranslations(
         {
           baseURL: String(Zotero.Prefs.get(`${BASE}.google.baseUrl`, true)),
@@ -453,8 +484,18 @@ describe("provider e2e", function () {
         },
         ["Hello", "world"],
       );
+      await trace(`recovered = ${JSON.stringify(recovered)}`);
       assert.deepEqual(recovered, ["ZH:Hello", "ZH:world"], "recovery after throttle");
-    } catch (error) {
+    } catch (error: any) {
+      diag.push(`FAILED: ${describeError(error)}`);
+      try {
+        await Zotero.File.putContentsAsync(
+          Zotero.File.pathToFile(nativePath(`${resolveRepoRoot()}/.scaffold/e2e-throttle-diag.txt`)),
+          diag.join("\n"),
+        );
+      } catch (_) {
+        // Diagnostics must never mask the original error.
+      }
       rethrowDiagnosable(error);
     } finally {
       await controlMock({ googleThrottle: false, googleCaptcha: false });

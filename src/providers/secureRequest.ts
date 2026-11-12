@@ -36,8 +36,19 @@ export function redirectErrorMessage(xhr: any): string {
 /**
  * Request options for anything that sends an API key. Spread into the options
  * object passed to `Zotero.HTTP.request`.
+ *
+ * `noRetryOnThrottle` and `errorDelayMax: 0` are just as important as the
+ * redirect ban: Zotero's HTTP layer retries 429/5xx responses on its own —
+ * for up to an hour by default — which would park every throttled request in
+ * an invisible retry loop until our own request timeout kills it. Both flags
+ * hand throttle handling back to this plugin, where the translation runner
+ * can pause, cool down and resume instead of failing.
  */
-export const NO_REDIRECT_OPTIONS = { followRedirects: false } as const;
+export const NO_REDIRECT_OPTIONS = {
+  followRedirects: false,
+  noRetryOnThrottle: true,
+  errorDelayMax: 0,
+} as const;
 
 /**
  * `Zotero.HTTP.request` with a small retry pass for statuses a retry can fix

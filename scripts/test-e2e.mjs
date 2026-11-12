@@ -33,7 +33,7 @@ const prefs = {
 };
 
 const context = await Config.loadConfig({
-  test: { watch: false, entries: "test-e2e", prefs },
+  test: { watch: false, entries: process.env.INTERLINEAR_E2E_ENTRIES || "test-e2e", prefs },
   server: { devtools: false, startArgs: ["-no-remote"] },
 });
 const runner = new Test(context);

@@ -64,8 +64,16 @@ const server = http.createServer((request, response) => {
       if (state.googleThrottle) {
         stats.googleThrottled += 1;
         response.statusCode = 429;
-        response.setHeader("Content-Type", "text/html");
-        response.end("<html>Our systems have detected unusual traffic</html>");
+        if (state.google429Style === "llm") {
+          response.setHeader("Retry-After", "1");
+          response.setHeader("Content-Type", "application/json");
+          response.end(JSON.stringify({ error: { message: "simulated 429" } }));
+        } else if (state.google429Style === "no-body") {
+          response.end("");
+        } else {
+          response.setHeader("Content-Type", "text/html");
+          response.end("<html>Our systems have detected unusual traffic</html>");
+        }
         return;
       }
 
