@@ -19,3 +19,6 @@ logs
 
 # Logs
 *.log
+
+# Build output
+*.xpi
