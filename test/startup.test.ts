@@ -341,6 +341,64 @@ describe("startup", function () {
     }
   });
 
+  it("sends the stored key, not the mask, when testing the connection", async function () {
+    this.timeout(20000);
+    const pref = "extensions.zotero.interlinear.openai.apiKey";
+    const previous = Zotero.Prefs.get(pref, true);
+    const originalRequest = (Zotero.HTTP as any).request;
+    const sent: any[] = [];
+    (Zotero.HTTP as any).request = async (_method: string, _url: string, options: any) => {
+      sent.push(options);
+      return {
+        status: 200,
+        statusText: "OK",
+        responseType: "text",
+        responseText: JSON.stringify({
+          choices: [{ message: { content: "hi" } }],
+        }),
+        response: JSON.stringify({ choices: [{ message: { content: "hi" } }] }),
+      };
+    };
+
+    const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
+    await waitForPrefsReady(win);
+    assert.exists(win);
+    const byId = (id: string) => win?.document.getElementById(id) as HTMLInputElement | null;
+
+    try {
+      const input = byId("interlinear-openai-api-key");
+      const save = win?.document.getElementById("interlinear-save") as HTMLButtonElement | null;
+      assert.exists(input);
+      assert.exists(save);
+
+      input!.value = "sk-test-000111222333444555";
+      save!.click();
+      assert.match(await waitForStoredSecret(pref), /^oskv1:/u);
+
+      // Wait for the field to be re-masked, which is the state users click from.
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if (String(input!.value).startsWith("••••")) break;
+        await Zotero.Promise.delay(100);
+      }
+      assert.match(String(input!.value), /^••••/u);
+
+      (win?.document.getElementById("interlinear-test-openai") as HTMLButtonElement | null)?.click();
+      for (let attempt = 0; attempt < 40 && !sent.length; attempt++) {
+        await Zotero.Promise.delay(100);
+      }
+
+      assert.isAbove(sent.length, 0, "the test button must issue a request");
+      const auth = String(sent[0]?.headers?.Authorization || "");
+      assert.include(auth, "sk-test-000111222333444555", "the real key must be sent");
+      assert.notInclude(auth, "••••", "the mask must never be sent");
+    } finally {
+      (Zotero.HTTP as any).request = originalRequest;
+      win?.close();
+      if (previous === undefined) Zotero.Prefs.clear(pref, true);
+      else Zotero.Prefs.set(pref, previous as string, true);
+    }
+  });
+
   it("should keep the previous font when an invalid custom stack is saved", async function () {
     this.timeout(10000);
     const fontPref = "extensions.zotero.interlinear.appearance.fontFamily";
