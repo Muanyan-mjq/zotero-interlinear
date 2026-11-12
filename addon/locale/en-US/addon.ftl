@@ -181,7 +181,7 @@ interaction-shortcut-invalid = Invalid shortcut; the default was restored. Use C
 provider-google-title = Google Translate
 provider-google-base-label = Service URL
 provider-google-base-help = Defaults to https://translate.googleapis.com. If it is unreachable, enter a mirror or proxy you trust; /translate_a/single is appended automatically.
-provider-google-help = Uses the free client=gtx endpoint and needs no API key. Requests go to the URL above.
+provider-google-help = Uses the free client=gtx endpoint and needs no API key. Requests go to the URL above. If it cannot connect, check whether your system proxy or TUN mode is running, or switch to another translation backend.
 provider-openai-title = OpenAI-compatible endpoint
 provider-openai-endpoint-label = Endpoint
 provider-openai-endpoint-help = Full Chat Completions URL, for example http://127.0.0.1:11434/v1/chat/completions or https://api.openai.com/v1/chat/completions.
@@ -558,3 +558,16 @@ settings-secret-cleared = Key cleared
 settings-secret-keystore-warning = The OS key store is unavailable, so this key cannot be encrypted. Keep it for this session only, or save it unencrypted in Zotero preferences (not recommended).
 settings-secret-keep-session = Keep for this session
 settings-secret-save-unencrypted = Save unencrypted
+
+# Failure advice (one line each, no specific mirror hostnames)
+network-hint-timeout = The service did not answer in time: check whether your system proxy or TUN mode is running, try another translation backend, or retry later.
+network-hint-dns = The host name could not be resolved: check the endpoint spelling and whether the system proxy or DNS is working.
+network-hint-refused = The connection was refused: the endpoint is probably not listening, or a proxy is blocking it. Check the address or try another backend.
+network-hint-reset = The connection was closed unexpectedly: a proxy or VPN may be interfering, or the service dropped the request. Retry, or try another backend.
+network-hint-connection = The service could not be reached: check your system proxy or TUN mode, or try another translation backend.
+network-hint-rate-limit = The service is rate-limiting requests: wait a moment before retrying, or switch to another backend.
+network-hint-redirect = The endpoint redirected elsewhere: enter the final address in the settings instead of relying on a redirect.
+network-hint-http = The service rejected the request: check the endpoint, model and key, or try another backend.
+network-hint-parse = The service returned data this backend cannot read: check that the endpoint matches the selected backend, or try another one.
+network-hint-empty = The service returned no translation: retry, or try another backend.
+network-hint-unknown = The request failed: check your system proxy or TUN mode, try another translation backend, or retry later.

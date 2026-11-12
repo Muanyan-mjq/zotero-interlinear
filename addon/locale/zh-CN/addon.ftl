@@ -181,7 +181,7 @@ interaction-shortcut-invalid = 快捷键无效，已恢复为默认值。请使�
 provider-google-title = Google 翻译
 provider-google-base-label = 服务地址
 provider-google-base-help = 默认 https://translate.googleapis.com。若无法直连，可填入你信任的镜像或代理地址；插件会自动补全 /translate_a/single。
-provider-google-help = 使用免费 client=gtx 接口，无需 API 密钥。请求会发送到上面填写的地址。
+provider-google-help = 使用免费 client=gtx 接口，无需 API 密钥。请求会发送到上面填写的地址。如果连不上，请检查系统代理或 TUN 模式是否开启，或改用其他翻译后端。
 provider-openai-title = OpenAI 兼容接口
 provider-openai-endpoint-label = 接口地址
 provider-openai-endpoint-help = 完整 Chat Completions 地址，例如 http://127.0.0.1:11434/v1/chat/completions 或 https://api.openai.com/v1/chat/completions。
@@ -558,3 +558,16 @@ settings-secret-cleared = 密钥已清除
 settings-secret-keystore-warning = 系统钥匙串不可用，无法加密保存这个密钥。可以只在本次会话使用，或以未加密方式写入 Zotero 偏好（不推荐）。
 settings-secret-keep-session = 仅本次会话
 settings-secret-save-unencrypted = 仍然不加密保存
+
+# 失败提示（每类一句话，不写具体镜像域名）
+network-hint-timeout = 服务没有及时响应：请检查系统代理或 TUN 模式是否开启，或改用其他翻译后端、稍后重试。
+network-hint-dns = 域名无法解析：请检查端点拼写，以及系统代理与 DNS 是否正常。
+network-hint-refused = 连接被拒绝：端点可能没有在监听，或被代理拦截。请检查地址或改用其他后端。
+network-hint-reset = 连接被意外断开：代理或 VPN 可能在干扰，服务也可能主动断开。请重试或改用其他后端。
+network-hint-connection = 无法连接到服务：请检查系统代理或 TUN 模式，或改用其他翻译后端。
+network-hint-rate-limit = 服务正在限流：请稍后再试，或改用其他后端。
+network-hint-redirect = 端点发生了重定向：请在设置里直接填写最终地址，不要依赖重定向。
+network-hint-http = 服务拒绝了请求：请检查端点、模型与密钥，或改用其他后端。
+network-hint-parse = 服务返回了此后端无法解析的数据：请确认端点与所选后端匹配，或改用其他后端。
+network-hint-empty = 服务没有返回译文：请重试，或改用其他后端。
+network-hint-unknown = 请求失败：请检查系统代理或 TUN 模式，或改用其他翻译后端、稍后重试。

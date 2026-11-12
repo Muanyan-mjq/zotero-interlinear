@@ -16,6 +16,7 @@ import {
 } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
 import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import { describeFailure } from "./errorHints";
 
 export interface OpenAIConfig {
   endpoint: string;
@@ -29,13 +30,16 @@ export interface OpenAIConfig {
 function httpError(status: number | undefined, detail: string): string {
   detail = redactSecrets(detail);
   if (status) {
+    if (status === 429) {
+      return `${detail ? getString("provider-error-openai-http", { args: { status: String(status), detail } }) : getString("provider-error-openai-http-status", { args: { status: String(status) } })} ${describeFailure({ status }).hint}`;
+    }
     return detail
       ? getString("provider-error-openai-http", {
           args: { status: String(status), detail },
         })
       : getString("provider-error-openai-http-status", { args: { status: String(status) } });
   }
-  return getString("provider-error-openai-network", { args: { detail } });
+  return `${getString("provider-error-openai-network", { args: { detail } })} ${describeFailure({ message: detail }).hint}`;
 }
 
 export async function requestOpenAITranslation(

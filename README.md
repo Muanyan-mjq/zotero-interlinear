@@ -74,6 +74,12 @@ Open **Edit → Settings → Interlinear**. The page uses five tabs; the save ba
 
 > **Privacy and keys.** Translating sends paragraph text to whichever service you configure — that is unavoidable, so do not translate sensitive documents with a service you do not trust. API keys are a separate story: Interlinear encrypts them with Zotero's OS key store (macOS Keychain, Windows DPAPI, Linux libsecret) and keeps only the `oskv1:` ciphertext in Zotero preferences. Keys are never written to logs, cache keys, debug output or exported appearance files, and they are sent in headers rather than URLs. Requests to non-loopback endpoints must use HTTPS unless you explicitly confirm a plain-HTTP host, and credential-bearing requests never follow redirects. Because the encryption key lives in your OS account, a profile copied to another machine or OS user cannot decrypt the stored key — re-enter it there. On Linux without a Secret Service, Interlinear keeps the key for the current session only by default; saving it unencrypted is possible but must be confirmed in the settings page and is then marked as unencrypted. Keys stored as plaintext by 0.6.0 and earlier are encrypted in place on first start, and the plaintext form stays readable until you save the key again.
 
+### Network and proxy
+
+The default Google endpoint needs a working connection to `translate.googleapis.com`. Interlinear sends every request through Zotero's own HTTP layer (`Zotero.HTTP.request`), so it uses whatever proxy Zotero uses — there is no separate proxy setting in the plugin, and it cannot bypass Zotero's proxy configuration. Whether Zotero itself follows the system proxy depends on Zotero's network preferences and your OS settings (*not independently verified here*).
+
+If "Test connection" fails: check that your system proxy or TUN mode is running, try another translation backend (OpenAI-compatible, Claude, Gemini or a local Ollama), and only then consider a mirror address you trust. Failure messages now say which of these is likely — timeout, DNS, refused/reset connection, HTTP status, rate limiting, redirect, or unparsable response.
+
 ## Usage
 
 1. Open a PDF in Zotero and switch to **reading mode**.

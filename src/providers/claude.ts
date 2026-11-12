@@ -12,6 +12,7 @@ import {
 import { getXhrResponseBody } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
 import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import { describeFailure } from "./errorHints";
 
 export interface ClaudeConfig {
   endpoint: string;
@@ -26,13 +27,16 @@ export interface ClaudeConfig {
 function httpError(status: number | undefined, detail: string): string {
   detail = redactSecrets(detail);
   if (status) {
+    if (status === 429) {
+      return `${detail ? getString("provider-error-claude-http", { args: { status: String(status), detail } }) : getString("provider-error-claude-http-status", { args: { status: String(status) } })} ${describeFailure({ status }).hint}`;
+    }
     return detail
       ? getString("provider-error-claude-http", {
           args: { status: String(status), detail },
         })
       : getString("provider-error-claude-http-status", { args: { status: String(status) } });
   }
-  return getString("provider-error-claude-network", { args: { detail } });
+  return `${getString("provider-error-claude-network", { args: { detail } })} ${describeFailure({ message: detail }).hint}`;
 }
 
 export async function requestClaudeTranslation(
