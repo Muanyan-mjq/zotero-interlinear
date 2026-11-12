@@ -14,7 +14,7 @@ test("detects provider-shaped credentials", () => {
       `OPENAI_API_KEY=${LIVE_SHAPED_OPENAI}`,
       `google: "${LIVE_SHAPED_GOOGLE}"`,
       `token: ${LIVE_SHAPED_GITHUB}`,
-      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345",
+      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345", // allow-secret-scan
     ].join("\n"),
   );
 
@@ -27,6 +27,7 @@ test("detects provider-shaped credentials", () => {
 });
 
 test("detects an embedded private key block", () => {
+  // allow-secret-scan: the pattern under test, not a key
   const findings = scanText("const key = `-----BEGIN RSA PRIVATE KEY-----`;");
   assert.equal(findings.length, 1);
   assert.match(findings[0].name, /private key/u);
