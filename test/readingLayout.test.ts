@@ -44,6 +44,9 @@ describe("native Zotero reading-mode highlight layout", function () {
   let view: any;
   let doc: Document;
   let temporaryFile: any;
+  let rafWindow: any;
+  let originalRAF: any;
+  let originalCAF: any;
 
   before(async function () {
     try {
@@ -92,6 +95,24 @@ describe("native Zotero reading-mode highlight layout", function () {
       view = internal._primarySDTView;
       await view.initializedPromise;
       doc = view._iframeDocument;
+      // Headless/occluded reader windows can suspend requestAnimationFrame
+      // entirely, which would leave the layout observer's scheduled refresh
+      // pending forever. A timer-backed frame keeps the tests deterministic
+      // while exercising the real observer and rAF scheduling code.
+      rafWindow = doc.defaultView as any;
+      originalRAF = rafWindow.requestAnimationFrame;
+      originalCAF = rafWindow.cancelAnimationFrame;
+      Object.defineProperty(rafWindow, "requestAnimationFrame", {
+        configurable: true,
+        writable: true,
+        value: (callback: (time: number) => void) =>
+          rafWindow.setTimeout(() => callback(Date.now()), 0),
+      });
+      Object.defineProperty(rafWindow, "cancelAnimationFrame", {
+        configurable: true,
+        writable: true,
+        value: (id: number) => rafWindow.clearTimeout(id),
+      });
       view.setAnnotations(
         Components.utils.cloneInto(
           [
@@ -116,6 +137,8 @@ describe("native Zotero reading-mode highlight layout", function () {
 
   after(async function () {
     if (doc) cleanupReadingLayout(doc);
+    if (rafWindow && originalRAF) rafWindow.requestAnimationFrame = originalRAF;
+    if (rafWindow && originalCAF) rafWindow.cancelAnimationFrame = originalCAF;
     if (reader) reader.close();
     if (attachment) await attachment.eraseTx();
     if (temporaryFile?.exists()) temporaryFile.remove(false);
@@ -194,9 +217,27 @@ describe("native Zotero reading-mode highlight layout", function () {
     try {
       observeReadingLayout(view, doc);
       observeReadingLayout(view, doc);
-      await Zotero.Promise.delay(150);
-      const settled = updates;
-      await Zotero.Promise.delay(150);
+      // Frames are timer-backed in this fixture, but the first refresh can
+      // still be followed by one late echo from the view finishing its own
+      // rendering. Wait for an actual quiet period instead of a fixed delay;
+      // a redraw loop never reaches one.
+      let settled = updates;
+      let quietSince = Date.now();
+      const deadline = Date.now() + 5000;
+      let quiet = false;
+      while (Date.now() < deadline) {
+        await Zotero.Promise.delay(50);
+        if (updates !== settled) {
+          settled = updates;
+          quietSince = Date.now();
+        } else if (Date.now() - quietSince >= 400) {
+          quiet = true;
+          break;
+        }
+      }
+      assert.isTrue(quiet, "Layout observation must settle instead of redrawing forever");
+      assert.isAbove(settled, 0, "Observing must refresh the view at least once");
+      await Zotero.Promise.delay(400);
       assert.equal(
         updates,
         settled,
@@ -205,7 +246,7 @@ describe("native Zotero reading-mode highlight layout", function () {
       cleanupReadingLayout(doc);
       const stopped = updates;
       doc.querySelector('[data-ref-path="0"]')!.textContent += " More text after cleanup.";
-      await Zotero.Promise.delay(100);
+      await Zotero.Promise.delay(150);
       assert.equal(updates, stopped);
     } finally {
       cleanupReadingLayout(doc);
