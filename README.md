@@ -10,12 +10,6 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 
 [中文文档](README-zh-CN.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
-<!-- Screenshot placeholders (capture on a clean Zotero 10 profile before release):
-     docs/images/toolbar-toggle.png    reader toolbar with the Interlinear toggle, display-mode button, and progress
-     docs/images/settings-appearance.png  settings page with the live preview card and save bar
-     docs/images/side-by-side.png      side-by-side reading mode
--->
-
 ## Features
 
 - **Five built-in translation services.** Google Translate works out of the box with no API key. OpenAI-compatible endpoints, Anthropic Claude, Google Gemini, and Ollama are one settings page away. No companion plugin is required.

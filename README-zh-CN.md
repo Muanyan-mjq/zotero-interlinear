@@ -10,12 +10,6 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 [English](README.md) · [更新日志](CHANGELOG.md) · [贡献指南](CONTRIBUTING.md)
 
-<!-- 截图占位（发布前在干净的 Zotero 10 配置下补拍）：
-     docs/images/toolbar-toggle.png       阅读器工具栏：Interlinear 开关、显示模式按钮与进度
-     docs/images/settings-appearance.png  设置页：实时预览卡片与保存栏
-     docs/images/side-by-side.png         左右分栏阅读效果
--->
-
 ## 功能
 
 - **内置五种翻译服务。** Google 翻译开箱即用、无需密钥；OpenAI 兼容接口、Anthropic Claude、Google Gemini、Ollama 在设置页填好即可使用，不依赖任何其他插件。
