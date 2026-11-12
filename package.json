@@ -1,7 +1,7 @@
 {
   "name": "zotero-interlinear",
   "type": "module",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Zotero 10 阅读模式段落对照翻译：原文在上、译文在下，五种翻译后端可选。 / Bilingual paragraph translation for Zotero 10 PDFs.",
   "keywords": [
     "translation",

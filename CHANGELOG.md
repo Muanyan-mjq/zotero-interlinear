@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
-## [Unreleased]
+## [0.7.0] - 2026-11-12
 
 ### Security
 
