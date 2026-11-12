@@ -27,8 +27,7 @@ test("detects provider-shaped credentials", () => {
 });
 
 test("detects an embedded private key block", () => {
-  // allow-secret-scan: the pattern under test, not a key
-  const findings = scanText("const key = `-----BEGIN RSA PRIVATE KEY-----`;");
+  const findings = scanText("const key = `-----BEGIN RSA PRIVATE KEY-----`;"); // allow-secret-scan
   assert.equal(findings.length, 1);
   assert.match(findings[0].name, /private key/u);
 });
