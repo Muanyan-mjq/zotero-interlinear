@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
-## [Unreleased]
+## [0.8.0] - 2026-11-12
 
 ### Added
 
@@ -25,6 +25,41 @@ reproduced here.
   preferred Google pool, toggle automatic fallback, set custom endpoints, and
   see the active service plus any pools that are cooling down. "Test
   connection" now uses the current form values without saving first.
+- Extra Google gateway hosts can be listed (one per line) to add more
+  independent quota pools without rebuilding. Each host is treated as its own
+  pool and rotates into the chain ahead of MyMemory/LibreTranslate; up to four
+  are honored to keep an all-throttled batch from stalling.
+- A fully user-defined free endpoint: a GET URL template with `{text}`,
+  `{from}`, `{to}` placeholders plus a dotted JSON result path (or empty for a
+  plain-text answer). This is the escape hatch when every public free service is
+  blocked — a self-hosted LibreTranslate/DeepLX, a corporate gateway, or a
+  Google mirror can be wired in without shipping another hard-coded URL.
+- End-to-end coverage now pushes concurrency to dozens of articles at once:
+  stress tests keep 36 concurrent articles aligned on the healthy free chain and
+  keep dozens of articles aligned when only the custom endpoint survives,
+  exercising the same alignment and cooldown logic the UI uses.
+- Zotero 11 compatibility is now declared: the manifest `strict_max_version` is
+  widened to `11.*` so both Zotero 10.x and 11.x can install. Regression guards
+  cover the inline-handler removal and the OS key store API changes, and the
+  build passes on the Zotero 11 development build.
+- Cross-platform source fixes so the plugin behaves outside Windows:
+  - File-picker filters use the GTK (Linux) / Cocoa (macOS) compatible glob form
+    (`*.csv *.tsv *.txt` and `*`) instead of the Windows-only `;` separator and
+    the `*.*` "any file" pattern.
+  - macOS Option (Alt) dead-key rewriting of `event.key` is avoided by matching
+    shortcuts on the physical `event.code`, so Alt+Letter shortcuts record and
+    fire correctly; labels use `⌘`/`⌥` on macOS and stay parseable elsewhere.
+  - POSIX file paths containing spaces and CJK characters pass through untouched.
+
+### Known limitations (0.8.0)
+
+- Automated end-to-end and GUI tests run on Windows only; Linux/macOS GUI/e2e
+  automation is not configured in CI, so those platforms are validated by
+  source review and unit-level simulation rather than full runs.
+- On Linux without a Secret Service (libsecret), the OS key store reports
+  `available = false`; the plugin's detection of this state is a known risk
+  (see `test/platformCompat.node.test.mjs`). Prefer a working Secret Service on
+  Linux.
 
 ### Fixed
 

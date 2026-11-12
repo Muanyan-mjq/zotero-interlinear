@@ -287,4 +287,213 @@ describe("free service router e2e", function () {
       restorePrefs(saved);
     }
   });
+
+  it("should use an extra Google gateway as an independent quota pool", async function () {
+    this.timeout(120000);
+    const keys = [
+      `${BASE}.google.baseUrl`,
+      `${BASE}.free.backend`,
+      `${BASE}.free.autoFallback`,
+      `${BASE}.free.googleClient`,
+      `${BASE}.free.googleMirrors`,
+      `${BASE}.free.customUrl`,
+      `${BASE}.free.customResultPath`,
+      `${BASE}.free.myMemoryUrl`,
+      `${BASE}.free.libreTranslateUrl`,
+      "network.proxy.type",
+    ];
+    const saved = snapshotPrefs(keys);
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.google.baseUrl`, MOCK, true);
+      Zotero.Prefs.set(`${BASE}.free.backend`, "auto", true);
+      Zotero.Prefs.set(`${BASE}.free.autoFallback`, true, true);
+      Zotero.Prefs.set(`${BASE}.free.googleClient`, "it", true);
+      Zotero.Prefs.set(`${BASE}.free.googleMirrors`, `${MOCK}/mirror1`, true);
+      Zotero.Prefs.set(`${BASE}.free.customUrl`, "", true);
+      Zotero.Prefs.set(`${BASE}.free.customResultPath`, "responseData.translatedText", true);
+      Zotero.Prefs.set(`${BASE}.free.myMemoryUrl`, `${MOCK}/get`, true);
+      Zotero.Prefs.set(`${BASE}.free.libreTranslateUrl`, "", true);
+      resetFreeBackends();
+      await controlMock({
+        googleThrottle: false,
+        googleThrottlePrimary: true,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+
+      const before = await readMockStats();
+      const result = await translateFree(["Hello", "World"], context());
+      const after = await readMockStats();
+      assert.deepEqual(result, ["ZH:Hello", "ZH:World"], "mirror answers the batch");
+      assert.equal(getFreeActiveBackend(), "google-m1:it", "mirror becomes the active pool");
+      assert.isAtLeast(after.mirrorRequests - before.mirrorRequests, 1);
+      assert.equal(
+        after.googleThrottled - before.googleThrottled,
+        5,
+        "all five default pools were tried exactly once before switching",
+      );
+    } catch (error) {
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+      resetFreeBackends();
+      restorePrefs(saved);
+    }
+  });
+
+  it("should keep dozens of articles aligned when only the custom endpoint survives", async function () {
+    this.timeout(240000);
+    const keys = [
+      `${BASE}.google.baseUrl`,
+      `${BASE}.free.backend`,
+      `${BASE}.free.googleMirrors`,
+      `${BASE}.free.customUrl`,
+      `${BASE}.free.customResultPath`,
+      `${BASE}.free.myMemoryUrl`,
+      `${BASE}.free.libreTranslateUrl`,
+      "network.proxy.type",
+    ];
+    const saved = snapshotPrefs(keys);
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.google.baseUrl`, MOCK, true);
+      Zotero.Prefs.set(`${BASE}.free.backend`, "auto", true);
+      Zotero.Prefs.set(`${BASE}.free.googleMirrors`, "", true);
+      Zotero.Prefs.set(
+        `${BASE}.free.customUrl`,
+        `${MOCK}/custom?q={text}&langpair={from}|{to}`,
+        true,
+      );
+      Zotero.Prefs.set(`${BASE}.free.customResultPath`, "responseData.translatedText", true);
+      Zotero.Prefs.set(`${BASE}.free.myMemoryUrl`, `${MOCK}/get`, true);
+      Zotero.Prefs.set(`${BASE}.free.libreTranslateUrl`, MOCK, true);
+      resetFreeBackends();
+      await controlMock({
+        googleThrottle: true,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: true,
+        libreFail: true,
+        customFail: false,
+      });
+
+      // 24 readers open at once, each with 6 paragraphs. Every shared free
+      // service is down; the custom endpoint must still serve all of them
+      // without a single misaligned or permanently failed paragraph.
+      const articles = Array.from({ length: 24 }, (_, article) =>
+        Array.from({ length: 6 }, (_, i) => `a${article}-p${i} & more`),
+      );
+      const results = await Promise.all(
+        articles.map((texts) => translateFree(texts, context())),
+      );
+      for (let a = 0; a < articles.length; a++) {
+        assert.deepEqual(
+          results[a],
+          articles[a].map((text) => `CE:${text}`),
+          `article ${a} alignment`,
+        );
+      }
+      assert.equal(getFreeActiveBackend(), "custom", "custom endpoint stays active");
+      const stats = await readMockStats();
+      assert.isAtLeast(stats.customRequests, 144, "every paragraph reached the custom endpoint");
+    } catch (error) {
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+      resetFreeBackends();
+      restorePrefs(saved);
+    }
+  });
+
+  it("should keep 36 concurrent articles aligned on the healthy free chain", async function () {
+    this.timeout(240000);
+    const keys = [
+      `${BASE}.google.baseUrl`,
+      `${BASE}.free.backend`,
+      `${BASE}.free.googleClient`,
+      `${BASE}.free.googleMirrors`,
+      `${BASE}.free.customUrl`,
+      `${BASE}.free.myMemoryUrl`,
+      `${BASE}.free.libreTranslateUrl`,
+      "network.proxy.type",
+    ];
+    const saved = snapshotPrefs(keys);
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.google.baseUrl`, MOCK, true);
+      Zotero.Prefs.set(`${BASE}.free.backend`, "auto", true);
+      Zotero.Prefs.set(`${BASE}.free.googleClient`, "it", true);
+      Zotero.Prefs.set(`${BASE}.free.googleMirrors`, "", true);
+      Zotero.Prefs.set(`${BASE}.free.customUrl`, "", true);
+      Zotero.Prefs.set(`${BASE}.free.myMemoryUrl`, `${MOCK}/get`, true);
+      Zotero.Prefs.set(`${BASE}.free.libreTranslateUrl`, "", true);
+      resetFreeBackends();
+      await controlMock({
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+
+      const articles = Array.from({ length: 36 }, (_, article) =>
+        Array.from({ length: 10 }, (_, i) => `a${article}-p${i} & more`),
+      );
+      const before = await readMockStats();
+      const results = await Promise.all(
+        articles.map((texts) => translateFree(texts, context())),
+      );
+      for (let a = 0; a < articles.length; a++) {
+        assert.deepEqual(
+          results[a],
+          articles[a].map((text) => `ZH:${text}`),
+          `article ${a} alignment`,
+        );
+      }
+      const after = await readMockStats();
+      assert.equal(
+        after.googleRequests - before.googleRequests,
+        36,
+        "one batched request per article, no per-paragraph fallback",
+      );
+      assert.equal(after.googleSegments - before.googleSegments, 360, "all 360 segments sent");
+    } catch (error) {
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+      resetFreeBackends();
+      restorePrefs(saved);
+    }
+  });
 });

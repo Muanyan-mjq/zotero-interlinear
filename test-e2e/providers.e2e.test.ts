@@ -183,6 +183,122 @@ describe("provider e2e", function () {
     }
   });
 
+  it("should keep all five engines aligned under concurrent multi-article load", async function () {
+    this.timeout(240000);
+    const keys = [
+      `${BASE}.language.source`,
+      `${BASE}.language.target`,
+      `${BASE}.openai.endpoint`,
+      `${BASE}.openai.model`,
+      `${BASE}.openai.apiKey`,
+      `${BASE}.claude.endpoint`,
+      `${BASE}.claude.model`,
+      `${BASE}.claude.apiKey`,
+      `${BASE}.gemini.baseUrl`,
+      `${BASE}.gemini.model`,
+      `${BASE}.gemini.apiKey`,
+      `${BASE}.ollama.url`,
+      `${BASE}.ollama.model`,
+      `${BASE}.google.baseUrl`,
+      `${BASE}.free.backend`,
+      `${BASE}.free.googleMirrors`,
+      `${BASE}.free.customUrl`,
+      `${BASE}.free.myMemoryUrl`,
+      `${BASE}.free.libreTranslateUrl`,
+      "network.proxy.type",
+    ];
+    const saved = snapshotPrefs(keys);
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.language.source`, "en", true);
+      Zotero.Prefs.set(`${BASE}.language.target`, "zh-CN", true);
+      const settings: Array<[string, string]> = [
+        [`${BASE}.openai.endpoint`, `${MOCK}/v1`],
+        [`${BASE}.openai.model`, "mock-model"],
+        [`${BASE}.openai.apiKey`, "test-key"],
+        [`${BASE}.claude.endpoint`, `${MOCK}/v1/messages`],
+        [`${BASE}.claude.model`, "mock-model"],
+        [`${BASE}.claude.apiKey`, "test-key"],
+        [`${BASE}.gemini.baseUrl`, MOCK],
+        [`${BASE}.gemini.model`, "mock-model"],
+        [`${BASE}.gemini.apiKey`, "test-key"],
+        [`${BASE}.ollama.url`, MOCK],
+        [`${BASE}.ollama.model`, "mock-model"],
+        [`${BASE}.google.baseUrl`, MOCK],
+        [`${BASE}.free.backend`, "auto"],
+        [`${BASE}.free.googleMirrors`, ""],
+        [`${BASE}.free.customUrl`, ""],
+        [`${BASE}.free.myMemoryUrl`, `${MOCK}/get`],
+        [`${BASE}.free.libreTranslateUrl`, ""],
+      ];
+      for (const [key, value] of settings) Zotero.Prefs.set(key, value, true);
+      await controlMock({
+        firstHitFlaky: false,
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+
+      const articles = Array.from({ length: 4 }, (_, article) =>
+        Array.from({ length: 5 }, (_, i) => `a${article}-p${i}`),
+      );
+      const models = ["openai", "claude", "gemini", "ollama"] as const;
+      // 4 articles x 5 paragraphs x 5 engines, all in flight at once.
+      const modelJobs = models.flatMap((engine) =>
+        articles.flatMap((texts, article) =>
+          texts.map((text, index) =>
+            getTranslationProvider(engine)
+              .translate(text, context())
+              .then((result) => ({ engine, article, index, text: result.text })),
+          ),
+        ),
+      );
+      const googleJobs = articles.map((texts, article) =>
+        getTranslationProvider("google")
+          .translateBatch!(texts, context())
+          .then((result) => ({ article, result })),
+      );
+
+      const [modelResults, googleResults] = await Promise.all([
+        Promise.all(modelJobs),
+        Promise.all(googleJobs),
+      ]);
+      for (const entry of modelResults) {
+        assert.equal(
+          entry.text,
+          MARKER,
+          `${entry.engine} article ${entry.article} paragraph ${entry.index}`,
+        );
+      }
+      assert.equal(modelResults.length, 80, "all five-engine paragraphs completed");
+      for (let a = 0; a < articles.length; a++) {
+        assert.deepEqual(
+          googleResults[a].result,
+          articles[a].map((text) => `ZH:${text}`),
+          `google article ${a} alignment`,
+        );
+      }
+    } catch (error) {
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({
+        firstHitFlaky: true,
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+      restorePrefs(saved);
+    }
+  });
+
   it("should translate and chat through a real local Ollama model", async function () {
     this.timeout(300000);
     const model = String(

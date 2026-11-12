@@ -15,8 +15,12 @@ const state = {
   // Return a 302 to Google's "sorry" captcha until cleared.
   googleCaptcha: false,
   google429Style: "plain",
+  // Throttle only the default gateway, leaving /mirrorN/* healthy. Used to
+  // prove that an extra gateway really is an independent quota pool.
+  googleThrottlePrimary: false,
   myMemoryFail: false,
   libreFail: false,
+  customFail: false,
 };
 
 const hitCounts = new Map();
@@ -30,6 +34,8 @@ const stats = {
   googleByClient: {},
   myMemoryRequests: 0,
   libreRequests: 0,
+  customRequests: 0,
+  mirrorRequests: 0,
 };
 
 function bump(map, key) {
@@ -63,7 +69,9 @@ const server = http.createServer((request, response) => {
     if (/\/translate_a\/(?:single|t)(?:\?|$)/u.test(url)) {
       const params = new URLSearchParams(body);
       const client = params.get("client") || "gtx";
+      const isMirror = /^\/mirror\d+\//u.test(url);
       stats.googleRequests += 1;
+      if (isMirror) stats.mirrorRequests += 1;
       stats.googleByClient[client] = (stats.googleByClient[client] || 0) + 1;
 
       if (state.googleCaptcha) {
@@ -75,6 +83,7 @@ const server = http.createServer((request, response) => {
       }
       const blocked =
         state.googleThrottle ||
+        (state.googleThrottlePrimary && !isMirror) ||
         (Array.isArray(state.googleThrottleClients) &&
           state.googleThrottleClients.includes(client));
       if (blocked) {
@@ -123,6 +132,22 @@ const server = http.createServer((request, response) => {
           quotaFinished: false,
           responseStatus: 200,
         }),
+      );
+      return;
+    }
+
+    // User-defined free endpoint (GET + dotted JSON result path).
+    if (url.startsWith("/custom?")) {
+      stats.customRequests += 1;
+      const q = new URLSearchParams(url.slice(url.indexOf("?") + 1)).get("q") || "";
+      response.setHeader("Content-Type", "application/json");
+      if (state.customFail) {
+        response.statusCode = 429;
+        response.end(JSON.stringify({ error: "simulated custom endpoint quota" }));
+        return;
+      }
+      response.end(
+        JSON.stringify({ responseData: { translatedText: `CE:${q}` }, responseStatus: 200 }),
       );
       return;
     }

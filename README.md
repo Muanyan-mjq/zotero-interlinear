@@ -70,14 +70,14 @@ documentation of this plugin's UI.
 2. In Zotero: **Tools → Plugins → gear icon → Install Plugin From File…**, then pick the `.xpi`.
 3. Restart Zotero if prompted.
 
-Requires **Zotero 10 (desktop)**. See [Acknowledgements](#acknowledgements) if you are coming from the original plugin.
+Requires **Zotero 10 or 11 (desktop)**. See [Acknowledgements](#acknowledgements) if you are coming from the original plugin.
 
 ## Configuration
 
 Open **Edit → Settings → Interlinear**. The page uses five tabs; the save bar and tab strip stay visible while you scroll, and modified fields show an unsaved-changes hint:
 
 - **Translation service** — pick a backend and fill in its endpoint, model, and API key; choose source and target languages. Each backend has a **Test connection** button that reports running, success, or the actual failure reason in place.
-- **Display & interaction** — default layout, hover translation (on/off, dwell delay, and no modifier / hold Alt / hold Ctrl), the single-paragraph shortcut, and optional show/hide and layout-cycle shortcuts with conflict warnings.
+- **Display & interaction** — default layout, Alt-click to translate a single paragraph, the single-paragraph shortcut, and optional show/hide and layout-cycle shortcuts with conflict warnings.
 - **Appearance** — live preview, six built-in presets and named presets, installed-font detection and stack builder, color picker with per-theme values, text decoration, paragraph dividers, ribbon, block layout, interface-follow and export appearance. Advanced groups start collapsed.
 - **Glossary** — import/export term files.
 - **Advanced** — translation scope (body/headings/captions/list items/notes), skip trailing pages, speed and reliability knobs, auto-translate on open (off / cache only / always), translation cache usage and cleanup, plus version and project links.
@@ -92,7 +92,9 @@ rotate** (default), which tries Google's `it`, `at`, `gtx`, `dict-chrome-ex`
 and `firefox-a` quota pools, then MyMemory and a configured LibreTranslate
 instance. A throttled pool is skipped within the same batch instead of failing
 the paragraph. You can also choose the preferred pool, toggle automatic
-fallback, set custom endpoints, and see which service is active or cooling
+fallback, add extra Google gateway hosts (each an independent quota pool, up to
+four), wire in a fully custom free endpoint via a `{text}`/`{from}`/`{to}` GET
+template plus a JSON result path, and see which service is active or cooling
 down. "Test connection" uses the current form values without saving first.
 
 The default `translate_a/t` endpoint carries several paragraphs per request
@@ -116,12 +118,12 @@ If "Test connection" fails: check that your system proxy or TUN mode is running,
 1. Open a PDF in Zotero and switch to **reading mode**.
 2. Left-click the Interlinear toolbar icon to start a full-document run. Once translations exist, the same button hides them to show the original, and shows them again; if a run is in progress the first click pauses it, and a paused run resumes when translations are shown again. Right-click the icon for retranslate, cancel, export, and settings.
 3. The display-mode button next to it cycles the four layouts. Failed or paused paragraphs show a retry affordance — click it to retry just that paragraph.
-4. While reading, hover a paragraph, use your shortcut, Alt-click, or select text to translate just that part. During a full run, these reuse in-flight requests instead of calling the service twice.
+4. While reading, hold Alt and click a paragraph, use your shortcut, or select text to translate just that part. During a full run, these reuse in-flight requests instead of calling the service twice.
 5. Open the reading assistant from the reader sidebar to ask questions about the selection, the current page, or the whole document; export the bilingual view as a PDF attachment from the toolbar menu.
 
 ## Known limitations
 
-- Desktop Zotero 10 only; there is no mobile or Zotero 7 support.
+- Desktop Zotero 10 or 11 only; there is no mobile or Zotero 7 support.
 - The plugin relies on Zotero's internal reading-mode interfaces, which are not a public API — a Zotero upgrade may break it until adapted.
 - Math formulas are not translated; tables are not translated cell-by-cell; figure content is not extracted.
 - Scanned PDFs work only as well as Zotero's own text layer.

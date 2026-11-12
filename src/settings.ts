@@ -124,12 +124,21 @@ export const FREE_BACKENDS = [
   "google:firefox-a",
   "mymemory",
   "libretranslate",
+  "custom",
 ] as const;
 export type FreeBackendId = (typeof FREE_BACKENDS)[number];
 export const DEFAULT_FREE_BACKEND: FreeBackendId = "auto";
 export const DEFAULT_FREE_AUTO_FALLBACK = true;
 export const DEFAULT_LIBRE_TRANSLATE_URL = "";
 export const DEFAULT_MYMEMORY_URL = "https://api.mymemory.translated.net/get";
+export const DEFAULT_FREE_GOOGLE_MIRRORS = "";
+export const DEFAULT_FREE_CUSTOM_URL = "";
+export const DEFAULT_FREE_CUSTOM_RESULT_PATH = "responseData.translatedText";
+
+/** Extra gateway pools are generated at runtime, e.g. `google-m1:gtx`. */
+export function isMirrorBackendId(value: string): boolean {
+  return /^google-m\d+:[a-z0-9-]+$/iu.test(String(value || "").trim());
+}
 export { DEFAULT_GOOGLE_CLIENT, GOOGLE_CLIENTS };
 
 export const DEFAULT_REQUEST_GAP_MS = 250;
@@ -139,10 +148,6 @@ export const DEFAULT_MAX_BATCH_PARAGRAPHS = 6;
 export const DEFAULT_MAX_CONSECUTIVE_ERRORS = 3;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
 export const DEFAULT_SKIP_LAST_PAGES = 1;
-export const DEFAULT_HOVER_TRANSLATE = true;
-export const DEFAULT_HOVER_DELAY_MS = 800;
-export const HOVER_DELAY_MIN_MS = 200;
-export const HOVER_DELAY_MAX_MS = 5000;
 export const DEFAULT_SHORTCUT_ENABLED = true;
 export { DEFAULT_SHORTCUT };
 
@@ -156,6 +161,9 @@ const FREE_GOOGLE_CLIENT_PREF = `${BASE}.free.googleClient`;
 const FREE_MYMEMORY_EMAIL_PREF = `${BASE}.free.myMemoryEmail`;
 const FREE_MYMEMORY_URL_PREF = `${BASE}.free.myMemoryUrl`;
 const FREE_LIBRE_URL_PREF = `${BASE}.free.libreTranslateUrl`;
+const FREE_GOOGLE_MIRRORS_PREF = `${BASE}.free.googleMirrors`;
+const FREE_CUSTOM_URL_PREF = `${BASE}.free.customUrl`;
+const FREE_CUSTOM_RESULT_PATH_PREF = `${BASE}.free.customResultPath`;
 const LIBRE_API_KEY_PREF = SECRET_PREFS.libreTranslate;
 const OPENAI_ENDPOINT_PREF = `${BASE}.openai.endpoint`;
 const OPENAI_MODEL_PREF = `${BASE}.openai.model`;
@@ -181,8 +189,6 @@ const MAX_BATCH_PARAGRAPHS_PREF = `${BASE}.maxBatchParagraphs`;
 const MAX_ERRORS_PREF = `${BASE}.maxConsecutiveErrors`;
 const REQUEST_TIMEOUT_PREF = `${BASE}.requestTimeoutMs`;
 const SKIP_LAST_PAGES_PREF = `${BASE}.skipLastPages`;
-const HOVER_TRANSLATE_PREF = `${BASE}.interaction.hoverTranslate`;
-const HOVER_DELAY_PREF = `${BASE}.interaction.hoverDelayMs`;
 const SHORTCUT_ENABLED_PREF = `${BASE}.interaction.shortcutEnabled`;
 const SHORTCUT_PREF = `${BASE}.interaction.shortcut`;
 const APPEARANCE_FONT_SIZE_PREF = `${BASE}.appearance.fontSize`;
@@ -205,7 +211,6 @@ const TOGGLE_SHORTCUT_ENABLED_PREF = `${BASE}.interaction.toggleShortcutEnabled`
 const TOGGLE_SHORTCUT_PREF = `${BASE}.interaction.toggleShortcut`;
 const DISPLAY_SHORTCUT_ENABLED_PREF = `${BASE}.interaction.displayShortcutEnabled`;
 const DISPLAY_SHORTCUT_PREF = `${BASE}.interaction.displayShortcut`;
-const HOVER_MODIFIER_PREF = `${BASE}.interaction.hoverModifier`;
 const AUTO_TRANSLATE_ON_OPEN_PREF = `${BASE}.interaction.autoTranslateOnOpen`;
 const APPEARANCE_V2_PREF = `${BASE}.appearance.v2`;
 const APPEARANCE_SCHEMA_PREF = `${BASE}.appearance.schema`;
@@ -319,14 +324,20 @@ export function setGoogleBaseURL(url: string): void {
   setStringPref(GOOGLE_BASE_URL_PREF, url.trim() || DEFAULT_GOOGLE_BASE_URL);
 }
 
-export function getFreeBackend(): FreeBackendId {
-  const raw = getStringPref(FREE_BACKEND_PREF, DEFAULT_FREE_BACKEND) as FreeBackendId;
-  return FREE_BACKENDS.includes(raw) ? raw : DEFAULT_FREE_BACKEND;
+export function getFreeBackend(): string {
+  const raw = getStringPref(FREE_BACKEND_PREF, DEFAULT_FREE_BACKEND).trim();
+  return (FREE_BACKENDS as readonly string[]).includes(raw) || isMirrorBackendId(raw)
+    ? raw
+    : DEFAULT_FREE_BACKEND;
 }
 
 export function setFreeBackend(value: string): void {
-  const raw = value.trim() as FreeBackendId;
-  setStringPref(FREE_BACKEND_PREF, FREE_BACKENDS.includes(raw) ? raw : DEFAULT_FREE_BACKEND);
+  const raw = value.trim();
+  const valid =
+    (FREE_BACKENDS as readonly string[]).includes(raw) || isMirrorBackendId(raw)
+      ? raw
+      : DEFAULT_FREE_BACKEND;
+  setStringPref(FREE_BACKEND_PREF, valid);
 }
 
 export function getFreeAutoFallback(): boolean {
@@ -368,6 +379,37 @@ export function getLibreTranslateURL(): string {
 
 export function setLibreTranslateURL(value: string): void {
   setStringPref(FREE_LIBRE_URL_PREF, value.trim());
+}
+
+/**
+ * Extra Google gateway hosts (one per line). Each one contributes its own set
+ * of client quota pools, which is what makes a long run survive an IP-level
+ * throttle on the default host. Empty by default for backwards compatibility.
+ */
+export function getFreeGoogleMirrors(): string {
+  return getStringPref(FREE_GOOGLE_MIRRORS_PREF, DEFAULT_FREE_GOOGLE_MIRRORS);
+}
+
+export function setFreeGoogleMirrors(value: string): void {
+  setStringPref(FREE_GOOGLE_MIRRORS_PREF, value.trim());
+}
+
+/** GET URL template with `{text}`, `{from}`, `{to}` placeholders. */
+export function getFreeCustomURL(): string {
+  return getStringPref(FREE_CUSTOM_URL_PREF, DEFAULT_FREE_CUSTOM_URL);
+}
+
+export function setFreeCustomURL(value: string): void {
+  setStringPref(FREE_CUSTOM_URL_PREF, value.trim());
+}
+
+/** Dotted path into the JSON answer; empty means the answer is plain text. */
+export function getFreeCustomResultPath(): string {
+  return getStringPref(FREE_CUSTOM_RESULT_PATH_PREF, DEFAULT_FREE_CUSTOM_RESULT_PATH);
+}
+
+export function setFreeCustomResultPath(value: string): void {
+  setStringPref(FREE_CUSTOM_RESULT_PATH_PREF, value.trim());
 }
 
 export function getLibreTranslateApiKey(): string {
@@ -626,30 +668,8 @@ export function setSkipLastPages(value: number): void {
   setNumberPref(SKIP_LAST_PAGES_PREF, value, 0, 50);
 }
 
-export function getHoverTranslateEnabled(): boolean {
-  return getBoolPref(HOVER_TRANSLATE_PREF, DEFAULT_HOVER_TRANSLATE);
-}
-
-export function setHoverTranslateEnabled(value: boolean): void {
-  setBoolPref(HOVER_TRANSLATE_PREF, value);
-}
-
-export function getHoverDelayMs(): number {
-  return getNumberPref(
-    HOVER_DELAY_PREF,
-    DEFAULT_HOVER_DELAY_MS,
-    HOVER_DELAY_MIN_MS,
-    HOVER_DELAY_MAX_MS,
-  );
-}
-
-export function setHoverDelayMs(value: number): void {
-  setNumberPref(HOVER_DELAY_PREF, value, HOVER_DELAY_MIN_MS, HOVER_DELAY_MAX_MS);
-}
-
 export const DEFAULT_TOGGLE_SHORTCUT = "Alt+Shift+T";
 export const DEFAULT_DISPLAY_SHORTCUT = "Alt+Shift+D";
-export type HoverModifier = "none" | "alt" | "ctrl";
 export type AutoTranslateOnOpen = "off" | "cached" | "always";
 
 function normalizeShortcutOrDefault(raw: string, fallback: string): string {
@@ -691,16 +711,6 @@ export function setDisplayShortcut(value: string): void {
   setStringPref(
     DISPLAY_SHORTCUT_PREF,
     normalizeShortcutOrDefault(value, DEFAULT_DISPLAY_SHORTCUT),
-  );
-}
-export function getHoverModifier(): HoverModifier {
-  const value = getRawStringPref(HOVER_MODIFIER_PREF);
-  return value === "alt" || value === "ctrl" ? value : "none";
-}
-export function setHoverModifier(value: string): void {
-  setStringPref(
-    HOVER_MODIFIER_PREF,
-    value === "alt" || value === "ctrl" ? value : "none",
   );
 }
 export function getAutoTranslateOnOpen(): AutoTranslateOnOpen {

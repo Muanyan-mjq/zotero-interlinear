@@ -10,8 +10,8 @@ const SOURCE_SELECTOR = "[data-ref-path]";
 const TRANSLATION_CLASS = "interlinear-translation";
 const RETRY_SELECTOR = `.${TRANSLATION_CLASS}[data-state="error"], .${TRANSLATION_CLASS}[data-state="paused"]`;
 const POPUP_CLASS = "interlinear-selection-popup";
+/** Alt-hover outline marking the paragraph that Alt+click will translate. */
 const HOVER_CLASS = "interlinear-source-hover";
-const AUTO_HOVER_CLASS = "interlinear-source-hover-auto";
 
 interface SelectionLike {
   toString(): string;
@@ -30,16 +30,9 @@ export interface InteractionOptions {
   getSelection?: () => SelectionLike | null;
   setTimer?: (callback: () => void, delay: number) => void;
   /** Read at gesture time so settings changes apply without re-attaching. */
-  getHoverSettings?: () => { enabled: boolean; delayMs: number };
   getShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
-  /** Hover auto-translate pauses while the reader's translations are hidden. */
-  isTranslationHidden?: () => boolean;
-  /** Tests can replace the dwell timer with a manual handle. */
-  setHoverTimer?: (callback: () => void, delay: number) => any;
-  clearHoverTimer?: (handle: any) => void;
   /** Width of the selection popup, read when it opens. */
   getPopupWidth?: () => number;
-  getHoverModifier?: () => "none" | "alt" | "ctrl";
   getToggleShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
   getDisplayShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
   onToggleShortcut?: () => void;
@@ -248,31 +241,12 @@ export function attachReaderInteractions(
     });
   let disposed = false;
   let hovered: HTMLElement | null = null;
-  let hoverMode: "alt" | "auto" | null = null;
-  let hoverTimer: any = null;
-  let hoverPoint: { x: number; y: number } | null = null;
-  let hoverAnchor: { x: number; y: number } | null = null;
   let popup: ReturnType<typeof createPopup> | null = null;
 
-  const getHoverSettings =
-    options.getHoverSettings ||
-    (() => ({ enabled: false, delayMs: 800 }));
   const getPopupWidth = options.getPopupWidth || (() => 380);
   const getShortcutSettings =
     options.getShortcutSettings ||
     (() => ({ enabled: true, spec: parseShortcut(DEFAULT_SHORTCUT) }));
-  const setHoverTimeout =
-    options.setHoverTimer ||
-    ((callback: () => void, delay: number) => {
-      const target = win || Zotero.getMainWindow();
-      return target.setTimeout(callback, delay);
-    });
-  const clearHoverTimeout =
-    options.clearHoverTimer ||
-    ((handle: any) => {
-      const target = win || Zotero.getMainWindow();
-      target.clearTimeout(handle);
-    });
 
   const getSelection = (): SelectionLike | null => {
     if (options.getSelection) return options.getSelection();
@@ -283,143 +257,38 @@ export function attachReaderInteractions(
     }
   };
 
-  const shouldSkipAutoTranslate = (source: HTMLElement): boolean => {
-    const next = source.nextElementSibling as HTMLElement | null;
-    if (next?.classList?.contains(TRANSLATION_CLASS)) return true;
-    const text = (source.textContent || "").replace(/\s+/gu, " ").trim();
-    return text.length < 2;
-  };
-
-  const clearHoverTimer = () => {
-    if (hoverTimer === null) return;
-    try {
-      clearHoverTimeout(hoverTimer);
-    } catch (_) {
-      // The reader can replace its content document.
-    }
-    hoverTimer = null;
-  };
-
   const clearHover = () => {
-    clearHoverTimer();
     if (hovered) {
       try {
         hovered.classList.remove(HOVER_CLASS);
-        hovered.classList.remove(AUTO_HOVER_CLASS);
       } catch (_) {
         // The reader can replace its content document.
       }
       hovered = null;
     }
-    hoverMode = null;
-    hoverPoint = null;
-    hoverAnchor = null;
   };
 
   const hidePopup = () => {
     popup?.hide();
   };
 
-  const armAutoHover = (source: HTMLElement, event: MouseEvent) => {
-    const settings = getHoverSettings();
-    const modifier = options.getHoverModifier?.() || "none";
-    if (modifier === "alt" && !event.altKey) return;
-    if (modifier === "ctrl" && !event.ctrlKey) return;
-    if (!settings.enabled || options.isTranslationHidden?.() || shouldSkipAutoTranslate(source)) return;
-
-    clearHoverTimer();
-    hovered = source;
-    hoverMode = "auto";
-    hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
-    hoverAnchor = hoverPoint;
-    source.classList.add(AUTO_HOVER_CLASS);
-
-    let fired = false;
-    const handle = setHoverTimeout(() => {
-      fired = true;
-      hoverTimer = null;
-      if (disposed || hovered !== source || hoverMode !== "auto") return;
-      if (!getHoverSettings().enabled) return;
-      if (options.isTranslationHidden?.()) return;
-      if (!source.isConnected) {
-        clearHover();
-        return;
-      }
-      if (hoverPoint && (hoverPoint.x || hoverPoint.y)) {
-        try {
-          const at = (doc as any).elementFromPoint?.(hoverPoint.x, hoverPoint.y);
-          // Only a different paragraph proves the pointer left. A null hit
-          // (annotation overlay, page gap, transparent layer) is not proof.
-          const current = at ? findSource(at) : null;
-          if (current && current !== source) {
-            clearHover();
-            return;
-          }
-        } catch (_) {
-          // elementFromPoint is best-effort geometry validation.
-        }
-      }
-      const selection = getSelection();
-      if (selection?.rangeCount && !selection.isCollapsed) return;
-      if (popup && !popup.root.hidden) return;
-      if (shouldSkipAutoTranslate(source)) return;
-      invokeParagraph(host, source);
-    }, Math.max(0, Number(settings.delayMs) || 0));
-    if (!fired) hoverTimer = handle;
-  };
-
-  const movedEnoughToRearm = (event: MouseEvent): boolean => {
-    if (!hoverAnchor) return true;
-    const dx = (Number(event.clientX) || 0) - hoverAnchor.x;
-    const dy = (Number(event.clientY) || 0) - hoverAnchor.y;
-    return Math.abs(dx) + Math.abs(dy) > 6;
-  };
-
+  /**
+   * Alt-hover only marks the paragraph; translation happens on Alt+click.
+   * Hover-to-translate and the Ctrl modifier were removed at the user's
+   * request, so there is no dwell timer here.
+   */
   const onMouseMove = (event: MouseEvent) => {
     const source = findSource(event.target);
-    if (event.altKey && options.getHoverModifier?.() === "alt") {
-      if (hoverMode === "auto" && source === hovered) {
-        hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
-        if (!movedEnoughToRearm(event)) return;
-      }
-      clearHover();
-      if (source) {
-        hovered = source;
-        hoverMode = "alt";
-        source.classList.add(HOVER_CLASS);
-        armAutoHover(source, event);
-      }
-      return;
-    }
-
-    if (event.altKey) {
-      if (hoverMode === "alt" && source === hovered) return;
-      clearHover();
-      if (source) {
-        hovered = source;
-        hoverMode = "alt";
-        source.classList.add(HOVER_CLASS);
-      }
-      return;
-    }
-
-    if (!getHoverSettings().enabled) {
+    if (!event.altKey) {
       clearHover();
       return;
     }
-    if (options.getHoverModifier?.() === "ctrl" && !event.ctrlKey) {
-      clearHover();
-      return;
-    }
-    if (hoverMode === "auto" && source === hovered) {
-      // Keep the newest pointer position for the geometry check, but restart
-      // the dwell timer only after meaningful movement. Hovering must mean
-      // resting on a paragraph, not merely entering it.
-      hoverPoint = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
-      if (!movedEnoughToRearm(event)) return;
-    }
+    if (hovered === source) return;
     clearHover();
-    if (source) armAutoHover(source, event);
+    if (source) {
+      hovered = source;
+      source.classList.add(HOVER_CLASS);
+    }
   };
 
   const onMouseLeave = () => clearHover();
@@ -597,7 +466,6 @@ export function attachReaderInteractions(
 
   const onMouseDown = (event: MouseEvent) => {
     if (popup && !popup.contains(event.target)) hidePopup();
-    if (hoverMode === "auto") clearHover();
   };
 
   const onWindowBlur = () => clearHover();

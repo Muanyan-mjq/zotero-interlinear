@@ -11,6 +11,9 @@
 import {
   getFreeAutoFallback,
   getFreeBackend,
+  getFreeCustomResultPath,
+  getFreeCustomURL,
+  getFreeGoogleMirrors,
   getGoogleBaseURL,
   getGoogleClient,
   getLibreTranslateApiKey,
@@ -20,6 +23,12 @@ import {
 } from "../settings";
 import { getString } from "../utils/locale";
 import { redactSecrets } from "../utils/redact";
+import { assessEndpoint } from "../utils/endpointSafety";
+import {
+  buildCustomURL,
+  parseMirrorList,
+  readResultPath,
+} from "../utils/freeEndpoint";
 import { GOOGLE_CLIENTS, normalizeGoogleClient } from "./googleProtocol";
 import { GoogleThrottleError, requestGoogleTranslations } from "./google";
 import { NO_REDIRECT_OPTIONS } from "./secureRequest";
@@ -41,6 +50,12 @@ export interface FreeConfig {
   myMemoryUrl: string;
   libreURL: string;
   libreKey: string;
+  /** Newline-separated extra Google gateway hosts (optional). */
+  googleMirrors?: string;
+  /** GET template with {text}/{from}/{to}; empty disables the custom backend. */
+  customUrl?: string;
+  /** Dotted JSON path to the translated string; empty = plain text response. */
+  customResultPath?: string;
 }
 
 /** A throttled pool is not worth retrying for several minutes. */
@@ -62,6 +77,9 @@ export function readFreeConfig(): FreeConfig {
     myMemoryUrl: getMyMemoryURL(),
     libreURL: getLibreTranslateURL(),
     libreKey: getLibreTranslateApiKey(),
+    googleMirrors: getFreeGoogleMirrors(),
+    customUrl: getFreeCustomURL(),
+    customResultPath: getFreeCustomResultPath(),
   };
 }
 
@@ -130,9 +148,14 @@ function splitForMyMemory(text: string, limit = 450): string[] {
   return chunks;
 }
 
-function googleBackend(client: string, config: FreeConfig): FreeBackend {
+function isSafeEndpoint(url: string): boolean {
+  const assessment = assessEndpoint(url);
+  return assessment.valid && !assessment.needsConfirmation;
+}
+
+function googleBackend(client: string, config: FreeConfig, id = `google:${client}`): FreeBackend {
   return {
-    id: `google:${client}`,
+    id,
     label: `Google (${client})`,
     translate: (texts, context) =>
       requestGoogleTranslations(
@@ -217,6 +240,75 @@ function myMemoryBackend(config: FreeConfig): FreeBackend {
   };
 }
 
+/**
+ * A user-defined GET endpoint. This is the escape hatch when every public free
+ * service is blocked: any service with a simple JSON/text answer (a Google
+ * mirror, a self-hosted LibreTranslate/DeepLX, a corporate gateway, ...) can
+ * be wired in without shipping another hard-coded URL that will inevitably
+ * disappear.
+ */
+function customBackend(config: FreeConfig): FreeBackend {
+  return {
+    id: "custom",
+    label: "Custom",
+    translate: async (texts, context) => {
+      const template = String(config.customUrl || "").trim();
+      if (!template) throw new Error(getString("free-custom-url-missing"));
+      const source = detectSource(texts, context.sourceLanguage);
+      const results: string[] = [];
+
+      for (const [index, text] of texts.entries()) {
+        const pieces: string[] = [];
+        for (const chunk of splitForMyMemory(text, 1200)) {
+          const url = buildCustomURL(template, {
+            text: chunk,
+            from: source,
+            to: context.targetLanguage,
+          });
+          if (!url || !isSafeEndpoint(url)) {
+            throw new Error(getString("free-custom-url-invalid"));
+          }
+
+          let xhr: any;
+          try {
+            xhr = await Zotero.HTTP.request("GET", url, {
+              responseType: "text",
+              ...NO_REDIRECT_OPTIONS,
+              timeout: context.timeoutMs,
+            });
+          } catch (error: any) {
+            const failed = error?.xmlhttp || error?.xhr;
+            if (failed?.status === 429) throw new GoogleThrottleError("", 0);
+            throw new Error(
+              getString("provider-error-google-network", {
+                args: { detail: redactSecrets(String(error?.message || "")) },
+              }),
+            );
+          }
+
+          let payload: any = xhr?.response;
+          if (typeof payload === "string") {
+            try {
+              payload = JSON.parse(payload);
+            } catch (_) {
+              // Plain-text answers are valid when the result path is empty.
+            }
+          }
+          const translated = readResultPath(payload, config.customResultPath || "");
+          if (!translated) {
+            throw new Error(getString("provider-error-google-empty"));
+          }
+          pieces.push(translated);
+          await Zotero.Promise.delay(150);
+        }
+        results.push(pieces.join(""));
+        if (index < texts.length - 1) await Zotero.Promise.delay(150);
+      }
+      return results;
+    },
+  };
+}
+
 function libreTranslateBackend(config: FreeConfig): FreeBackend {
   return {
     id: "libretranslate",
@@ -284,9 +376,21 @@ function buildAllBackends(config: FreeConfig): FreeBackend[] {
   const preferred = normalizeGoogleClient(config.googleClient);
   const clients = [preferred, ...GOOGLE_CLIENTS.filter((client) => client !== preferred)];
   const google = clients.map((client) => googleBackend(client, config));
-  const rest: FreeBackend[] = [myMemoryBackend(config)];
-  if (config.libreURL.trim()) rest.push(libreTranslateBackend(config));
-  return [...google, ...rest];
+
+  // One pool per extra gateway (not one per client) — Google requests are
+  // globally paced, so a host x client cross-product would only add latency
+  // when everything is throttled.
+  const mirrors = parseMirrorList(config.googleMirrors || "")
+    .filter((host) => isSafeEndpoint(host))
+    .map((host, index) =>
+      googleBackend(preferred, { ...config, googleBaseURL: host }, `google-m${index + 1}:${preferred}`),
+    );
+
+  const rest: FreeBackend[] = [];
+  if (String(config.customUrl || "").trim()) rest.push(customBackend(config));
+  rest.push(myMemoryBackend(config));
+  if (String(config.libreURL || "").trim()) rest.push(libreTranslateBackend(config));
+  return [...google, ...mirrors, ...rest];
 }
 
 /** Ordered chain for the next batch, honoring the user's selection. */
@@ -342,6 +446,10 @@ export async function translateFree(
   }
 
   for (const backend of available) {
+    // Dozens of readers can enter this loop before the first one finishes.
+    // Re-read the cooldown on every step so a service that another job just
+    // found dead is not probed again by every other in-flight batch.
+    if ((disabledUntil.get(backend.id) || 0) > Date.now()) continue;
     try {
       const translated = await backend.translate(texts, context);
       if (translated.length !== texts.length) {

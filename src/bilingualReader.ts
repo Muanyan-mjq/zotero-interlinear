@@ -4,9 +4,6 @@ import {
   getDisplayMode,
   getEngine,
   getGlossaryEntries,
-  getHoverDelayMs,
-  getHoverModifier,
-  getHoverTranslateEnabled,
   getToggleShortcut,
   getToggleShortcutEnabled,
   getDisplayShortcut,
@@ -76,7 +73,6 @@ import { logError } from "./utils/log";
 import {
   transition,
   isTranslationVisible,
-  isTranslationHidden,
   type ToggleState,
   type ToggleEvent,
   type ToggleTransition,
@@ -594,10 +590,6 @@ ${animation}
       outline: 1px dashed currentColor;
       outline-offset: 2px;
     }
-    .interlinear-source-hover-auto {
-      outline: 1px dotted currentColor;
-      outline-offset: 3px;
-    }
     .interlinear-selection-popup {
       position: fixed;
       z-index: 2147483000;
@@ -1038,7 +1030,7 @@ export async function translateSelectedText(reader: any, rawText: string): Promi
   return response.text;
 }
 
-/** Translate the paragraph under a hover / shortcut / Alt+click trigger. */
+/** Translate the paragraph under a shortcut / Alt+click / menu trigger. */
 export function translateReaderParagraph(
   reader: any,
   source: HTMLElement,
@@ -1182,15 +1174,10 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
       },
     },
     {
-      getHoverSettings: () => ({
-        enabled: getHoverTranslateEnabled(),
-        delayMs: getHoverDelayMs(),
-      }),
       getShortcutSettings: () => ({
         enabled: getShortcutEnabled(),
         spec: getShortcutSpec(),
       }),
-      getHoverModifier: () => getHoverModifier(),
       getToggleShortcutSettings: () => ({
         enabled: getToggleShortcutEnabled(),
         spec: parseShortcut(getToggleShortcut()),
@@ -1203,7 +1190,6 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
         void toggleBilingualReading(reader);
       },
       onCycleDisplayShortcut: () => cycleDisplayMode(reader),
-      isTranslationHidden: () => isTranslationHidden(getToggleState(reader)),
       getPopupWidth: () => getAppearance().popupMaxWidth,
     },
   );
@@ -1338,10 +1324,10 @@ function scheduleInteractionRetries(
 }
 
 /**
- * Attach the hover/shortcut/selection controller as soon as a reader exposes
+ * Attach the shortcut/selection controller as soon as a reader exposes
  * its SDT document. This must be re-entrant: a watcher created before reading
  * mode was enabled used to short-circuit every later attempt, which left
- * hover and shortcuts dead until a full-document run happened to attach them.
+ * single-paragraph triggers dead until a full-document run attached them.
  */
 export function watchReaderInteractions(reader: any): void {
   if (!reader || reader.type !== "pdf" || reader._isUninitialized) return;
@@ -1973,7 +1959,7 @@ async function prepareAndRun(reader: any): Promise<void> {
 
 /**
  * Turn reading mode on and make the per-paragraph triggers live WITHOUT
- * starting a full-document run. After this, hover, the shortcut, Alt-click
+ * starting a full-document run. After this, the shortcut, Alt-click
  * and the selection popup translate only the paragraph the user points at.
  * Deliberately does not dispatch a toggle event: an `empty` reader must keep
  * presenting the toolbar button as "translate the whole document".
@@ -1982,7 +1968,7 @@ export async function enterParagraphTranslationMode(reader: any): Promise<void> 
   try {
     const doc = await ensureReadingMode(reader);
     if (!getDocumentRoot(doc)) throw new Error(getString("error-reading-mode-page"));
-    // Only inject the styles so the hover highlight is visible. Display modes
+    // Only inject the styles so the Alt-hover outline is visible. Display modes
     // and the highlight-alignment observer are installed lazily by
     // prepareOnDemandReading() on the first real paragraph translation;
     // installing them early previously broke Zotero's native highlight layout.

@@ -5,7 +5,7 @@
  * once reading mode is enabled. Historically the watcher was created before
  * that happened, short-circuited forever after one failed 3-second window,
  * and the only way to enable reading mode was the full-document toolbar run.
- * The result: hover/shortcut/Alt-click never worked and every translation
+ * The result: shortcut/Alt-click never worked and every translation
  * turned into a full-document one. These assertions pin the wiring that
  * prevents that regression; they are intentionally source-level because
  * bilingualReader.ts imports the whole Zotero runtime.
