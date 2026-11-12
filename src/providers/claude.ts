@@ -11,7 +11,12 @@ import {
 } from "./claudeProtocol";
 import { getXhrResponseBody } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
-import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import {
+  NO_REDIRECT_OPTIONS,
+  isRedirectStatus,
+  redirectErrorMessage,
+  requestWithRetry,
+} from "./secureRequest";
 import { describeFailure } from "./errorHints";
 
 export interface ClaudeConfig {
@@ -68,7 +73,7 @@ export async function requestClaudeTranslation(
 
   let xhr: any;
   try {
-    xhr = await Zotero.HTTP.request("POST", endpoint, {
+    xhr = await requestWithRetry("POST", endpoint, {
       headers,
       body: JSON.stringify(body),
       responseType: "text",

@@ -11,6 +11,7 @@ export interface ShortcutSpec {
 
 export interface ShortcutEventLike {
   key: string;
+  code?: string;
   ctrlKey?: boolean;
   altKey?: boolean;
   shiftKey?: boolean;
@@ -31,6 +32,10 @@ const MODIFIER_ALIASES: Record<string, "ctrl" | "alt" | "shift" | "meta"> = {
   command: "meta",
   win: "meta",
   super: "meta",
+  // Symbol forms used by formatShortcut on macOS; kept parseable so a
+  // re-normalised shortcut round-trips back to the same tokens.
+  "⌘": "meta",
+  "⌥": "alt",
 };
 
 const NAMED_KEYS: Record<string, string> = {
@@ -59,6 +64,40 @@ function normalizeKey(token: string): string | null {
   if (/^[a-z]$/u.test(lower)) return lower.toUpperCase();
   if (/^[0-9]$/u.test(lower)) return lower;
   return null;
+}
+
+/**
+ * Derive a stable key token from a physical key code (KeyboardEvent.code).
+ * Unlike event.key, this is unaffected by macOS Option (Alt) dead-key
+ * rewriting, so Alt+Letter shortcuts record and match correctly everywhere.
+ */
+function codeToToken(code?: string): string | null {
+  if (!code) return null;
+  const letter = /^Key([A-Z])$/u.exec(code);
+  if (letter) return letter[1];
+  const digit = /^Digit([0-9])$/u.exec(code);
+  if (digit) return digit[1];
+  const lower = code.toLowerCase();
+  if (NAMED_KEYS[lower]) return NAMED_KEYS[lower];
+  if (/^F([1-9]|1[0-2])$/u.test(code)) return code.toUpperCase();
+  return null;
+}
+
+/** Prefer the physical key code; fall back to the (dead-key-prone) key value. */
+function eventKeyToken(event: ShortcutEventLike): string {
+  const fromCode = codeToToken(event.code);
+  if (fromCode) return fromCode;
+  return normalizeEventKey(event.key);
+}
+
+/** True when running on macOS; safe to call outside the Zotero runtime. */
+function isMac(override?: boolean): boolean {
+  if (typeof override === "boolean") return override;
+  try {
+    return typeof Zotero !== "undefined" && !!(Zotero as { isMac?: boolean }).isMac;
+  } catch {
+    return false;
+  }
 }
 
 function withModifiers(spec: Pick<ShortcutSpec, "ctrl" | "alt" | "meta" | "key">): boolean {
@@ -101,12 +140,16 @@ export function parseShortcut(value: string): ShortcutSpec | null {
   return spec;
 }
 
-export function formatShortcut(spec: ShortcutSpec): string {
+export function formatShortcut(
+  spec: ShortcutSpec,
+  opts: { mac?: boolean } = {},
+): string {
+  const mac = isMac(opts.mac);
   const parts: string[] = [];
-  if (spec.ctrl) parts.push("Ctrl");
-  if (spec.alt) parts.push("Alt");
+  if (spec.ctrl) parts.push(mac ? "⌃" : "Ctrl");
+  if (spec.alt) parts.push(mac ? "⌥" : "Alt");
   if (spec.shift) parts.push("Shift");
-  if (spec.meta) parts.push("Meta");
+  if (spec.meta) parts.push(mac ? "⌘" : "Meta");
   parts.push(spec.key);
   return parts.join("+");
 }
@@ -130,7 +173,7 @@ function normalizeEventKey(key: string): string {
 }
 
 export function shortcutFromEvent(event: ShortcutEventLike): ShortcutSpec | null {
-  const key = normalizeEventKey(event.key);
+  const key = eventKeyToken(event);
   if (!normalizeKey(key)) return null;
   const spec: ShortcutSpec = {
     ctrl: !!event.ctrlKey,
@@ -151,7 +194,7 @@ export function matchesShortcut(
   if (!!event.altKey !== spec.alt) return false;
   if (!!event.shiftKey !== spec.shift) return false;
   if (!!event.metaKey !== spec.meta) return false;
-  return normalizeEventKey(event.key) === spec.key;
+  return eventKeyToken(event) === spec.key;
 }
 
 /** Exact modifier+key equality for two configured shortcuts. */

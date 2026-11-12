@@ -283,6 +283,11 @@
 
 #interlinear-settings-root .interlinear-field-label {
   justify-self: start;
+  align-self: start;
+  /* Lift the label so its text lines up with the input's first line even when
+     the control wraps (secret fields carry an input + show/clear buttons + a
+     status message). Center alignment would drop the label to the row middle. */
+  padding-top: 5px;
   color: CanvasText;
   font-size: 12.5px;
   font-weight: 600;
@@ -305,6 +310,7 @@
 #interlinear-settings-root .interlinear-field-stacked .interlinear-field-label {
   display: block;
   margin-bottom: 6px;
+  padding-top: 0;
   white-space: normal;
 }
 

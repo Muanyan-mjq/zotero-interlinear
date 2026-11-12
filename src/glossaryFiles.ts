@@ -7,9 +7,12 @@
 // - Zotero.File.getContentsAsync / putContentsAsync exist in Zotero 7+.
 // Keep both calls in this module so a future Zotero API change has one fix site.
 
+// nsIFilePicker.appendFilter takes a space-separated glob list; the Windows-only
+// ";" separator and the "*.*" "any file" pattern are not honoured by the GTK
+// (Linux) and Cocoa (macOS) backends, so we use the cross-platform form here.
 const GLOSSARY_FILE_FILTERS: Array<[string, string]> = [
-  ["Glossary CSV/TSV (*.csv, *.tsv, *.txt)", "*.csv; *.tsv; *.txt"],
-  ["Any file", "*.*"],
+  ["Glossary CSV/TSV (*.csv, *.tsv, *.txt)", "*.csv *.tsv *.txt"],
+  ["Any file", "*"],
 ];
 
 export async function pickGlossaryFile(

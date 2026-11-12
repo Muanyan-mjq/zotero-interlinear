@@ -36,8 +36,6 @@ declare namespace _ZoteroTypes {
       "requestTimeoutMs": number;
       "skipLastPages": number;
       "displayMode": string;
-      "interaction.hoverTranslate": boolean;
-      "interaction.hoverDelayMs": number;
       "interaction.shortcutEnabled": boolean;
       "interaction.shortcut": string;
       "glossary": string;
@@ -61,7 +59,6 @@ declare namespace _ZoteroTypes {
       "interaction.toggleShortcut": string;
       "interaction.displayShortcutEnabled": boolean;
       "interaction.displayShortcut": string;
-      "interaction.hoverModifier": string;
       "interaction.autoTranslateOnOpen": string;
     };
   }

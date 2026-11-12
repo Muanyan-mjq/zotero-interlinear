@@ -8,6 +8,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
+## [0.8.0] - 2026-11-12
+
+### Added
+
+- Free translation is now a configurable service chain. Google's free endpoint
+  has independent per-`client` quota pools (`it`, `at`, `gtx`,
+  `dict-chrome-ex`, `firefox-a`); the default uses the batched
+  `translate_a/t` endpoint with one request per batch of paragraphs. When a
+  pool is throttled, the router switches to a healthy pool within the same
+  batch instead of failing every paragraph.
+- Two more free backends: MyMemory (no key, configurable endpoint, optional
+  contact address for a higher daily quota) and LibreTranslate (custom server
+  URL with an optional API key stored in the OS key store).
+- Settings for free services: pin one service or keep auto rotation, choose the
+  preferred Google pool, toggle automatic fallback, set custom endpoints, and
+  see the active service plus any pools that are cooling down. "Test
+  connection" now uses the current form values without saving first.
+- Extra Google gateway hosts can be listed (one per line) to add more
+  independent quota pools without rebuilding. Each host is treated as its own
+  pool and rotates into the chain ahead of MyMemory/LibreTranslate; up to four
+  are honored to keep an all-throttled batch from stalling.
+- A fully user-defined free endpoint: a GET URL template with `{text}`,
+  `{from}`, `{to}` placeholders plus a dotted JSON result path (or empty for a
+  plain-text answer). This is the escape hatch when every public free service is
+  blocked — a self-hosted LibreTranslate/DeepLX, a corporate gateway, or a
+  Google mirror can be wired in without shipping another hard-coded URL.
+- End-to-end coverage now pushes concurrency to dozens of articles at once:
+  stress tests keep 36 concurrent articles aligned on the healthy free chain and
+  keep dozens of articles aligned when only the custom endpoint survives,
+  exercising the same alignment and cooldown logic the UI uses.
+- Zotero 11 compatibility is now declared: the manifest `strict_max_version` is
+  widened to `11.*` so both Zotero 10.x and 11.x can install. Regression guards
+  cover the inline-handler removal and the OS key store API changes, and the
+  build passes on the Zotero 11 development build.
+- Cross-platform source fixes so the plugin behaves outside Windows:
+  - File-picker filters use the GTK (Linux) / Cocoa (macOS) compatible glob form
+    (`*.csv *.tsv *.txt` and `*`) instead of the Windows-only `;` separator and
+    the `*.*` "any file" pattern.
+  - macOS Option (Alt) dead-key rewriting of `event.key` is avoided by matching
+    shortcuts on the physical `event.code`, so Alt+Letter shortcuts record and
+    fire correctly; labels use `⌘`/`⌥` on macOS and stay parseable elsewhere.
+  - POSIX file paths containing spaces and CJK characters pass through untouched.
+
+### Known limitations (0.8.0)
+
+- Automated end-to-end and GUI tests run on Windows only; Linux/macOS GUI/e2e
+  automation is not configured in CI, so those platforms are validated by
+  source review and unit-level simulation rather than full runs.
+- On Linux without a Secret Service (libsecret), the OS key store reports
+  `available = false`; the plugin's detection of this state is a known risk
+  (see `test/platformCompat.node.test.mjs`). Prefer a working Secret Service on
+  Linux.
+
+### Fixed
+
+- A whole run no longer leaves every paragraph stuck on a "retry in N seconds"
+  message: concurrent workers share one run-wide cooldown, the wait is capped,
+  and a run that exhausts every free service shows an actionable paused state.
+- Google's `client=gtx` pool being blocked for an IP no longer makes free
+  translation unusable; the router rotates pools and falls back to other free
+  services automatically.
+
+### Fixed
+
+- Full-document Google translation no longer collapses into per-paragraph
+  "translation failed" after a couple of articles. Three interacting causes
+  were fixed:
+  - Google segments now travel in one multi-`q` request per batch (about 6×
+    fewer requests per document), and a batch that the endpoint answers with
+    an unexpected shape falls back to per-paragraph requests instead of
+    failing.
+  - Zotero's HTTP layer retries 429/5xx responses internally for up to an
+    hour; the plugin now opts out with `noRetryOnThrottle`/`errorDelayMax: 0`
+    and applies its own pacing, backoff and cooldown instead. Throttled
+    requests used to sit in that invisible loop until the request timeout
+    killed them, which is what surfaced as endless "timeout" errors.
+  - A 429 or captcha (`/sorry/`) now pauses the whole run once — with a
+    visible cooldown message — retries automatically, and only stops (with a
+    clear rate-limit explanation) if throttling persists.
+- Model backends (OpenAI-compatible, Claude, Gemini, Ollama) now retry
+  429/5xx responses themselves with 1s/2s/4s backoff instead of failing the
+    paragraph on the first response.
+
 ## [0.7.0] - 2026-11-12
 
 ### Security

@@ -13,7 +13,7 @@ import {
 const rows = [
   // First click on an untranslated reader starts a run.
   ["empty", "toggle", "running", ["start-run"]],
-  // An on-demand translation (hover/shortcut) marks the reader as shown.
+  // An on-demand translation (shortcut/Alt-click) marks the reader as shown.
   ["empty", "paragraph-translated", "shown", []],
   ["empty", "shortcut", "shown", []],
   // Clicking mid-run pauses the run and hides; completed blocks survive.
@@ -108,7 +108,7 @@ test("isTranslationVisible is true only while translations are on screen", () =>
   );
 });
 
-test("isTranslationHidden gates hover only when the user hid translations", () => {
+test("isTranslationHidden reports hidden toggle states only", () => {
   assert.deepEqual(
     allStates.map(isTranslationHidden),
     [false, false, false, false, true, true],

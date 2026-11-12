@@ -163,7 +163,7 @@
         </html:div>
       </html:div>
 
-      <!-- Google -->
+      <!-- Google / free translation services -->
       <html:div
         id="interlinear-google-section"
         class="interlinear-section"
@@ -177,6 +177,62 @@
           <html:h3 id="interlinear-google-title"></html:h3>
         </html:div>
         <html:div class="interlinear-card">
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-backend-label"
+              for="interlinear-free-backend"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select
+                id="interlinear-free-backend"
+                class="interlinear-select interlinear-select-wide"
+              >
+                <html:option id="interlinear-free-backend-auto" value="auto"></html:option>
+                <html:option id="interlinear-free-backend-google-it" value="google:it"></html:option>
+                <html:option id="interlinear-free-backend-google-at" value="google:at"></html:option>
+                <html:option id="interlinear-free-backend-google-gtx" value="google:gtx"></html:option>
+                <html:option id="interlinear-free-backend-google-chrome" value="google:dict-chrome-ex"></html:option>
+                <html:option id="interlinear-free-backend-google-firefox" value="google:firefox-a"></html:option>
+                <html:option id="interlinear-free-backend-mymemory" value="mymemory"></html:option>
+                <html:option id="interlinear-free-backend-libre" value="libretranslate"></html:option>
+                <html:option id="interlinear-free-backend-custom" value="custom"></html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-backend-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-fallback-label"
+              for="interlinear-free-fallback"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-free-fallback"
+                type="checkbox"
+                class="interlinear-checkbox"
+              />
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-fallback-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-client-label"
+              for="interlinear-free-client"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:select id="interlinear-free-client" class="interlinear-select">
+                <html:option value="it">it</html:option>
+                <html:option value="at">at</html:option>
+                <html:option value="gtx">gtx</html:option>
+                <html:option value="dict-chrome-ex">dict-chrome-ex</html:option>
+                <html:option value="firefox-a">firefox-a</html:option>
+              </html:select>
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-client-help" class="interlinear-help"></html:p>
           <html:div class="interlinear-field">
             <html:label
               id="interlinear-google-base-label"
@@ -193,6 +249,156 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-google-base-help" class="interlinear-help"></html:p>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-mymemory-url-label"
+              for="interlinear-free-mymemory-url"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-free-mymemory-url"
+                type="text"
+                class="interlinear-input"
+                placeholder="https://api.mymemory.translated.net/get"
+              />
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-mymemory-url-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-mymemory-label"
+              for="interlinear-free-mymemory-email"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-free-mymemory-email"
+                type="text"
+                class="interlinear-input"
+                placeholder="name@example.com"
+              />
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-mymemory-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-libre-url-label"
+              for="interlinear-free-libre-url"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-free-libre-url"
+                type="text"
+                class="interlinear-input"
+                placeholder="https://libretranslate.com"
+              />
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-libre-url-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-libre-key-label"
+              for="interlinear-libre-api-key"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-libre-api-key"
+                type="password"
+                class="interlinear-input"
+              />
+              <html:button
+                type="button"
+                class="interlinear-button interlinear-button-small interlinear-secret-toggle"
+                data-target="interlinear-libre-api-key"
+              ></html:button>
+              <html:span
+                id="interlinear-libre-key-status"
+                class="interlinear-secret-status"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+              <html:button
+                id="interlinear-libre-key-clear"
+                type="button"
+                class="interlinear-button interlinear-button-small interlinear-secret-clear"
+              ></html:button>
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-libre-key-help" class="interlinear-help"></html:p>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-mirrors-label"
+              for="interlinear-free-mirrors"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:textarea
+                id="interlinear-free-mirrors"
+                class="interlinear-textarea"
+                rows="3"
+                placeholder="https://translate.google.com&#10;https://your-worker.example.com"
+              ></html:textarea>
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-mirrors-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-custom-url-label"
+              for="interlinear-free-custom-url"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-free-custom-url"
+                type="text"
+                class="interlinear-input"
+                placeholder="https://api.mymemory.translated.net/get?q={text}&amp;langpair={from}|{to}"
+              />
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-custom-url-help" class="interlinear-help"></html:p>
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-custom-path-label"
+              for="interlinear-free-custom-path"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:input
+                id="interlinear-free-custom-path"
+                type="text"
+                class="interlinear-input"
+                placeholder="responseData.translatedText"
+              />
+            </html:div>
+          </html:div>
+          <html:p id="interlinear-free-custom-path-help" class="interlinear-help"></html:p>
+        </html:div>
+
+        <html:div class="interlinear-card">
+          <html:div class="interlinear-field">
+            <html:label
+              id="interlinear-free-status-label"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:span
+                id="interlinear-free-status-value"
+                class="interlinear-help"
+                role="status"
+                aria-live="polite"
+              ></html:span>
+            </html:div>
+          </html:div>
           <html:p id="interlinear-google-help" class="interlinear-help"></html:p>
           <html:div class="interlinear-actions">
             <html:button
@@ -702,54 +908,6 @@
           <html:h3 id="interlinear-interaction-title"></html:h3>
         </html:div>
         <html:div class="interlinear-card">
-          <html:div class="interlinear-check-row">
-            <html:input
-              id="interlinear-hover-translate"
-              type="checkbox"
-              class="interlinear-checkbox"
-            />
-            <html:label
-              id="interlinear-hover-translate-label"
-              for="interlinear-hover-translate"
-              class="interlinear-check-label"
-            ></html:label>
-          </html:div>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-hover-delay-label"
-              for="interlinear-hover-delay"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-hover-delay"
-                type="number"
-                min="200"
-                max="5000"
-                step="100"
-                class="interlinear-input interlinear-input-number"
-              />
-              <html:span id="interlinear-hover-delay-unit" class="interlinear-unit"></html:span>
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-hover-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-hover-modifier-label"
-              for="interlinear-hover-modifier"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:select id="interlinear-hover-modifier" class="interlinear-select">
-                <html:option id="interlinear-hover-modifier-none" value="none"></html:option>
-                <html:option id="interlinear-hover-modifier-alt" value="alt"></html:option>
-                <html:option id="interlinear-hover-modifier-ctrl" value="ctrl"></html:option>
-              </html:select>
-            </html:div>
-          </html:div>
-
-          <html:div class="interlinear-divider"></html:div>
-
           <html:div class="interlinear-check-row">
             <html:input
               id="interlinear-shortcut-enabled"

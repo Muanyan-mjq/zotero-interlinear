@@ -1,8 +1,8 @@
 import {
   DEFAULT_CLAUDE_TEMPERATURE,
+  DEFAULT_FREE_CUSTOM_RESULT_PATH,
   DEFAULT_GEMINI_TEMPERATURE,
   DEFAULT_GOOGLE_BASE_URL,
-  DEFAULT_HOVER_DELAY_MS,
   DEFAULT_MAX_CHARS_PER_REQUEST,
   DEFAULT_MAX_BATCH_PARAGRAPHS,
   DEFAULT_MAX_CONCURRENT,
@@ -42,14 +42,22 @@ import {
   getFontFavorites,
   getGlossaryText,
   getGoogleBaseURL,
-  getHoverDelayMs,
-  getHoverModifier,
+  getFreeAutoFallback,
+  getFreeBackend,
+  getFreeCustomResultPath,
+  getFreeCustomURL,
+  getFreeGoogleMirrors,
+  getGoogleClient,
+  getLibreTranslateApiKey,
+  getLibreTranslateURL,
+  getMyMemoryEmail,
+  getMyMemoryURL,
+  DEFAULT_MYMEMORY_URL,
   getToggleShortcut,
   getToggleShortcutEnabled,
   getDisplayShortcut,
   getDisplayShortcutEnabled,
   getAutoTranslateOnOpen,
-  getHoverTranslateEnabled,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
   getMaxConcurrent,
@@ -94,14 +102,20 @@ import {
   setGeminiTemperature,
   setGlossaryText,
   setGoogleBaseURL,
-  setHoverDelayMs,
-  setHoverModifier,
+  setFreeAutoFallback,
+  setFreeBackend,
+  setFreeCustomResultPath,
+  setFreeCustomURL,
+  setFreeGoogleMirrors,
+  setGoogleClient,
+  setLibreTranslateURL,
+  setMyMemoryEmail,
+  setMyMemoryURL,
   setToggleShortcut,
   setToggleShortcutEnabled,
   setDisplayShortcut,
   setDisplayShortcutEnabled,
   setAutoTranslateOnOpen,
-  setHoverTranslateEnabled,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
   setMaxConcurrent,
@@ -206,9 +220,15 @@ import {
 import {
   testClaudeConnection,
   testGeminiConnection,
-  testGoogleConnection,
   testOpenAIConnection,
 } from "../providers";
+import {
+  getFreeActiveBackend,
+  getFreeBackendStates,
+  resetFreeBackends,
+  testFreeConnection,
+  type FreeConfig,
+} from "../providers/free";
 import { version as addonVersion } from "../../package.json";
 import { logError, redactForDisplay } from "../utils/log";
 import { assessEndpoint } from "../utils/endpointSafety";
@@ -3177,6 +3197,7 @@ const SECRET_FIELDS: SecretField[] = [
   { name: "openai", inputId: "interlinear-openai-api-key", pref: SECRET_PREFS.openai },
   { name: "claude", inputId: "interlinear-claude-api-key", pref: SECRET_PREFS.claude },
   { name: "gemini", inputId: "interlinear-gemini-api-key", pref: SECRET_PREFS.gemini },
+  { name: "libre", inputId: "interlinear-libre-api-key", pref: SECRET_PREFS.libreTranslate },
 ];
 
 /**
@@ -3362,6 +3383,36 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-google-base-label", "provider-google-base-label"],
     ["interlinear-google-base-help", "provider-google-base-help"],
     ["interlinear-google-help", "provider-google-help"],
+    ["interlinear-free-backend-label", "provider-free-backend-label"],
+    ["interlinear-free-backend-help", "provider-free-backend-help"],
+    ["interlinear-free-backend-auto", "provider-free-backend-auto"],
+    ["interlinear-free-backend-google-it", "provider-free-backend-google-it"],
+    ["interlinear-free-backend-google-at", "provider-free-backend-google-at"],
+    ["interlinear-free-backend-google-gtx", "provider-free-backend-google-gtx"],
+    ["interlinear-free-backend-google-chrome", "provider-free-backend-google-chrome"],
+    ["interlinear-free-backend-google-firefox", "provider-free-backend-google-firefox"],
+    ["interlinear-free-backend-mymemory", "provider-free-backend-mymemory"],
+    ["interlinear-free-backend-libre", "provider-free-backend-libre"],
+    ["interlinear-free-backend-custom", "provider-free-backend-custom"],
+    ["interlinear-free-fallback-label", "provider-free-fallback-label"],
+    ["interlinear-free-fallback-help", "provider-free-fallback-help"],
+    ["interlinear-free-client-label", "provider-free-client-label"],
+    ["interlinear-free-client-help", "provider-free-client-help"],
+    ["interlinear-free-mymemory-label", "provider-free-mymemory-label"],
+    ["interlinear-free-mymemory-help", "provider-free-mymemory-help"],
+    ["interlinear-free-mymemory-url-label", "provider-free-mymemory-url-label"],
+    ["interlinear-free-mymemory-url-help", "provider-free-mymemory-url-help"],
+    ["interlinear-free-libre-url-label", "provider-free-libre-url-label"],
+    ["interlinear-free-libre-url-help", "provider-free-libre-url-help"],
+    ["interlinear-free-libre-key-label", "provider-free-libre-key-label"],
+    ["interlinear-free-libre-key-help", "provider-free-libre-key-help"],
+    ["interlinear-free-mirrors-label", "provider-free-mirrors-label"],
+    ["interlinear-free-mirrors-help", "provider-free-mirrors-help"],
+    ["interlinear-free-custom-url-label", "provider-free-custom-url-label"],
+    ["interlinear-free-custom-url-help", "provider-free-custom-url-help"],
+    ["interlinear-free-custom-path-label", "provider-free-custom-path-label"],
+    ["interlinear-free-custom-path-help", "provider-free-custom-path-help"],
+    ["interlinear-free-status-label", "provider-free-status-label"],
     ["interlinear-openai-title", "provider-openai-title"],
     ["interlinear-openai-endpoint-label", "provider-openai-endpoint-label"],
     ["interlinear-openai-endpoint-help", "provider-openai-endpoint-help"],
@@ -3598,14 +3649,6 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-scope-notes-label", "scope-notes-label"],
     ["interlinear-scope-help", "scope-help"],
     ["interlinear-interaction-title", "interaction-title"],
-    ["interlinear-hover-translate-label", "interaction-hover-label"],
-    ["interlinear-hover-delay-label", "interaction-hover-delay-label"],
-    ["interlinear-hover-delay-unit", "interaction-hover-delay-unit"],
-    ["interlinear-hover-help", "interaction-hover-help"],
-    ["interlinear-hover-modifier-label", "interaction-hover-modifier-label"],
-    ["interlinear-hover-modifier-none", "interaction-hover-modifier-none"],
-    ["interlinear-hover-modifier-alt", "interaction-hover-modifier-alt"],
-    ["interlinear-hover-modifier-ctrl", "interaction-hover-modifier-ctrl"],
     ["interlinear-extra-shortcuts-title", "interaction-extra-shortcuts-title"],
     ["interlinear-toggle-shortcut-enabled-label", "interaction-toggle-shortcut-enabled-label"],
     ["interlinear-toggle-shortcut-label", "interaction-toggle-shortcut-label"],
@@ -3703,8 +3746,26 @@ const KEY_TARGET_ENDPOINT_IDS = [
 /** Every endpoint that can be pointed at an arbitrary host. */
 const CONFIRMABLE_ENDPOINT_IDS = [
   "interlinear-google-base-url",
+  "interlinear-free-mymemory-url",
+  "interlinear-free-libre-url",
+  "interlinear-free-custom-url",
+  "interlinear-free-mirrors",
   ...KEY_TARGET_ENDPOINT_IDS,
 ] as const;
+
+/** Expand the fields that hold templates or a list of hosts into real URLs. */
+function endpointCandidates(fieldId: string, value: string): string[] {
+  if (fieldId === "interlinear-free-mirrors") {
+    return value
+      .split(/[\n\r,;]+/u)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (fieldId === "interlinear-free-custom-url") {
+    return [value.replace(/\{(?:text|from|to)\}/gu, "x")];
+  }
+  return [value];
+}
 
 interface InsecureEndpoint {
   fieldId: string;
@@ -3720,9 +3781,14 @@ function findInsecureEndpoints(doc: Document): InsecureEndpoint[] {
   for (const fieldId of CONFIRMABLE_ENDPOINT_IDS) {
     const value = getElement<HTMLInputElement>(doc, fieldId)?.value?.trim() || "";
     if (!value) continue;
-    const assessment = assessEndpoint(value);
-    if (!assessment.needsConfirmation) continue;
-    found.push({ fieldId, host: assessment.host || value });
+    for (const candidate of endpointCandidates(fieldId, value)) {
+      const normalized = /^https?:\/\//iu.test(candidate)
+        ? candidate
+        : `https://${candidate}`;
+      const assessment = assessEndpoint(normalized);
+      if (!assessment.needsConfirmation) continue;
+      found.push({ fieldId, host: assessment.host || candidate });
+    }
   }
   return found;
 }
@@ -3869,6 +3935,31 @@ function saveSettings(doc: Document): string[] {
   setGoogleBaseURL(
     readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL,
   );
+  setFreeBackend(
+    getElement<HTMLSelectElement>(doc, "interlinear-free-backend")?.value || "auto",
+  );
+  setFreeAutoFallback(
+    getElement<HTMLInputElement>(doc, "interlinear-free-fallback")?.checked ?? true,
+  );
+  setGoogleClient(
+    getElement<HTMLSelectElement>(doc, "interlinear-free-client")?.value || "it",
+  );
+  setMyMemoryEmail(readInputText(doc, "interlinear-free-mymemory-email"));
+  setMyMemoryURL(
+    readInputText(doc, "interlinear-free-mymemory-url") || DEFAULT_MYMEMORY_URL,
+  );
+  setLibreTranslateURL(readInputText(doc, "interlinear-free-libre-url"));
+  setFreeGoogleMirrors(readInputText(doc, "interlinear-free-mirrors"));
+  setFreeCustomURL(readInputText(doc, "interlinear-free-custom-url"));
+  setFreeCustomResultPath(
+    readInputText(doc, "interlinear-free-custom-path") || DEFAULT_FREE_CUSTOM_RESULT_PATH,
+  );
+  const libreKey = readSecretInput(doc, SECRET_FIELDS[3]);
+  if (libreKey !== undefined) {
+    setSecret(SECRET_PREFS.libreTranslate, libreKey, secretWriteOptions());
+  }
+  // A changed service selection invalidates the cooldowns from the old chain.
+  resetFreeBackends();
   setOpenAIEndpoint(
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT,
   );
@@ -3939,10 +4030,6 @@ function saveSettings(doc: Document): string[] {
     getElement<HTMLSelectElement>(doc, "interlinear-display-mode")?.value ||
       getDisplayMode(),
   );
-  setHoverTranslateEnabled(readCheckbox(doc, "interlinear-hover-translate"));
-  setHoverDelayMs(
-    readNumberInput(doc, "interlinear-hover-delay", DEFAULT_HOVER_DELAY_MS),
-  );
   setShortcutEnabled(readCheckbox(doc, "interlinear-shortcut-enabled"));
   const shortcutInput = getElement<HTMLInputElement>(doc, "interlinear-shortcut");
   const rawShortcut = shortcutInput?.value.trim() || DEFAULT_SHORTCUT;
@@ -3963,9 +4050,6 @@ function saveSettings(doc: Document): string[] {
   const normalizedDisplay = normalizeShortcut(rawDisplay);
   setDisplayShortcut(normalizedDisplay);
   if (displayInput) displayInput.value = normalizedDisplay;
-  setHoverModifier(
-    getElement<HTMLSelectElement>(doc, "interlinear-hover-modifier")?.value || "none",
-  );
   setAutoTranslateOnOpen(
     getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.value || "off",
   );
@@ -4042,9 +4126,26 @@ async function testOllama(doc: Document): Promise<void> {
   }
 }
 
+
+/** Show which free service is currently serving requests and which are cooling down. */
+function refreshFreeStatus(doc: Document): void {
+  const value = getElement<HTMLElement>(doc, "interlinear-free-status-value");
+  if (!value) return;
+  const active = getFreeActiveBackend();
+  const cooling = getFreeBackendStates().filter((state) => !state.available);
+  const parts = [active || getString("provider-free-status-none")];
+  if (cooling.length) {
+    parts.push(
+      cooling
+        .map((state) => `${state.id} (${state.seconds}s)`)
+        .join(", "),
+    );
+  }
+  value.textContent = parts.join(" · ");
+}
+
 async function testGoogle(doc: Document): Promise<void> {
-  const baseURL =
-    readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL;
+  await whenSecretsReady();
   const targetLanguage =
     getElement<HTMLSelectElement>(doc, "interlinear-target-language")?.value ||
     getTargetLanguage();
@@ -4054,13 +4155,34 @@ async function testGoogle(doc: Document): Promise<void> {
   if (button) button.disabled = true;
   setTestStatus(doc, "google", "running", getString("provider-test-running"));
   try {
-    const text = await testGoogleConnection(baseURL, targetLanguage);
+    const config: FreeConfig = {
+      backend:
+        getElement<HTMLSelectElement>(doc, "interlinear-free-backend")?.value || "auto",
+      autoFallback:
+        getElement<HTMLInputElement>(doc, "interlinear-free-fallback")?.checked ?? true,
+      googleClient:
+        getElement<HTMLSelectElement>(doc, "interlinear-free-client")?.value || "it",
+      googleBaseURL:
+        readInputText(doc, "interlinear-google-base-url") || DEFAULT_GOOGLE_BASE_URL,
+      myMemoryEmail: readInputText(doc, "interlinear-free-mymemory-email"),
+      myMemoryUrl: readInputText(doc, "interlinear-free-mymemory-url") || DEFAULT_MYMEMORY_URL,
+      libreURL: readInputText(doc, "interlinear-free-libre-url"),
+      libreKey:
+        readSecretInput(doc, SECRET_FIELDS[3]) ?? getLibreTranslateApiKey(),
+      googleMirrors: readInputText(doc, "interlinear-free-mirrors"),
+      customUrl: readInputText(doc, "interlinear-free-custom-url"),
+      customResultPath:
+        readInputText(doc, "interlinear-free-custom-path") ||
+        DEFAULT_FREE_CUSTOM_RESULT_PATH,
+    };
+    const text = await testFreeConnection(targetLanguage, config);
     setTestStatus(
       doc,
       "google",
       "success",
       getString("provider-test-success", { args: { text } }),
     );
+    refreshFreeStatus(doc);
   } catch (error: any) {
     setTestStatus(
       doc,
@@ -4080,7 +4202,9 @@ async function testOpenAI(doc: Document): Promise<void> {
   const endpoint =
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT;
   const model = readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL;
-  const apiKey = readInputText(doc, "interlinear-openai-api-key");
+  // A saved key is rendered as a mask; sending that mask to the provider is
+  // exactly how every "Test connection" used to fail with 401.
+  const apiKey = readSecretInput(doc, SECRET_FIELDS[0]) ?? getOpenAIApiKey();
   const temperature = readNumberInput(
     doc,
     "interlinear-openai-temperature",
@@ -4118,7 +4242,7 @@ async function testClaude(doc: Document): Promise<void> {
   const endpoint =
     readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint();
   const model = readInputText(doc, "interlinear-claude-model") || getClaudeModel();
-  const apiKey = readInputText(doc, "interlinear-claude-api-key") || getClaudeApiKey();
+  const apiKey = readSecretInput(doc, SECRET_FIELDS[1]) ?? getClaudeApiKey();
   const temperature = readNumberInput(
     doc,
     "interlinear-claude-temperature",
@@ -4156,7 +4280,7 @@ async function testGemini(doc: Document): Promise<void> {
   const baseURL =
     readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL();
   const model = readInputText(doc, "interlinear-gemini-model") || getGeminiModel();
-  const apiKey = readInputText(doc, "interlinear-gemini-api-key") || getGeminiApiKey();
+  const apiKey = readSecretInput(doc, SECRET_FIELDS[2]) ?? getGeminiApiKey();
   const temperature = readNumberInput(
     doc,
     "interlinear-gemini-temperature",
@@ -4424,8 +4548,6 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   const geminiPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-gemini-prompt");
   const glossary = getElement<HTMLTextAreaElement>(doc, "interlinear-glossary");
   const displayMode = getElement<HTMLSelectElement>(doc, "interlinear-display-mode");
-  const hoverTranslate = getElement<HTMLInputElement>(doc, "interlinear-hover-translate");
-  const hoverDelay = getElement<HTMLInputElement>(doc, "interlinear-hover-delay");
   const shortcutEnabled = getElement<HTMLInputElement>(
     doc,
     "interlinear-shortcut-enabled",
@@ -4436,6 +4558,26 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (url) url.value = getOllamaURL();
   if (model) model.value = getOllamaModel();
   if (googleBaseURL) googleBaseURL.value = getGoogleBaseURL();
+  const freeBackend = getElement<HTMLSelectElement>(doc, "interlinear-free-backend");
+  const freeFallback = getElement<HTMLInputElement>(doc, "interlinear-free-fallback");
+  const freeClient = getElement<HTMLSelectElement>(doc, "interlinear-free-client");
+  const myMemoryEmail = getElement<HTMLInputElement>(doc, "interlinear-free-mymemory-email");
+  const myMemoryUrl = getElement<HTMLInputElement>(doc, "interlinear-free-mymemory-url");
+  const libreURL = getElement<HTMLInputElement>(doc, "interlinear-free-libre-url");
+  const libreKey = getElement<HTMLInputElement>(doc, "interlinear-libre-api-key");
+  const freeMirrors = getElement<HTMLTextAreaElement>(doc, "interlinear-free-mirrors");
+  const freeCustomURL = getElement<HTMLInputElement>(doc, "interlinear-free-custom-url");
+  const freeCustomPath = getElement<HTMLInputElement>(doc, "interlinear-free-custom-path");
+  if (freeBackend) freeBackend.value = getFreeBackend();
+  if (freeFallback) freeFallback.checked = getFreeAutoFallback();
+  if (freeClient) freeClient.value = getGoogleClient();
+  if (myMemoryEmail) myMemoryEmail.value = getMyMemoryEmail();
+  if (myMemoryUrl) myMemoryUrl.value = getMyMemoryURL();
+  if (libreURL) libreURL.value = getLibreTranslateURL();
+  if (libreKey) libreKey.value = getLibreTranslateApiKey();
+  if (freeMirrors) freeMirrors.value = getFreeGoogleMirrors();
+  if (freeCustomURL) freeCustomURL.value = getFreeCustomURL();
+  if (freeCustomPath) freeCustomPath.value = getFreeCustomResultPath();
   if (openAIEndpoint) openAIEndpoint.value = getOpenAIEndpoint();
   if (openAIModel) openAIModel.value = getOpenAIModel();
   if (openAIApiKey) openAIApiKey.value = getOpenAIApiKey();
@@ -4453,11 +4595,6 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (geminiPrompt) geminiPrompt.value = getGeminiPrompt();
   if (glossary) glossary.value = getGlossaryText();
   if (displayMode) displayMode.value = getDisplayMode();
-  if (hoverTranslate) hoverTranslate.checked = getHoverTranslateEnabled();
-  if (hoverDelay) {
-    hoverDelay.value = String(getHoverDelayMs());
-    hoverDelay.disabled = !getHoverTranslateEnabled();
-  }
   if (shortcutEnabled) shortcutEnabled.checked = getShortcutEnabled();
   if (shortcutInput) shortcutInput.value = getShortcut();
   setFormChecked(
@@ -4472,7 +4609,6 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     getDisplayShortcutEnabled(),
   );
   setFormValue(doc, "interlinear-display-shortcut", getDisplayShortcut());
-  setFormValue(doc, "interlinear-hover-modifier", getHoverModifier());
   setFormValue(doc, "interlinear-auto-translate", getAutoTranslateOnOpen());
   getElement<HTMLSelectElement>(doc, "interlinear-auto-translate")?.addEventListener(
     "change",
@@ -4504,6 +4640,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
 
   fillAppearanceLabels(doc);
   fillProviderLabels(doc);
+  refreshFreeStatus(doc);
   fillStaticLabels(doc);
   const footerNote = getElement<HTMLElement>(doc, "interlinear-footer-note");
   if (footerNote) {
@@ -4549,10 +4686,6 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   registerSecretToggles(doc);
   registerDirtyTracking(doc);
   setSaveState(doc, "saved", getString("settings-status-saved"));
-
-  hoverTranslate?.addEventListener("change", () => {
-    if (hoverDelay) hoverDelay.disabled = !hoverTranslate.checked;
-  });
 
   engine?.addEventListener("change", () => {
     syncSectionVisibility(doc);

@@ -1,5 +1,6 @@
 import { assert } from "chai";
 import { getChatProvider, getTranslationProvider } from "../src/providers";
+import { GoogleThrottleError, requestGoogleTranslations } from "../src/providers/google";
 import type { ChatTurn } from "../src/providers/chatProtocol";
 import type { ProviderContext } from "../src/providers/types";
 
@@ -49,6 +50,22 @@ function rethrowDiagnosable(error: unknown): never {
   const wrapped = new Error(message);
   Object.defineProperty(wrapped, "message", { value: message, enumerable: true });
   throw wrapped;
+}
+
+async function controlMock(state: Record<string, unknown>): Promise<void> {
+  await Zotero.HTTP.request("POST", `${MOCK}/__control`, {
+    body: JSON.stringify(state),
+    responseType: "text",
+    timeout: 5000,
+  });
+}
+
+async function readMockStats(): Promise<any> {
+  const xhr = await Zotero.HTTP.request("GET", `${MOCK}/__stats`, {
+    responseType: "text",
+    timeout: 5000,
+  });
+  return JSON.parse(String(xhr.response));
 }
 
 describe("provider e2e", function () {
@@ -154,9 +171,130 @@ describe("provider e2e", function () {
         const reply = await chat!.chat(TURNS);
         assert.equal(reply, MARKER, `${engine.id} chat`);
       }
+
+      // The mock answers the first request on every path with 429; reaching
+      // this point at all means the retry layer recovered on every backend.
+      const stats = await readMockStats();
+      assert.isAtLeast(stats.llmRetried, 4, "expected a simulated 429 on every LLM path");
     } catch (error) {
       rethrowDiagnosable(error);
     } finally {
+      restorePrefs(saved);
+    }
+  });
+
+  it("should keep all five engines aligned under concurrent multi-article load", async function () {
+    this.timeout(240000);
+    const keys = [
+      `${BASE}.language.source`,
+      `${BASE}.language.target`,
+      `${BASE}.openai.endpoint`,
+      `${BASE}.openai.model`,
+      `${BASE}.openai.apiKey`,
+      `${BASE}.claude.endpoint`,
+      `${BASE}.claude.model`,
+      `${BASE}.claude.apiKey`,
+      `${BASE}.gemini.baseUrl`,
+      `${BASE}.gemini.model`,
+      `${BASE}.gemini.apiKey`,
+      `${BASE}.ollama.url`,
+      `${BASE}.ollama.model`,
+      `${BASE}.google.baseUrl`,
+      `${BASE}.free.backend`,
+      `${BASE}.free.googleMirrors`,
+      `${BASE}.free.customUrl`,
+      `${BASE}.free.myMemoryUrl`,
+      `${BASE}.free.libreTranslateUrl`,
+      "network.proxy.type",
+    ];
+    const saved = snapshotPrefs(keys);
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.language.source`, "en", true);
+      Zotero.Prefs.set(`${BASE}.language.target`, "zh-CN", true);
+      const settings: Array<[string, string]> = [
+        [`${BASE}.openai.endpoint`, `${MOCK}/v1`],
+        [`${BASE}.openai.model`, "mock-model"],
+        [`${BASE}.openai.apiKey`, "test-key"],
+        [`${BASE}.claude.endpoint`, `${MOCK}/v1/messages`],
+        [`${BASE}.claude.model`, "mock-model"],
+        [`${BASE}.claude.apiKey`, "test-key"],
+        [`${BASE}.gemini.baseUrl`, MOCK],
+        [`${BASE}.gemini.model`, "mock-model"],
+        [`${BASE}.gemini.apiKey`, "test-key"],
+        [`${BASE}.ollama.url`, MOCK],
+        [`${BASE}.ollama.model`, "mock-model"],
+        [`${BASE}.google.baseUrl`, MOCK],
+        [`${BASE}.free.backend`, "auto"],
+        [`${BASE}.free.googleMirrors`, ""],
+        [`${BASE}.free.customUrl`, ""],
+        [`${BASE}.free.myMemoryUrl`, `${MOCK}/get`],
+        [`${BASE}.free.libreTranslateUrl`, ""],
+      ];
+      for (const [key, value] of settings) Zotero.Prefs.set(key, value, true);
+      await controlMock({
+        firstHitFlaky: false,
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
+
+      const articles = Array.from({ length: 4 }, (_, article) =>
+        Array.from({ length: 5 }, (_, i) => `a${article}-p${i}`),
+      );
+      const models = ["openai", "claude", "gemini", "ollama"] as const;
+      // 4 articles x 5 paragraphs x 5 engines, all in flight at once.
+      const modelJobs = models.flatMap((engine) =>
+        articles.flatMap((texts, article) =>
+          texts.map((text, index) =>
+            getTranslationProvider(engine)
+              .translate(text, context())
+              .then((result) => ({ engine, article, index, text: result.text })),
+          ),
+        ),
+      );
+      const googleJobs = articles.map((texts, article) =>
+        getTranslationProvider("google")
+          .translateBatch!(texts, context())
+          .then((result) => ({ article, result })),
+      );
+
+      const [modelResults, googleResults] = await Promise.all([
+        Promise.all(modelJobs),
+        Promise.all(googleJobs),
+      ]);
+      for (const entry of modelResults) {
+        assert.equal(
+          entry.text,
+          MARKER,
+          `${entry.engine} article ${entry.article} paragraph ${entry.index}`,
+        );
+      }
+      assert.equal(modelResults.length, 80, "all five-engine paragraphs completed");
+      for (let a = 0; a < articles.length; a++) {
+        assert.deepEqual(
+          googleResults[a].result,
+          articles[a].map((text) => `ZH:${text}`),
+          `google article ${a} alignment`,
+        );
+      }
+    } catch (error) {
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({
+        firstHitFlaky: true,
+        googleThrottle: false,
+        googleThrottlePrimary: false,
+        googleThrottleClients: [],
+        googleCaptcha: false,
+        myMemoryFail: false,
+        libreFail: false,
+        customFail: false,
+      });
       restorePrefs(saved);
     }
   });
@@ -290,4 +428,195 @@ describe("provider e2e", function () {
       restorePrefs(saved);
     }
   });
+
+  it("should batch Google segments into aligned multi-q requests at volume", async function () {
+    this.timeout(240000);
+    const keys = [
+      `${BASE}.engine`,
+      `${BASE}.google.baseUrl`,
+      `${BASE}.language.source`,
+      `${BASE}.language.target`,
+      "network.proxy.type",
+    ];
+    const saved = snapshotPrefs(keys);
+
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.engine`, "google", true);
+      Zotero.Prefs.set(`${BASE}.google.baseUrl`, MOCK, true);
+      Zotero.Prefs.set(`${BASE}.language.source`, "en", true);
+      Zotero.Prefs.set(`${BASE}.language.target`, "zh-CN", true);
+      await controlMock({ googleThrottle: false, googleCaptcha: false });
+
+      // Alignment first: one multi-q call must return one translation per
+      // segment, in order.
+      const aligned = await getTranslationProvider("google").translateBatch!(
+        ["First paragraph.", "Second paragraph.", "Third & final paragraph."],
+        context(),
+      );
+      assert.deepEqual(
+        aligned,
+        ["ZH:First paragraph.", "ZH:Second paragraph.", "ZH:Third & final paragraph."],
+        "multi-q alignment",
+      );
+
+      // Volume: 30 articles-worth of paragraphs (6 per request) must all come
+      // back correctly paired while the shared pacer serializes the calls.
+      const before = await readMockStats();
+      const BATCH = 6;
+      const ARTICLES = 30;
+      const PER_ARTICLE = 12;
+      const total = ARTICLES * PER_ARTICLE;
+      for (let start = 0; start < total; start += BATCH) {
+        const texts = Array.from(
+          { length: Math.min(BATCH, total - start) },
+          (_, i) => `paragraph ${start + i} of ${total}`,
+        );
+        const results = await requestGoogleTranslations(
+          {
+            baseURL: String(Zotero.Prefs.get(`${BASE}.google.baseUrl`, true)),
+            sourceLanguage: "en",
+            targetLanguage: "zh-CN",
+            timeoutMs: 30000,
+          },
+          texts,
+        );
+        assert.equal(results.length, texts.length, `batch at ${start} length`);
+        for (let i = 0; i < texts.length; i++) {
+          assert.equal(results[i], `ZH:${texts[i]}`, `batch at ${start} segment ${i}`);
+        }
+      }
+      const after = await readMockStats();
+      const requests = after.googleRequests - before.googleRequests;
+      assert.equal(
+        after.googleSegments - before.googleSegments,
+        total,
+        "every segment was sent",
+      );
+      // 360 segments must fit into 60 requests (6 each) plus the alignment
+      // call; any per-segment fallback would break this bound.
+      assert.isAtMost(requests, 61, `expected batched requests, got ${requests}`);
+      assert.isAtLeast(requests, 60, `expected one request per batch, got ${requests}`);
+    } catch (error) {
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({ googleThrottle: false, googleCaptcha: false, googleThrottleClients: [] });
+      restorePrefs(saved);
+    }
+  });
+
+  it("should surface throttling as a cooldown error instead of failing every segment", async function () {
+    this.timeout(120000);
+    const keys = [`${BASE}.google.baseUrl`, "network.proxy.type"];
+    const saved = snapshotPrefs(keys);
+    const diagPath = nativePath(`${resolveRepoRoot()}/.scaffold/e2e-throttle-diag.txt`);
+    const diag: string[] = [`start=${new Date().toISOString()}`];
+    const trace = async (line: string) => {
+      diag.push(`${Date.now()} ${line}`);
+      try {
+        await Zotero.File.putContentsAsync(Zotero.File.pathToFile(diagPath), diag.join("\n"));
+      } catch (_) {
+        // Best effort only; never mask the flow under test.
+      }
+    };
+
+    const describeError = (error: any): string =>
+      [
+        `name=${String(error?.name)}`,
+        `ctor=${error?.constructor?.name}`,
+        `message=${String(error?.message)}`,
+        `cooldown=${String(error?.cooldownMs)}`,
+        `stack=${String(error?.stack).split("\n").slice(0, 4).join(" | ")}`,
+      ].join(" ");
+
+    try {
+      Zotero.Prefs.set("network.proxy.type", 0, true);
+      Zotero.Prefs.set(`${BASE}.google.baseUrl`, MOCK, true);
+      await controlMock({ googleThrottle: true, googleCaptcha: false });
+      await trace("flags set: throttle on");
+
+      let throttle: any = null;
+      try {
+        await requestGoogleTranslations(
+          {
+            baseURL: String(Zotero.Prefs.get(`${BASE}.google.baseUrl`, true)),
+            sourceLanguage: "en",
+            targetLanguage: "zh-CN",
+            timeoutMs: 30000,
+          },
+          ["Hello", "world"],
+        );
+        await trace("throttle call resolved without error");
+      } catch (error: any) {
+        throttle = error;
+        await trace(`throttle call threw: ${describeError(error)}`);
+      }
+      await trace(`throttle instanceof GoogleThrottleError = ${throttle instanceof GoogleThrottleError}`);
+      assert.instanceOf(throttle, GoogleThrottleError, "429 must map to a throttle error");
+      assert.equal(throttle!.cooldownMs, 0, "pool failure is handed to the router, not the runner");
+
+      // The captcha redirect must fail fast — one request, no retry hammering.
+      await controlMock({ googleThrottle: false, googleCaptcha: true });
+      await trace("flags set: captcha on");
+      const captchaBefore = await readMockStats();
+      let captcha: any = null;
+      try {
+        await requestGoogleTranslations(
+          {
+            baseURL: String(Zotero.Prefs.get(`${BASE}.google.baseUrl`, true)),
+            sourceLanguage: "en",
+            targetLanguage: "zh-CN",
+            timeoutMs: 30000,
+          },
+          ["Hello", "world"],
+        );
+        await trace("captcha call resolved without error");
+      } catch (error: any) {
+        captcha = error;
+        await trace(`captcha call threw: ${describeError(error)}`);
+      }
+      const captchaAfter = await readMockStats();
+      trace(
+        `captcha instanceof = ${captcha instanceof GoogleThrottleError}, ` +
+          `captchas=${captchaAfter.googleCaptchas - captchaBefore.googleCaptchas}`,
+      );
+      assert.instanceOf(captcha, GoogleThrottleError, "captcha must map to a throttle error");
+      assert.equal(captcha!.cooldownMs, 0, "captcha is a pool failure, not a run-wide pause");
+      assert.equal(
+        captchaAfter.googleCaptchas - captchaBefore.googleCaptchas,
+        1,
+        "captcha must not be retried in-process",
+      );
+
+      // After the block clears, the same call succeeds again.
+      await controlMock({ googleThrottle: false, googleCaptcha: false });
+      await trace("flags cleared");
+      const recovered = await requestGoogleTranslations(
+        {
+          baseURL: String(Zotero.Prefs.get(`${BASE}.google.baseUrl`, true)),
+          sourceLanguage: "en",
+          targetLanguage: "zh-CN",
+          timeoutMs: 30000,
+        },
+        ["Hello", "world"],
+      );
+      await trace(`recovered = ${JSON.stringify(recovered)}`);
+      assert.deepEqual(recovered, ["ZH:Hello", "ZH:world"], "recovery after throttle");
+    } catch (error: any) {
+      diag.push(`FAILED: ${describeError(error)}`);
+      try {
+        await Zotero.File.putContentsAsync(
+          Zotero.File.pathToFile(nativePath(`${resolveRepoRoot()}/.scaffold/e2e-throttle-diag.txt`)),
+          diag.join("\n"),
+        );
+      } catch (_) {
+        // Diagnostics must never mask the original error.
+      }
+      rethrowDiagnosable(error);
+    } finally {
+      await controlMock({ googleThrottle: false, googleCaptcha: false });
+      restorePrefs(saved);
+    }
+  });
+
 });

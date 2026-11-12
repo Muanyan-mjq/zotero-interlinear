@@ -14,7 +14,6 @@ import {
   getGeminiSystemPrompt,
   getGeminiTemperature,
   getGlossaryDirective,
-  getGoogleBaseURL,
   getOllamaModel,
   getOllamaURL,
   getOpenAIApiKey,
@@ -36,7 +35,8 @@ import {
 import { buildChatSystemPrompt } from "./chatPrompts";
 import type { ChatTurn } from "./chatProtocol";
 import { requestGeminiTranslation, testGeminiConnection } from "./gemini";
-import { requestGoogleTranslation, testGoogleConnection } from "./google";
+import { testGoogleConnection } from "./google";
+import { testFreeConnection, translateFree } from "./free";
 import { requestOllamaTranslation } from "./ollama";
 import { requestOpenAITranslation, testOpenAIConnection } from "./openai";
 import { buildOllamaSystemPrompt, languageNameZh } from "./prompts";
@@ -44,6 +44,7 @@ import type { ChatProvider, TranslationProvider } from "./types";
 
 export {
   testClaudeConnection,
+  testFreeConnection,
   testGeminiConnection,
   testGoogleConnection,
   testOpenAIConnection,
@@ -132,20 +133,18 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
     };
   }
 
-  // Google is the default engine and the fallback for removed backend values.
+  // Free services are routed through one chain: on a throttle the router
+  // switches to the next healthy Google client pool (or MyMemory /
+  // LibreTranslate) inside the same batch, so a single blocked pool does not
+  // fail the paragraph.
   return {
     id: "google",
     translate: async (text, context) => ({
-      text: await requestGoogleTranslation(
-        {
-          baseURL: getGoogleBaseURL(),
-          sourceLanguage: context.sourceLanguage,
-          targetLanguage: context.targetLanguage,
-          timeoutMs: context.timeoutMs,
-        },
-        text,
-      ),
+      text: (await translateFree([text], context))[0],
     }),
+    // `translate_a/t` answers one result per `q`, so a whole batch of
+    // paragraphs costs a single request — critical for a rate-limited API.
+    translateBatch: (texts, context) => translateFree(texts, context),
   };
 }
 

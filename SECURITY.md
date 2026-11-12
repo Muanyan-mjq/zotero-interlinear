@@ -18,8 +18,12 @@ urgent.
 
 ## Supported versions
 
-Only the latest published release receives security fixes. The plugin targets
-Zotero 10 (desktop); Zotero 11 compatibility is tracked but not yet declared.
+Only the latest published release receives security fixes. Zotero 10 (desktop)
+is the primary supported release. Zotero 11 compatibility is declared (the
+manifest `strict_max_version` is widened to `11.*`) and the plugin builds and
+passes its test suite on the Zotero 11 development build. Automated end-to-end
+tests run on Windows only; Linux/macOS GUI/e2e automation is not configured in
+CI.
 
 ## What this plugin does with your data
 
@@ -41,9 +45,10 @@ Zotero 10 (desktop); Zotero 11 compatibility is tracked but not yet declared.
 - Keys are bound to your OS user account. Copying a profile to another machine or
   another OS user makes the stored ciphertext undecryptable; the plugin then asks
   you to re-enter the key.
-- On Linux the key store needs a Secret Service (libsecret). Without one, keys
-  are kept for the current session only unless you explicitly choose an
-  unencrypted save, which the settings page marks as unencrypted.
+- On Linux the key store needs a Secret Service (libsecret). Without one, the
+  OS key store reports `available = false`; the plugin's detection of this state
+  is a known risk (see `test/platformCompat.node.test.mjs`), so do not rely on
+  automatic session-only fallback on Linux — prefer a working Secret Service.
 - Zotero plugins run with full chrome privileges and no sandbox. Any other
   installed plugin can read the same preferences; that is a property of the
   Zotero plugin model, not something this plugin can prevent.
