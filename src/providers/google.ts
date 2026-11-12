@@ -11,7 +11,12 @@ import {
 import { getXhrResponseBody } from "./openaiProtocol";
 import { redactSecrets } from "../utils/redact";
 import { isCaptchaRedirect } from "../utils/redirect";
-import { NO_REDIRECT_OPTIONS, isRedirectStatus, redirectErrorMessage } from "./secureRequest";
+import {
+  NO_REDIRECT_OPTIONS,
+  getRedirectLocation,
+  isRedirectStatus,
+  redirectErrorMessage,
+} from "./secureRequest";
 
 export interface GoogleConfig {
   baseURL: string;
@@ -88,12 +93,28 @@ async function performGoogleRequest(
         timeout: config.timeoutMs,
       });
     } catch (error: any) {
+      // `Zotero.HTTP.request` rejects non-2xx statuses, so a 429 or a
+      // blocked redirect can arrive either as a thrown error or as a
+      // resolved response; classify both the same way.
+      const failed = error?.xmlhttp || error?.xhr;
+      if (isRedirectStatus(failed?.status)) {
+        consecutiveThrottles = Math.max(consecutiveThrottles + 1, 3);
+        if (isCaptchaRedirect(getRedirectLocation(failed))) {
+          throw new GoogleThrottleError(redirectErrorMessage(failed), CAPTCHA_COOLDOWN_MS);
+        }
+        throw new Error(redirectErrorMessage(failed));
+      }
+      if (failed?.status === 429) {
+        consecutiveThrottles++;
+        if (attempt < 2) continue;
+        throw new GoogleThrottleError(getString("network-hint-rate-limit"), googleBackoffMs(2));
+      }
+
       lastError = error;
       // A timeout or a dropped connection is usually the rate limiter; retry
       // after a growing pause instead of surfacing it on the first try.
       consecutiveThrottles++;
       if (attempt < 2) continue;
-      const failed = error?.xmlhttp || error?.xhr;
       const detail = responseDetail(getXhrResponseBody(failed)) || error?.message || "";
       throw new Error(
         getString("provider-error-google-network", { args: { detail: redactSecrets(detail) } }),
@@ -102,7 +123,7 @@ async function performGoogleRequest(
 
     if (isRedirectStatus(xhr?.status)) {
       consecutiveThrottles = Math.max(consecutiveThrottles + 1, 3);
-      if (isCaptchaRedirect(redirectLocation(xhr))) {
+      if (isCaptchaRedirect(getRedirectLocation(xhr))) {
         throw new GoogleThrottleError(redirectErrorMessage(xhr), CAPTCHA_COOLDOWN_MS);
       }
       throw new Error(redirectErrorMessage(xhr));
@@ -141,15 +162,6 @@ async function performGoogleRequest(
     }
   }
   return payload;
-}
-
-function redirectLocation(xhr: any): string {
-  try {
-    const location = xhr?.getResponseHeader?.("Location");
-    return typeof location === "string" ? location : "";
-  } catch (_) {
-    return "";
-  }
 }
 
 /**
