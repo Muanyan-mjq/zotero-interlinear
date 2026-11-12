@@ -10,6 +10,14 @@ reproduced here.
 
 ## [0.7.0] - 2026-11-12
 
+### Upgrade notes
+
+- Restart Zotero after installing or updating. The settings pane is bootstrapped from a
+  registered script now, and that registration only takes effect on the next start; opening the
+  settings right after installing shows an empty pane.
+- API keys stored as plaintext by 0.6.0 and earlier are encrypted in place on first start and
+  cannot be read by 0.6.0 afterwards; back up `prefs.js` before downgrading.
+
 ### Security
 
 - API keys are now encrypted with Zotero's OS key store (macOS Keychain,
