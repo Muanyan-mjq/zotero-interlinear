@@ -20,6 +20,7 @@ import {
 } from "../src/settings";
 import { collectChatContext } from "../src/chatContext";
 import { getChatProvider } from "../src/providers";
+import { resetFreeBackends } from "../src/providers/free";
 import { requestOpenAITranslation } from "../src/providers/openai";
 import { getString } from "../src/utils/locale";
 import {
@@ -110,6 +111,18 @@ before(function () {
   });
 });
 
+/**
+ * Provider tests double `Zotero.HTTP.request` and assert the form-encoded
+ * Google POST, so they pin the free backend to auto rotation. `beforeEach`
+ * also drops cooldowns left by an earlier test; otherwise a pinned default
+ * such as MyMemory can re-enter the chain mid-test and answer with a GET that
+ * has no body.
+ */
+beforeEach(function () {
+  Zotero.Prefs.set("extensions.zotero.interlinear.free.backend", "auto", true);
+  resetFreeBackends();
+});
+
 describe("startup", function () {
   it("should have plugin instance defined", function () {
     assert.isNotEmpty(Zotero[config.addonInstance]);
@@ -127,6 +140,10 @@ describe("startup", function () {
 
   it("should load the preferences controls", async function () {
     this.timeout(10000);
+    const modePref = "extensions.zotero.interlinear.displayMode";
+    const previousMode = Zotero.Prefs.get(modePref, true);
+    // A reused test profile may carry a saved layout from an earlier run.
+    Zotero.Prefs.clear(modePref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     await waitForPrefsReady(win);
     assert.exists(win);
@@ -180,7 +197,7 @@ describe("startup", function () {
         Array.from(displayMode?.options || []).map((option) => option.value),
         ["top-bottom", "side-by-side", "target-only", "source-only"],
       );
-      assert.equal(displayMode?.value, "top-bottom");
+      assert.equal(displayMode?.value, "side-by-side");
       assert.isNotEmpty(
         win?.document
           .getElementById("interlinear-interaction-help")
@@ -202,8 +219,102 @@ describe("startup", function () {
       assert.isFalse(
         win?.document.getElementById("interlinear-google-section")?.hidden ?? true,
       );
+      const freeBackend = win?.document.getElementById(
+        "interlinear-free-backend",
+      ) as HTMLSelectElement | null;
+      const googleCard = win?.document.getElementById(
+        "interlinear-free-google-card",
+      ) as HTMLElement | null;
+      const clientField = win?.document.getElementById(
+        "interlinear-free-client-field",
+      ) as HTMLElement | null;
+      const fallbackField = win?.document.getElementById(
+        "interlinear-free-fallback-field",
+      ) as HTMLElement | null;
+      const backupDetails = win?.document.getElementById(
+        "interlinear-free-backup-details",
+      ) as HTMLDetailsElement | null;
+      const myMemoryGroup = win?.document.getElementById(
+        "interlinear-free-mymemory-group",
+      ) as HTMLElement | null;
+      const libreGroup = win?.document.getElementById(
+        "interlinear-free-libre-group",
+      ) as HTMLElement | null;
+      const libreURL = win?.document.getElementById(
+        "interlinear-free-libre-url",
+      ) as HTMLInputElement | null;
+      const libreKey = win?.document.getElementById(
+        "interlinear-libre-api-key",
+      ) as HTMLInputElement | null;
+
+      if (freeBackend) {
+        freeBackend.value = "auto";
+        freeBackend.dispatchEvent(new win!.Event("change"));
+      }
+      assert.isFalse(googleCard?.hidden ?? true, "auto keeps the Google card visible");
+      assert.isFalse(clientField?.hidden ?? true, "auto exposes the preferred pool");
+      assert.isTrue(fallbackField?.hidden ?? false, "auto already falls back on its own");
+      assert.isFalse(backupDetails?.open ?? true, "auto keeps the backup drawer closed");
+
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-free-libre-help")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+        "the LibreTranslate card explains the service",
+      );
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-free-libre-step1")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+      );
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-free-libre-step2")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+      );
+      assert.isNotEmpty(
+        win?.document
+          .getElementById("interlinear-free-libre-hint")
+          ?.textContent?.replace(/\s+/gu, " ")
+          .trim(),
+      );
+      assert.equal(
+        (win?.document.getElementById(
+          "interlinear-free-libre-key-link",
+        ) as HTMLAnchorElement | null)?.href,
+        "https://portal.libretranslate.com/",
+      );
+      assert.equal(
+        (win?.document.getElementById(
+          "interlinear-free-libre-quickstart-link",
+        ) as HTMLAnchorElement | null)?.href,
+        "https://docs.libretranslate.com/",
+      );
+      assert.exists(libreURL);
+      assert.exists(libreKey);
+
+      if (freeBackend) {
+        freeBackend.value = "mymemory";
+        freeBackend.dispatchEvent(new win!.Event("change"));
+      }
+      assert.isTrue(googleCard?.hidden ?? false, "pinning MyMemory hides Google fields");
+      assert.isFalse(myMemoryGroup?.hidden ?? true, "the pinned service stays visible");
+      assert.isTrue(backupDetails?.open ?? false, "the pinned service drawer opens");
+      if (freeBackend) {
+        freeBackend.value = "libretranslate";
+        freeBackend.dispatchEvent(new win!.Event("change"));
+      }
+      assert.isFalse(libreGroup?.hidden ?? true, "pinning LibreTranslate reveals its card");
+      assert.isTrue(googleCard?.hidden ?? false, "pinning LibreTranslate hides the Google card");
+      if (freeBackend) {
+        freeBackend.value = "auto";
+        freeBackend.dispatchEvent(new win!.Event("change"));
+      }
       assert.isTrue(
-        win?.document.getElementById("interlinear-openai-section")?.hidden ?? false,
+        win?.document.getElementById("interlinear-openai-section")?.hidden ?? true,
       );
       assert.isTrue(
         win?.document.getElementById("interlinear-claude-section")?.hidden ?? false,
@@ -259,6 +370,8 @@ describe("startup", function () {
       );
     } finally {
       win?.close();
+      if (previousMode === undefined) Zotero.Prefs.clear(modePref, true);
+      else Zotero.Prefs.set(modePref, previousMode as string, true);
     }
   });
 
@@ -567,11 +680,13 @@ describe("startup", function () {
     const displayModePref = "extensions.zotero.interlinear.displayMode";
     const shortcutEnabledPref = "extensions.zotero.interlinear.interaction.shortcutEnabled";
     const shortcutPref = "extensions.zotero.interlinear.interaction.shortcut";
+    const ollamaPromptPref = "extensions.zotero.interlinear.ollama.prompt";
     const previousEngine = Zotero.Prefs.get(enginePref, true);
     const previousSkip = Zotero.Prefs.get(skipPref, true);
     const previousDisplayMode = Zotero.Prefs.get(displayModePref, true);
     const previousShortcutEnabled = Zotero.Prefs.get(shortcutEnabledPref, true);
     const previousShortcut = Zotero.Prefs.get(shortcutPref, true);
+    const previousOllamaPrompt = Zotero.Prefs.get(ollamaPromptPref, true);
     const win = Zotero.Utilities.Internal.openPreferences("interlinear-preferences");
     await waitForPrefsReady(win);
     assert.exists(win);
@@ -596,6 +711,9 @@ describe("startup", function () {
       const shortcut = win?.document.getElementById(
         "interlinear-shortcut",
       ) as HTMLInputElement;
+      const ollamaPrompt = win?.document.getElementById(
+        "interlinear-ollama-prompt",
+      ) as HTMLTextAreaElement;
 
       engine.value = "ollama";
       engine.dispatchEvent(new win!.Event("change"));
@@ -603,6 +721,7 @@ describe("startup", function () {
       displayMode.value = "side-by-side";
       shortcutEnabled.checked = false;
       shortcut.value = "Ctrl+Shift+T";
+      ollamaPrompt.value = "只输出译文，并保留 [[BRSEG_0000]] 标记。";
       save.click();
 
       assert.equal(Zotero.Prefs.get(enginePref, true), "ollama");
@@ -610,6 +729,17 @@ describe("startup", function () {
       assert.equal(Zotero.Prefs.get(displayModePref, true), "side-by-side");
       assert.isFalse(Zotero.Prefs.get(shortcutEnabledPref, true) as boolean);
       assert.equal(Zotero.Prefs.get(shortcutPref, true), "Ctrl+Shift+T");
+      assert.equal(
+        Zotero.Prefs.get(ollamaPromptPref, true),
+        "只输出译文，并保留 [[BRSEG_0000]] 标记。",
+      );
+      const customPromptTag = getCacheEngineTag();
+      assert.match(customPromptTag, /^ollama:/u);
+      assert.notInclude(customPromptTag, "BRSEG");
+
+      ollamaPrompt.value = "";
+      save.click();
+      assert.notEqual(getCacheEngineTag(), customPromptTag);
     } finally {
       win?.close();
       if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
@@ -625,6 +755,8 @@ describe("startup", function () {
       }
       if (previousShortcut === undefined) Zotero.Prefs.clear(shortcutPref, true);
       else Zotero.Prefs.set(shortcutPref, previousShortcut, true);
+      if (previousOllamaPrompt === undefined) Zotero.Prefs.clear(ollamaPromptPref, true);
+      else Zotero.Prefs.set(ollamaPromptPref, previousOllamaPrompt, true);
     }
   });
 
@@ -824,12 +956,17 @@ describe("startup", function () {
       "extensions.zotero.interlinear.appearance.underlineColor",
       "extensions.zotero.interlinear.appearance.ribbon",
       "extensions.zotero.interlinear.appearance.ribbonColor",
+      "extensions.zotero.interlinear.appearance.v2",
+      "extensions.zotero.interlinear.appearance.schema",
     ];
     const fontSizePref = appearancePrefs[0];
     const colorPref = appearancePrefs[1];
     const previous = new Map<string, unknown>(
       appearancePrefs.map((key) => [key, Zotero.Prefs.get(key, true)] as [string, unknown]),
     );
+    // Assertions below cover built-in defaults, so a reused test profile must
+    // not contribute saved appearance state.
+    for (const key of appearancePrefs) Zotero.Prefs.clear(key, true);
     const originalReaders = (Zotero.Reader as any)._readers;
 
     const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
@@ -937,7 +1074,7 @@ describe("startup", function () {
       assert.equal(underline?.checked, false);
       assert.equal(underlineColor?.type, "color");
       assert.equal(underlineMode?.value, "theme");
-      assert.equal(ribbon?.checked, true);
+      assert.equal(ribbon?.checked, false);
 
       const colorPreview = win?.document.getElementById(
         "interlinear-appearance-color-preview",
@@ -1294,6 +1431,41 @@ describe("startup", function () {
         "interlinear-shortcut-conflict",
       ) as HTMLElement | null;
       assert.isNotEmpty((conflict?.textContent || "").trim());
+
+      const paragraphShortcut = byId("interlinear-shortcut");
+      assert.exists(paragraphShortcut);
+      paragraphShortcut!.dispatchEvent(
+        new (win as any).KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "j",
+        }),
+      );
+      assert.equal(paragraphShortcut!.value, "J", "a bare key is a valid paragraph shortcut");
+
+      const toggleShortcut = byId("interlinear-toggle-shortcut");
+      const toggleBefore = toggleShortcut?.value;
+      toggleShortcut?.dispatchEvent(
+        new (win as any).KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "j",
+        }),
+      );
+      assert.equal(
+        toggleShortcut?.value,
+        toggleBefore,
+        "bare keys stay disallowed for toolbar shortcuts",
+      );
+
+      paragraphShortcut!.dispatchEvent(
+        new (win as any).KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Backspace",
+        }),
+      );
+      assert.equal(paragraphShortcut!.value, "Alt+Enter", "Backspace restores the default");
     } finally {
       win?.close();
       for (const [key, value] of previous) {
@@ -2348,6 +2520,76 @@ describe("startup", function () {
     }
   });
 
+  it("switches reading mode to the full page width when a translation starts", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "page-width-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `Reading mode page width ${Date.now()}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const appearances: Array<Record<string, unknown>> = [];
+    let currentAppearance: Record<string, unknown> = {
+      lineHeight: 1.6,
+      wordSpacing: 0,
+      letterSpacing: 0,
+      pageWidth: 0,
+      useOriginalFont: true,
+    };
+    const view = {
+      _iframeDocument: doc,
+      getData: () => ({ structure: null }),
+      get appearance() {
+        return currentAppearance;
+      },
+      setAppearance(value: Record<string, unknown>) {
+        currentAppearance = value;
+        appearances.push(value);
+      },
+    };
+    const reader = {
+      type: "pdf",
+      itemID: 2147483631,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: { _lastViewPrimary: true, _primarySDTView: view },
+    };
+
+    try {
+      clearTranslationCache();
+      Zotero.Prefs.set(enginePref, "google", true);
+      (Zotero.HTTP as any).request = async () => ({
+        status: 200,
+        response: JSON.stringify([[["译文。", "source", null, null, 1]]]),
+      });
+
+      await toggleBilingualReading(reader);
+
+      const applied = appearances[appearances.length - 1];
+      assert.equal(applied?.pageWidth, 1, "a run must use the full 100% page width");
+      assert.equal(applied?.lineHeight, 1.6, "other appearance fields must be preserved");
+      assert.isTrue(applied?.useOriginalFont);
+
+      // Hiding and showing cached translations re-applies the full width.
+      await toggleBilingualReading(reader);
+      currentAppearance = { ...currentAppearance, pageWidth: 0 };
+      await toggleBilingualReading(reader);
+      assert.equal(appearances[appearances.length - 1]?.pageWidth, 1);
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine as string, true);
+    }
+  });
+
   describe("API key storage", function () {
     const prefKey = SECRET_PREFS.openai;
     const fakeKey = "sk-test-000111222333444555";
@@ -2921,6 +3163,7 @@ describe("startup", function () {
     let selectionNode: Node = first.firstChild || first;
     const selectedCalls: string[] = [];
     const paragraphCalls: string[] = [];
+    const paragraphToggles: boolean[] = [];
     const controller = attachReaderInteractions(
       doc,
       {
@@ -2928,8 +3171,9 @@ describe("startup", function () {
           selectedCalls.push(text);
           return "Popup translation.";
         },
-        translateParagraph: async (source) => {
+        translateParagraph: async (source, options) => {
           paragraphCalls.push(source.dataset.refPath || "");
+          paragraphToggles.push(Boolean(options?.toggle));
         },
       },
       {
@@ -2978,6 +3222,7 @@ describe("startup", function () {
       assert.isTrue(first.classList.contains("interlinear-source-hover"));
       first.dispatchEvent(new win.MouseEvent("click", { bubbles: true, altKey: true }));
       assert.deepEqual(paragraphCalls, ["0"]);
+      assert.deepEqual(paragraphToggles, [true]);
       assert.isFalse(first.classList.contains("interlinear-source-hover"));
 
       selectionText = "Second paragraph";
@@ -2991,12 +3236,217 @@ describe("startup", function () {
         }),
       );
       assert.deepEqual(paragraphCalls, ["0", "1"]);
+      assert.deepEqual(paragraphToggles, [true, true]);
     } finally {
       controller.dispose();
     }
 
     assert.notExists(doc.querySelector(".interlinear-selection-popup"));
     assert.isFalse(first.classList.contains("interlinear-source-hover"));
+  });
+
+  it("should target the hovered paragraph with a plain-key shortcut", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "plain-key-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const source = doc.createElement("p");
+    source.dataset.refPath = "0";
+    source.textContent = "Paragraph under the pointer.";
+    const block = doc.createElement("div");
+    block.className = "interlinear-translation";
+    block.dataset.state = "done";
+    block.textContent = "译文。";
+    const input = doc.createElement("input");
+    content.append(source, block, input);
+    doc.body.append(content);
+
+    const calls: Array<{ path?: string; toggle?: boolean }> = [];
+    const controller = attachReaderInteractions(
+      doc,
+      {
+        translateSelection: async () => "",
+        translateParagraph: async (element, options) => {
+          calls.push({ path: element.dataset.refPath, toggle: options?.toggle });
+        },
+      },
+      {
+        getShortcutSettings: () => ({
+          enabled: true,
+          spec: parseShortcut("j", { allowPlainKey: true }),
+        }),
+      },
+    );
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      // No Alt: hovering alone picks the paragraph, including its translation.
+      block.dispatchEvent(new win.MouseEvent("mousemove", { bubbles: true }));
+      doc.dispatchEvent(
+        new win.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "j" }),
+      );
+      assert.deepEqual(calls, [{ path: "0", toggle: true }]);
+
+      // Typing the same key into a control must stay ordinary input.
+      input.dispatchEvent(
+        new win.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "j" }),
+      );
+      assert.lengthOf(calls, 1);
+    } finally {
+      controller.dispose();
+    }
+  });
+
+  it("should translate a paragraph and restore it on the second trigger", async function () {
+    this.timeout(10000);
+    const enginePref = "extensions.zotero.interlinear.engine";
+    const previousEngine = Zotero.Prefs.get(enginePref, true);
+    const previousRequest = Zotero.HTTP.request;
+    const requested: string[] = [];
+    const stamp = Date.now();
+
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "paragraph-toggle-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = `Toggle paragraph ${stamp}.`;
+    content.append(paragraph);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483638,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    try {
+      Zotero.Prefs.set(enginePref, "google", true);
+      (Zotero.HTTP as any).request = async (
+        _method: string,
+        _url: string,
+        options: Record<string, any>,
+      ) => {
+        const text = new URLSearchParams(String(options?.body || "")).get("q") || "";
+        requested.push(text);
+        return {
+          status: 200,
+          response: [[[`译文：${text}`, text, null, null]]],
+        };
+      };
+
+      await translateReaderParagraph(reader, paragraph, { toggle: true });
+      assert.equal(requested.length, 1);
+      assert.equal(
+        paragraph.nextElementSibling?.getAttribute("data-state"),
+        "done",
+      );
+      assert.isTrue(paragraph.classList.contains("interlinear-source"));
+
+      await translateReaderParagraph(reader, paragraph, { toggle: true });
+      assert.equal(requested.length, 1);
+      assert.isNull(paragraph.nextElementSibling);
+      assert.isFalse(paragraph.classList.contains("interlinear-source"));
+      assert.lengthOf(doc.querySelectorAll(".interlinear-translation"), 0);
+
+      await translateReaderParagraph(reader, paragraph, { toggle: true });
+      assert.equal(requested.length, 1, "the cached translation is reused");
+      assert.equal(
+        paragraph.nextElementSibling?.getAttribute("data-state"),
+        "done",
+      );
+    } finally {
+      clearTranslationCache();
+      (Zotero.HTTP as any).request = previousRequest;
+      if (previousEngine === undefined) Zotero.Prefs.clear(enginePref, true);
+      else Zotero.Prefs.set(enginePref, previousEngine, true);
+    }
+  });
+
+  it("removes a failed paragraph block when the shortcut toggles it", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "paragraph-toggle-error-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const paragraph = doc.createElement("p");
+    paragraph.dataset.refPath = "0";
+    paragraph.textContent = "Failed paragraph toggle.";
+    paragraph.classList.add("interlinear-source");
+    const block = doc.createElement("div");
+    block.className = "interlinear-translation";
+    block.dataset.state = "error";
+    block.textContent = "翻译失败";
+    content.append(paragraph, block);
+    doc.body.append(content);
+
+    const reader = {
+      itemID: 2147483639,
+      _iframeWindow: { alert: () => undefined },
+      _internalReader: {
+        _lastViewPrimary: true,
+        _primarySDTView: {
+          _iframeDocument: doc,
+          getData: () => ({ structure: null }),
+        },
+      },
+    };
+
+    await translateReaderParagraph(reader, paragraph, { toggle: true });
+    assert.isNull(paragraph.nextElementSibling, "a failed block is taken down");
+    assert.isFalse(paragraph.classList.contains("interlinear-source"));
+    assert.lengthOf(doc.querySelectorAll(".interlinear-translation"), 0);
+  });
+
+  it("should retry a failed block on click but restore it with Alt+click", async function () {
+    this.timeout(10000);
+    const doc = Zotero.getMainWindow().document.implementation.createHTMLDocument(
+      "failed-block-click-test",
+    );
+    const content = doc.createElement("div");
+    content.id = "sdt-content";
+    const source = doc.createElement("p");
+    source.dataset.refPath = "2";
+    source.textContent = "Failed source paragraph.";
+    const block = doc.createElement("div");
+    block.className = "interlinear-translation";
+    block.dataset.state = "error";
+    block.textContent = "错误";
+    content.append(source, block);
+    doc.body.append(content);
+
+    const calls: Array<{ force?: boolean; toggle?: boolean }> = [];
+    const controller = attachReaderInteractions(doc, {
+      translateSelection: async () => "",
+      translateParagraph: async (_element, options) => {
+        calls.push({ force: options?.force, toggle: options?.toggle });
+      },
+    });
+
+    try {
+      const win = Zotero.getMainWindow() as any;
+      block.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+      assert.deepEqual(calls, [{ force: undefined, toggle: undefined }]);
+
+      block.dispatchEvent(new win.MouseEvent("mousemove", { bubbles: true }));
+      block.dispatchEvent(
+        new win.MouseEvent("click", { bubbles: true, cancelable: true, altKey: true }),
+      );
+      assert.deepEqual(calls[1], { force: undefined, toggle: true });
+    } finally {
+      controller.dispose();
+    }
   });
 
   it("should offer block actions from right-click and double-click", async function () {
@@ -3458,8 +3908,12 @@ describe("reader toggle", function () {
     const reader = makeReader(doc, 2147483630);
 
     const bodies: string[] = [];
+    const urls: string[] = [];
+    const methods: string[] = [];
     const resolvers: Array<(value: any) => void> = [];
-    (Zotero.HTTP as any).request = (_method: string, _url: string, options: any) => {
+    (Zotero.HTTP as any).request = (method: string, url: string, options: any) => {
+      methods.push(method);
+      urls.push(url);
       bodies.push(String(options?.body || ""));
       return new Promise((resolve) => resolvers.push(resolve));
     };
@@ -3498,7 +3952,11 @@ describe("reader toggle", function () {
       assert.isUndefined(content.dataset.interlinearHidden);
       resolvers.shift()?.(ok());
       await waitFor(() => bodies.length === 4);
-      assert.include(requestedText(bodies[3]), "Gamma pause");
+      assert.include(
+        requestedText(bodies[3]),
+        "Gamma pause",
+        JSON.stringify(methods.map((method, index) => `${method} ${urls[index]}`)),
+      );
       resolvers.shift()?.(ok());
       await resume;
 

@@ -8,6 +8,7 @@ declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
       "engine": string;
+      "free.backend": string;
       "google.baseUrl": string;
       "openai.endpoint": string;
       "openai.model": string;

@@ -12,7 +12,7 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 
 ## 功能
 
-- **内置五种翻译服务。** Google 免费翻译开箱即用、无需密钥（自动轮换多个独立配额池，被限流即时切换；也可选 MyMemory 或自建 LibreTranslate）；OpenAI 兼容接口、Anthropic Claude、Google Gemini、Ollama 在设置页填好即可使用，不依赖任何其他插件。
+- **内置五种翻译服务。** Google 免费翻译开箱即用、无需密钥（自动轮换多个独立配额池与备用网关，被限流即时切换，再退到微软 Edge、MyMemory 或自建 LibreTranslate，也可选用阿里云机器翻译与 Azure 翻译的每月免费额度）；OpenAI 兼容接口、Anthropic Claude、Google Gemini、Ollama 在设置页填好即可使用，不依赖任何其他插件。
 - **四种显示布局。** 译文在下、左右并排、仅译文、仅原文。旁边的显示模式按钮一键循环切换；左右并排时原文与译文首行对齐，且不影响 Zotero 原生高亮的位置。
 - **一个工具栏开关。** 工具栏主按钮首次点击开启全文翻译，之后用于显示/隐藏译文；翻译进行中点击会暂停并隐藏，再次点击显示译文并继续未完成的段落。每个阅读器的状态互相独立。
 - **读到哪翻到哪。** 鼠标停留、自定义快捷键、Alt 单击、划词弹窗，四种方式都能只翻当前段落，无需先开启全文翻译。
@@ -82,29 +82,42 @@ Interlinear 接入桌面版 PDF 阅读器的阅读模式，逐段获取结构化
 > **隐私与密钥。** 开启翻译即表示段落文本会发送给你配置的翻译服务——这一点无法避免，敏感文档请勿使用不可信的服务。API 密钥是另一回事：Interlinear 用 Zotero 的系统钥匙串接口（macOS Keychain、Windows DPAPI、Linux libsecret）加密密钥，偏好里只保存 `oskv1:` 开头的密文。密钥不会写入日志、缓存键、调试输出或导出的外观文件，并且通过请求头发送而不是 URL。非回环端点必须使用 HTTPS（除非你在设置页明确确认某个明文 HTTP 主机），带密钥的请求也不会跟随重定向。由于加密密钥绑定在你的系统账户上，把 profile 拷贝到另一台机器或另一个系统用户后无法解密——需要重新输入。Linux 上没有 Secret Service 时，默认只在本次会话使用密钥；以未加密方式保存是可能的，但必须在设置页内二次确认，之后会持续标记为“未加密”。0.6.0 及更早版本以明文保存的密钥会在首次启动时就地加密，明文读取路径保留到你下次保存该密钥为止。
 
 
-### 免费翻译服务（无需密钥）
+### 免费翻译服务
 
-在 **翻译服务 → Google** 里可以灵活调整：
+在 **翻译服务 → Google** 里可以灵活调整。下表的大多数服务无需账号；阿里云与 Azure 属于每月免费额度，需要自己注册并填密钥（见本节末尾）。
 
 | 设置项 | 作用 |
 | --- | --- |
-| 免费翻译服务 | 默认「自动轮换」：依次尝试 Google 的 `it` / `at` / `gtx` / `dict-chrome-ex` / `firefox-a` 五个独立配额池，再退到 MyMemory 与自建 LibreTranslate。某个池返回 429 或人机验证时，**在当前这一批里立刻换下一个**，不会把段落标成失败。也可以固定只用一个服务。 |
+| 免费翻译服务 | 默认固定「MyMemory」；它失败或被限流后，按“失败时自动切换”继续尝试 Google 的 `it` / `at` / `gtx` / `dict-chrome-ex` / `firefox-a` 五个独立配额池、两个内置备用网关、你配置过的阿里云或 Azure、自定义接口、微软 Edge 翻译接口，再退到自建 LibreTranslate。选「自动轮换」则从 Google 配额池开始。某个池返回 429 或人机验证时，**在当前这一批里立刻换下一个**，不会把段落标成失败。也可以固定只用一个服务。 |
 | 失败时自动切换备用服务 | 固定某个服务后，它不可用时自动改用其它服务。 |
 | Google 首选配额池 | 自动轮换从该池开始；各池独立限流，一个被封不影响其它。 |
 | 接口地址 | 可填完整端点：Google 镜像、MyMemory 代理/镜像、LibreTranslate 实例。 |
 | MyMemory 邮箱 | 可选，把每日免费额度从 5000 字符提高到 50000 字符。 |
 | LibreTranslate API Key | 可选，与其它密钥一样加密保存在系统密钥库。 |
+| 阿里云 AccessKey | 选「阿里云机器翻译」时使用；每月 100 万字符免费额度，单次 5000 字符、默认 50 QPS。 |
+| Azure 密钥 / 区域 / 端点 | 选「Azure 翻译」时使用；F0 每月 200 万字符、不限期，整批段落一次请求完成。区域留空适用于全局资源。 |
 | 额外 Google 网关 | 每行一个主机（如 `translate.google.com`），作为额外的独立配额池接入轮换链，最多 4 个。比自定义接口省心：沿用内置的 Google 解析与批量协议，只是换个限流池。 |
 | 自定义免费接口 | 通用逃生口：填一个含 `{text}`/`{from}`/`{to}` 占位符的 GET 模板，并填 JSON 结果路径（如 `responseData.translatedText`，留空表示纯文本返回）。当你信任的自建 LibreTranslate / DeepLX / 企业网关 / Google 镜像可用、而公共免费服务全被封时，用它无缝接入，无需再编译插件。 |
 | 当前生效服务 | 显示此刻正在使用的服务，以及哪些服务正在冷却。 |
 
 默认的 `translate_a/t` 端点一次请求可带多个段落，请求数约为逐段翻译的 1/6；全局 1 请求/秒的节流也在，避免短时间打爆配额。免费接口按 IP 限流，连续翻译几十篇后仍可能触发冷却：插件会暂停整轮、显示倒计时并自动恢复，而不是把每段标红。已翻过的段落走缓存，二次打开不消耗请求。追求稳定大批量建议改用模型后端。
 
-> **隐私**：MyMemory 会把提交的文本加入其公开翻译记忆；敏感文献请勿使用该服务。
+微软 Edge 接口就是 Edge 浏览器内置网页翻译所用的那个：不需要账号或密钥，整批一次请求，并保留换行。它未公开，微软可能随时改动或封锁，所以插件把它放在 Google 各池之后作为备用，而不是首选。
+
+#### 需要账号的免费额度：阿里云与 Azure
+
+这两家不是“免账号”服务：需要先注册、开通并创建密钥，插件才能调用。设置页里已经放好直达链接：
+
+- **阿里云机器翻译**：打开[机器翻译控制台](https://mt.console.aliyun.com/)开通服务 → 在 [RAM 访问密钥管理](https://ram.console.aliyun.com/manage/ak) 创建 AccessKey（建议给只授予 `AliyunMTFullAccess` 的 RAM 子账号创建）→ 把 AccessKey ID 与 Secret 填进设置页并保存。普通版每月 100 万字符，单次最多 5000 字符、默认 50 QPS，支持自动识别源语言。
+- **Azure AI Translator**：在 [Azure 门户创建 Translator 资源](https://portal.azure.com/#create/Microsoft.CognitiveServicesTextTranslation)（选 F0 免费层）→ 打开资源的“密钥和终结点”复制 KEY 1 与区域 → 填入设置页。F0 每月 200 万字符、不限期，整批段落一次请求完成；全局资源把区域留空。
+
+密钥与其它后端一样加密保存在系统密钥库，不会写进日志或 URL。没有填密钥时固定这两个服务会直接给出提示，不会反复发空请求。
+
+> **隐私**：MyMemory 会把提交的文本加入其公开翻译记忆；阿里云与 Azure 同样会接收提交的文本并适用各自的服务条款。敏感文献请优先使用本机 Ollama。
 
 ### 网络与代理
 
-默认的 Google 端点需要能连通 `translate.googleapis.com`；MyMemory 与 LibreTranslate 备用服务分别需要连通其各自地址。Interlinear 的所有请求都走 Zotero 自己的 HTTP 层（`Zotero.HTTP.request`），所以用的是 Zotero 使用的代理——插件没有独立的代理设置，也无法绕过 Zotero 的代理配置。Zotero 本身是否跟随系统代理，取决于 Zotero 的网络偏好与操作系统设置（**此处未独立验证**）。
+默认的 MyMemory 端点需要能连通 `api.mymemory.translated.net`；固定或轮换到 Google 时需要能连通 `translate.googleapis.com`（Google 各池被限流后还会尝试内置的 `clients5.google.com` / `translate.google.com`）；微软 Edge 备用服务需要连通 `edge.microsoft.com`；LibreTranslate 需要其自建实例可达；阿里云机器翻译需要连通 `mt.cn-hangzhou.aliyuncs.com`，Azure 翻译需要连通 `api.cognitive.microsofttranslator.com`。Interlinear 的所有请求都走 Zotero 自己的 HTTP 层（`Zotero.HTTP.request`），所以用的是 Zotero 使用的代理——插件没有独立的代理设置，也无法绕过 Zotero 的代理配置。Zotero 本身是否跟随系统代理，取决于 Zotero 的网络偏好与操作系统设置（**此处未独立验证**）。
 
 如果“测试连接”失败：先确认系统代理或 TUN 模式是否开启，再尝试其他翻译后端（OpenAI 兼容、Claude、Gemini 或本机 Ollama），最后才考虑你信任的镜像地址。失败提示现在会区分超时、DNS、连接被拒绝/重置、HTTP 状态码、限流、重定向与无法解析的响应，并给出对应建议。
 

@@ -23,6 +23,9 @@ export const SECRET_PREFS = {
   claude: "extensions.zotero.interlinear.claude.apiKey",
   gemini: "extensions.zotero.interlinear.gemini.apiKey",
   libreTranslate: "extensions.zotero.interlinear.libreTranslate.apiKey",
+  alibabaAccessKeyId: "extensions.zotero.interlinear.alibaba.accessKeyId",
+  alibabaAccessKeySecret: "extensions.zotero.interlinear.alibaba.accessKeySecret",
+  azure: "extensions.zotero.interlinear.azure.apiKey",
 } as const;
 
 export type SecretPrefKey = (typeof SECRET_PREFS)[keyof typeof SECRET_PREFS];

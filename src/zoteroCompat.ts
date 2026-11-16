@@ -97,3 +97,26 @@ export function getSDTViewDocument(view: any): Document | null {
     return null;
   }
 }
+
+/**
+ * Reading Mode's page width is Zotero's three-stop appearance setting
+ * (-1 = 50%, 0 = 75%, 1 = 100%). Going through `setAppearance` keeps the
+ * reader's saved view state in sync, unlike writing `data-page-width` directly.
+ */
+export function setReadingModePageWidth(reader: any, pageWidth: number): boolean {
+  let applied = false;
+  for (const view of getSDTViews(reader)) {
+    if (typeof view?.setAppearance !== "function") continue;
+    if (Number(view.appearance?.pageWidth) === pageWidth) {
+      applied = true;
+      continue;
+    }
+    try {
+      view.setAppearance({ ...(view.appearance || {}), pageWidth });
+      applied = true;
+    } catch (_) {
+      // A view that is mid-teardown can throw; the caller has nothing to undo.
+    }
+  }
+  return applied;
+}

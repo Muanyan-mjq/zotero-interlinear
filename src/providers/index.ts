@@ -15,6 +15,7 @@ import {
   getGeminiTemperature,
   getGlossaryDirective,
   getOllamaModel,
+  getOllamaSystemPrompt,
   getOllamaURL,
   getOpenAIApiKey,
   getOpenAIEndpoint,
@@ -39,7 +40,7 @@ import { testGoogleConnection } from "./google";
 import { testFreeConnection, translateFree } from "./free";
 import { requestOllamaTranslation } from "./ollama";
 import { requestOpenAITranslation, testOpenAIConnection } from "./openai";
-import { buildOllamaSystemPrompt, languageNameZh } from "./prompts";
+import { languageNameZh } from "./prompts";
 import type { ChatProvider, TranslationProvider } from "./types";
 
 export {
@@ -112,24 +113,17 @@ export function getTranslationProvider(engine: TranslationEngine): TranslationPr
   if (engine === "ollama") {
     return {
       id: "ollama",
-      translate: async (text, context) => {
-        const prompt = buildOllamaSystemPrompt(
-          context.sourceLanguage,
-          context.targetLanguage,
-        );
-        const glossary = getGlossaryDirective();
-        return {
-          text: await requestOllamaTranslation(
-            {
-              baseURL: getOllamaURL(),
-              model: getOllamaModel(),
-              systemPrompt: glossary ? `${prompt}\n\n${glossary}` : prompt,
-              timeoutMs: context.timeoutMs,
-            },
-            text,
-          ),
-        };
-      },
+      translate: async (text, context) => ({
+        text: await requestOllamaTranslation(
+          {
+            baseURL: getOllamaURL(),
+            model: getOllamaModel(),
+            systemPrompt: getOllamaSystemPrompt(),
+            timeoutMs: context.timeoutMs,
+          },
+          text,
+        ),
+      }),
     };
   }
 

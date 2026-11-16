@@ -205,7 +205,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   theme: "auto",
   underline: false,
   underlineColor: "",
-  ribbon: true,
+  ribbon: false,
   ribbonColor: DEFAULT_RIBBON_COLOR,
   textDecoration: [],
   textDecorationStyle: "solid",
