@@ -1,5 +1,6 @@
 import {
   COLOR_LIST_MAX_LENGTH,
+  DEFAULT_APPEARANCE,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   RECENT_COLORS_MAX,
@@ -22,6 +23,7 @@ import {
   normalizeFontFavorites,
   parseFontDetectionCache,
 } from "./fontCatalog";
+import { DEFAULT_AZURE_ENDPOINT } from "./providers/azureProtocol";
 import {
   DEFAULT_CLAUDE_ENDPOINT,
   normalizeClaudeEndpoint,
@@ -64,7 +66,7 @@ import { SECRET_PREFS, getSecret, setSecret } from "./secrets";
 
 export type { AppearanceSettings } from "./appearance";
 export type { DisplayMode } from "./displayMode";
-export { DEFAULT_GOOGLE_BASE_URL, DEFAULT_DISPLAY_MODE };
+export { DEFAULT_AZURE_ENDPOINT, DEFAULT_GOOGLE_BASE_URL, DEFAULT_DISPLAY_MODE };
 
 const BASE = "extensions.zotero.interlinear";
 const LEGACY_BASE = "extensions.zotero.bilingualreader";
@@ -89,6 +91,7 @@ export const DEFAULT_OPENAI_PROMPT = `你是学术论文翻译专家。把用户
 3. 原样保留数字、单位、公式、变量、基因/蛋白/药物名称、文献引用和图表编号。
 4. 若原文含 [[BRSEG_0000]] 这类分段标记，必须逐字保留并保持顺序，不得翻译、删除或合并段落。
 5. 被标记分隔的段落逐段翻译，输出顺序与输入一致。`;
+export const DEFAULT_OLLAMA_PROMPT = DEFAULT_OPENAI_PROMPT;
 export const DEFAULT_SOURCE_LANGUAGE = "auto";
 export const DEFAULT_TARGET_LANGUAGE = "zh-CN";
 export const SOURCE_LANGUAGES = [
@@ -112,8 +115,9 @@ export const TARGET_LANGUAGES = SOURCE_LANGUAGES.filter(
 ) as readonly string[];
 /**
  * Selectable free translation services. `auto` rotates through the healthy
- * Google client pools first, then MyMemory, then a user-supplied
- * LibreTranslate instance. A specific value pins the run to that service.
+ * Google client pools first, then Microsoft Edge, then MyMemory and a
+ * user-supplied LibreTranslate instance. A specific value pins the run to that
+ * service.
  */
 export const FREE_BACKENDS = [
   "auto",
@@ -122,18 +126,22 @@ export const FREE_BACKENDS = [
   "google:gtx",
   "google:dict-chrome-ex",
   "google:firefox-a",
+  "alibaba",
+  "azure",
+  "microsoft",
   "mymemory",
   "libretranslate",
   "custom",
 ] as const;
 export type FreeBackendId = (typeof FREE_BACKENDS)[number];
-export const DEFAULT_FREE_BACKEND: FreeBackendId = "auto";
+export const DEFAULT_FREE_BACKEND: FreeBackendId = "mymemory";
 export const DEFAULT_FREE_AUTO_FALLBACK = true;
 export const DEFAULT_LIBRE_TRANSLATE_URL = "";
 export const DEFAULT_MYMEMORY_URL = "https://api.mymemory.translated.net/get";
 export const DEFAULT_FREE_GOOGLE_MIRRORS = "";
 export const DEFAULT_FREE_CUSTOM_URL = "";
 export const DEFAULT_FREE_CUSTOM_RESULT_PATH = "responseData.translatedText";
+export const DEFAULT_AZURE_REGION = "";
 
 /** Extra gateway pools are generated at runtime, e.g. `google-m1:gtx`. */
 export function isMirrorBackendId(value: string): boolean {
@@ -154,6 +162,7 @@ export { DEFAULT_SHORTCUT };
 const ENGINE_PREF = `${BASE}.engine`;
 const OLLAMA_URL_PREF = `${BASE}.ollama.url`;
 const OLLAMA_MODEL_PREF = `${BASE}.ollama.model`;
+const OLLAMA_PROMPT_PREF = `${BASE}.ollama.prompt`;
 const GOOGLE_BASE_URL_PREF = `${BASE}.google.baseUrl`;
 const FREE_BACKEND_PREF = `${BASE}.free.backend`;
 const FREE_AUTO_FALLBACK_PREF = `${BASE}.free.autoFallback`;
@@ -164,6 +173,8 @@ const FREE_LIBRE_URL_PREF = `${BASE}.free.libreTranslateUrl`;
 const FREE_GOOGLE_MIRRORS_PREF = `${BASE}.free.googleMirrors`;
 const FREE_CUSTOM_URL_PREF = `${BASE}.free.customUrl`;
 const FREE_CUSTOM_RESULT_PATH_PREF = `${BASE}.free.customResultPath`;
+const AZURE_REGION_PREF = `${BASE}.azure.region`;
+const AZURE_ENDPOINT_PREF = `${BASE}.azure.endpoint`;
 const LIBRE_API_KEY_PREF = SECRET_PREFS.libreTranslate;
 const OPENAI_ENDPOINT_PREF = `${BASE}.openai.endpoint`;
 const OPENAI_MODEL_PREF = `${BASE}.openai.model`;
@@ -316,6 +327,21 @@ export function setOllamaModel(model: string): void {
   setStringPref(OLLAMA_MODEL_PREF, model.trim() || DEFAULT_OLLAMA_MODEL);
 }
 
+export function getOllamaPrompt(): string {
+  return getRawStringPref(OLLAMA_PROMPT_PREF).trim() || DEFAULT_OLLAMA_PROMPT;
+}
+
+export function setOllamaPrompt(prompt: string): void {
+  setStringPref(OLLAMA_PROMPT_PREF, prompt.trim() || DEFAULT_OLLAMA_PROMPT);
+}
+
+export function getOllamaSystemPrompt(): string {
+  return appendGlossaryDirective(`${getOllamaPrompt()}\n\n${buildLanguageDirective(
+    getSourceLanguage(),
+    getTargetLanguage(),
+  )}`);
+}
+
 export function getGoogleBaseURL(): string {
   return getStringPref(GOOGLE_BASE_URL_PREF, DEFAULT_GOOGLE_BASE_URL);
 }
@@ -418,6 +444,54 @@ export function getLibreTranslateApiKey(): string {
 
 export function setLibreTranslateApiKey(value: string): void {
   setSecret(LIBRE_API_KEY_PREF, value);
+}
+
+/** Alibaba AccessKey ID; stored as a secret because it pairs with the secret. */
+export function getAlibabaAccessKeyId(): string {
+  return getSecret(SECRET_PREFS.alibabaAccessKeyId).trim();
+}
+
+export function setAlibabaAccessKeyId(value: string): void {
+  setSecret(SECRET_PREFS.alibabaAccessKeyId, value);
+}
+
+export function getAlibabaAccessKeySecret(): string {
+  return getSecret(SECRET_PREFS.alibabaAccessKeySecret).trim();
+}
+
+export function setAlibabaAccessKeySecret(value: string): void {
+  setSecret(SECRET_PREFS.alibabaAccessKeySecret, value);
+}
+
+export function getAzureApiKey(): string {
+  return getSecret(SECRET_PREFS.azure).trim();
+}
+
+export function setAzureApiKey(value: string): void {
+  setSecret(SECRET_PREFS.azure, value);
+}
+
+/** Empty is valid for a global Translator resource; regional ones need it. */
+export function getAzureRegion(): string {
+  return getStringPref(AZURE_REGION_PREF, DEFAULT_AZURE_REGION);
+}
+
+export function setAzureRegion(value: string): void {
+  setStringPref(AZURE_REGION_PREF, value.trim());
+}
+
+export function getAzureEndpoint(): string {
+  return getStringPref(AZURE_ENDPOINT_PREF, DEFAULT_AZURE_ENDPOINT).replace(
+    /\/+$/u,
+    "",
+  );
+}
+
+export function setAzureEndpoint(value: string): void {
+  setStringPref(
+    AZURE_ENDPOINT_PREF,
+    value.trim().replace(/\/+$/u, "") || DEFAULT_AZURE_ENDPOINT,
+  );
 }
 
 export function getOpenAIEndpoint(): string {
@@ -580,6 +654,9 @@ setLogSecretsProvider(() => [
   getClaudeApiKey(),
   getGeminiApiKey(),
   getLibreTranslateApiKey(),
+  getAlibabaAccessKeyId(),
+  getAlibabaAccessKeySecret(),
+  getAzureApiKey(),
 ]);
 
 export function getGeminiPrompt(): string {
@@ -733,15 +810,20 @@ export function setShortcutEnabled(value: boolean): void {
 }
 
 export function getShortcut(): string {
-  return normalizeShortcut(getRawStringPref(SHORTCUT_PREF));
+  return normalizeShortcut(getRawStringPref(SHORTCUT_PREF), DEFAULT_SHORTCUT, {
+    allowPlainKey: true,
+  });
 }
 
 export function setShortcut(value: string): void {
-  setStringPref(SHORTCUT_PREF, normalizeShortcut(value));
+  setStringPref(
+    SHORTCUT_PREF,
+    normalizeShortcut(value, DEFAULT_SHORTCUT, { allowPlainKey: true }),
+  );
 }
 
 export function getShortcutSpec(): ShortcutSpec | null {
-  return parseShortcut(getShortcut());
+  return parseShortcut(getShortcut(), { allowPlainKey: true });
 }
 
 export function getAppearance(): AppearanceSettings {
@@ -766,7 +848,7 @@ export function getAppearance(): AppearanceSettings {
     theme: getRawStringPref(APPEARANCE_THEME_PREF) as AppearanceSettings["theme"],
     underline: getBoolPref(APPEARANCE_UNDERLINE_PREF, false),
     underlineColor: getRawStringPref(APPEARANCE_UNDERLINE_COLOR_PREF),
-    ribbon: getBoolPref(APPEARANCE_RIBBON_PREF, true),
+    ribbon: getBoolPref(APPEARANCE_RIBBON_PREF, DEFAULT_APPEARANCE.ribbon),
     ribbonColor: getRawStringPref(APPEARANCE_RIBBON_COLOR_PREF),
   });
 }
@@ -1026,7 +1108,11 @@ export function getCacheEngineTag(): string {
   const language = languageTag();
   const glossary = glossaryTag();
   if (engine === "ollama") {
-    return `ollama:${getOllamaURL()}:${getOllamaModel()}${language}${glossary}`;
+    // Keep the historical tag while the prompt is untouched so existing caches
+    // still hit; a custom prompt must not reuse translations it did not produce.
+    const prompt = getOllamaPrompt();
+    const promptTag = prompt === DEFAULT_OLLAMA_PROMPT ? "" : `:${hashTag(prompt)}`;
+    return `ollama:${getOllamaURL()}:${getOllamaModel()}${promptTag}${language}${glossary}`;
   }
   if (engine === "openai") {
     // The API key is intentionally absent: rotating a key must not invalidate

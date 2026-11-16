@@ -9,6 +9,11 @@
 // unavailable does it surface a cooldown to the translation runner.
 
 import {
+  getAlibabaAccessKeyId,
+  getAlibabaAccessKeySecret,
+  getAzureApiKey,
+  getAzureEndpoint,
+  getAzureRegion,
   getFreeAutoFallback,
   getFreeBackend,
   getFreeCustomResultPath,
@@ -21,6 +26,10 @@ import {
   getMyMemoryEmail,
   getMyMemoryURL,
 } from "../settings";
+import { translateAlibaba } from "./alibaba";
+import { ALIBABA_MAX_CHARS } from "./alibabaProtocol";
+import { requestAzureTranslations } from "./azure";
+import { DEFAULT_AZURE_ENDPOINT } from "./azureProtocol";
 import { getString } from "../utils/locale";
 import { redactSecrets } from "../utils/redact";
 import { assessEndpoint } from "../utils/endpointSafety";
@@ -31,6 +40,7 @@ import {
 } from "../utils/freeEndpoint";
 import { GOOGLE_CLIENTS, normalizeGoogleClient } from "./googleProtocol";
 import { GoogleThrottleError, requestGoogleTranslations } from "./google";
+import { requestMicrosoftTranslations } from "./microsoft";
 import { NO_REDIRECT_OPTIONS } from "./secureRequest";
 import type { ProviderContext } from "./types";
 
@@ -56,7 +66,25 @@ export interface FreeConfig {
   customUrl?: string;
   /** Dotted JSON path to the translated string; empty = plain text response. */
   customResultPath?: string;
+  /** Alibaba Cloud AccessKey pair; both must be present to enable the backend. */
+  alibabaAccessKeyId?: string;
+  alibabaAccessKeySecret?: string;
+  /** Azure Translator subscription key; region is optional for global resources. */
+  azureKey?: string;
+  azureRegion?: string;
+  azureEndpoint?: string;
 }
+
+/**
+ * Extra Google hosts that answer the same `translate_a/t` protocol from
+ * separate infrastructure. The primary host can be unreachable (or throttled
+ * for a whole IP) while these still work, so they sit behind the client pools
+ * and before the non-Google services.
+ */
+const BUILTIN_GOOGLE_HOSTS = [
+  "https://clients5.google.com",
+  "https://translate.google.com",
+];
 
 /** A throttled pool is not worth retrying for several minutes. */
 const POOL_COOLDOWN_MS = 5 * 60 * 1000;
@@ -82,6 +110,11 @@ export function readFreeConfig(): FreeConfig {
     googleMirrors: getFreeGoogleMirrors(),
     customUrl: getFreeCustomURL(),
     customResultPath: getFreeCustomResultPath(),
+    alibabaAccessKeyId: getAlibabaAccessKeyId(),
+    alibabaAccessKeySecret: getAlibabaAccessKeySecret(),
+    azureKey: getAzureApiKey(),
+    azureRegion: getAzureRegion(),
+    azureEndpoint: getAzureEndpoint(),
   };
 }
 
@@ -132,8 +165,8 @@ function normalizeLibreURL(raw: string): string {
   return /\/translate$/iu.test(url) ? url : `${url}/translate`;
 }
 
-/** MyMemory caps a single `q` value; keep long paragraphs aligned. */
-function splitForMyMemory(text: string, limit = 450): string[] {
+/** Per-request character caps (MyMemory, Alibaba, custom GET); keep alignment. */
+function splitForLimit(text: string, limit = 450): string[] {
   if (text.length <= limit) return [text];
   const chunks: string[] = [];
   let rest = text;
@@ -156,15 +189,105 @@ function isSafeEndpoint(url: string): boolean {
   return assessment.valid && !assessment.needsConfirmation;
 }
 
-function googleBackend(client: string, config: FreeConfig, id = `google:${client}`): FreeBackend {
+function googleBackend(
+  client: string,
+  config: FreeConfig,
+  id = `google:${client}`,
+  label = `Google (${client})`,
+): FreeBackend {
   return {
     id,
-    label: `Google (${client})`,
+    label,
     translate: (texts, context) =>
       requestGoogleTranslations(
         {
           baseURL: config.googleBaseURL,
           client,
+          sourceLanguage: context.sourceLanguage,
+          targetLanguage: context.targetLanguage,
+          timeoutMs: context.timeoutMs,
+        },
+        texts,
+      ),
+  };
+}
+
+/** Bare host for duplicate detection (`https://a.b/x` -> `a.b`). */
+function hostKey(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//u, "")
+    .replace(/\/.*$/u, "")
+    .replace(/\/+$/u, "");
+}
+
+function microsoftBackend(): FreeBackend {
+  return {
+    id: "microsoft",
+    label: "Microsoft Edge",
+    translate: (texts, context) =>
+      requestMicrosoftTranslations(
+        {
+          sourceLanguage: context.sourceLanguage,
+          targetLanguage: context.targetLanguage,
+          timeoutMs: context.timeoutMs,
+        },
+        texts,
+      ),
+  };
+}
+
+function alibabaConfigured(config: FreeConfig): boolean {
+  return (
+    !!String(config.alibabaAccessKeyId || "").trim() &&
+    !!String(config.alibabaAccessKeySecret || "").trim()
+  );
+}
+
+function azureConfigured(config: FreeConfig): boolean {
+  return !!String(config.azureKey || "").trim();
+}
+
+function alibabaBackend(config: FreeConfig): FreeBackend {
+  const accessKeyId = String(config.alibabaAccessKeyId || "").trim();
+  const accessKeySecret = String(config.alibabaAccessKeySecret || "").trim();
+  return {
+    id: "alibaba",
+    label: "Alibaba Cloud",
+    translate: async (texts, context) => {
+      const sourceLanguage = context.sourceLanguage || "auto";
+      return Promise.all(
+        texts.map(async (text) => {
+          const pieces: string[] = [];
+          for (const chunk of splitForLimit(text, ALIBABA_MAX_CHARS - 100)) {
+            pieces.push(
+              await translateAlibaba(chunk, {
+                accessKeyId,
+                accessKeySecret,
+                sourceLanguage,
+                targetLanguage: context.targetLanguage,
+                timeoutMs: context.timeoutMs,
+              }),
+            );
+          }
+          return pieces.join("");
+        }),
+      );
+    },
+  };
+}
+
+function azureBackend(config: FreeConfig): FreeBackend {
+  return {
+    id: "azure",
+    label: "Azure Translator",
+    translate: (texts, context) =>
+      requestAzureTranslations(
+        {
+          apiKey: String(config.azureKey || "").trim(),
+          region: String(config.azureRegion || ""),
+          endpoint: String(config.azureEndpoint || DEFAULT_AZURE_ENDPOINT),
           sourceLanguage: context.sourceLanguage,
           targetLanguage: context.targetLanguage,
           timeoutMs: context.timeoutMs,
@@ -184,7 +307,7 @@ function myMemoryBackend(config: FreeConfig): FreeBackend {
 
       for (const [index, text] of texts.entries()) {
         const pieces: string[] = [];
-        for (const chunk of splitForMyMemory(text)) {
+        for (const chunk of splitForLimit(text)) {
           const params = new URLSearchParams();
           params.set("q", chunk);
           params.set("langpair", `${source}|${context.targetLanguage}`);
@@ -262,7 +385,7 @@ function customBackend(config: FreeConfig): FreeBackend {
 
       for (const [index, text] of texts.entries()) {
         const pieces: string[] = [];
-        for (const chunk of splitForMyMemory(text, 1200)) {
+        for (const chunk of splitForLimit(text, 1200)) {
           const url = buildCustomURL(template, {
             text: chunk,
             from: source,
@@ -383,17 +506,40 @@ function buildAllBackends(config: FreeConfig): FreeBackend[] {
   // One pool per extra gateway (not one per client) — Google requests are
   // globally paced, so a host x client cross-product would only add latency
   // when everything is throttled.
-  const mirrors = parseMirrorList(config.googleMirrors || "")
-    .filter((host) => isSafeEndpoint(host))
-    .map((host, index) =>
-      googleBackend(preferred, { ...config, googleBaseURL: host }, `google-m${index + 1}:${preferred}`),
-    );
+  const mirrorHosts = parseMirrorList(config.googleMirrors || "").filter((host) =>
+    isSafeEndpoint(host),
+  );
+  const mirrors = mirrorHosts.map((host, index) =>
+    googleBackend(preferred, { ...config, googleBaseURL: host }, `google-m${index + 1}:${preferred}`),
+  );
+
+  // Same-host duplicates would only burn a pacing slot on a pool that has just
+  // failed, so the built-ins skip anything the user already configured.
+  const seenHosts = new Set([hostKey(config.googleBaseURL), ...mirrorHosts.map(hostKey)]);
+  const builtinHosts = BUILTIN_GOOGLE_HOSTS.filter((host) => !seenHosts.has(hostKey(host))).map(
+    (host, index) => {
+      // Vary the client so a globally throttled pool cannot take both hosts
+      // down with it.
+      const client = clients[index % clients.length];
+      return googleBackend(
+        client,
+        { ...config, googleBaseURL: host },
+        `google-h${index + 1}:${client}`,
+        `Google (${hostKey(host)})`,
+      );
+    },
+  );
 
   const rest: FreeBackend[] = [];
+  // Account-backed services are stable and quota-metered; put them ahead of
+  // the public fallbacks when the user has configured them.
+  if (alibabaConfigured(config)) rest.push(alibabaBackend(config));
+  if (azureConfigured(config)) rest.push(azureBackend(config));
   if (String(config.customUrl || "").trim()) rest.push(customBackend(config));
+  rest.push(microsoftBackend());
   rest.push(myMemoryBackend(config));
   if (String(config.libreURL || "").trim()) rest.push(libreTranslateBackend(config));
-  return [...google, ...mirrors, ...rest];
+  return [...google, ...mirrors, ...builtinHosts, ...rest];
 }
 
 /** Ordered chain for the next batch, honoring the user's selection. */
@@ -448,9 +594,19 @@ export async function translateFree(
   context: ProviderContext,
   config: FreeConfig = readFreeConfig(),
 ): Promise<string[]> {
+  // Pinning an unconfigured service must say what is missing instead of
+  // silently translating with Google.
+  if (config.backend === "alibaba" && !alibabaConfigured(config)) {
+    throw new Error(getString("free-alibaba-not-configured"));
+  }
+  if (config.backend === "azure" && !azureConfigured(config)) {
+    throw new Error(getString("free-azure-not-configured"));
+  }
+
   const chain = buildFreeChain(config);
   const now = Date.now();
   let sawThrottle = false;
+  let lastError: unknown = null;
   const available = chain.filter((backend) => (disabledUntil.get(backend.id) || 0) <= now);
 
   if (!available.length) {
@@ -481,6 +637,7 @@ export async function translateFree(
       activeBackendId = backend.id;
       return translated;
     } catch (error: any) {
+      lastError = error;
       const throttled = isThrottleFailure(error);
       if (throttled) sawThrottle = true;
       disabledUntil.set(backend.id, Date.now() + cooldownFor(error));
@@ -490,10 +647,13 @@ export async function translateFree(
   }
 
   // Nothing is throttled, so every service answered but rejected the payload
-  // (for example a response shape this build cannot parse). Surface a plain
-  // error: the caller falls back to per-segment requests immediately instead
-  // of pausing the run for a cooldown that would not change the outcome.
-  if (!sawThrottle) throw new Error(getString("free-all-unavailable"));
+  // (for example a bad key or a response shape this build cannot parse).
+  // Surface the concrete error: the caller still fails fast, and the settings
+  // pane can tell the user whether the key, endpoint or response was wrong.
+  if (!sawThrottle) {
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(getString("free-all-unavailable"));
+  }
 
   const soonest = Math.min(...available.map((backend) => disabledUntil.get(backend.id) || 0));
   throw new GoogleThrottleError(

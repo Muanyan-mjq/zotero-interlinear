@@ -223,6 +223,11 @@
   display: none !important;
 }
 
+/* Fields use display:grid, so the native [hidden] rule does not win. */
+#interlinear-settings-root [hidden] {
+  display: none !important;
+}
+
 #interlinear-settings-root .interlinear-section-head {
   display: flex;
   align-items: center;
@@ -1140,6 +1145,7 @@
   color: LinkText;
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow-wrap: anywhere;
 }
 
 #interlinear-settings-root .interlinear-footer {
@@ -1277,6 +1283,12 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+#interlinear-settings-root .interlinear-free-group + .interlinear-free-group {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--interlinear-border);
 }
 
 /* ------------------------------------------------------- color picker popup */

@@ -129,7 +129,7 @@ test("normalizeAppearance exposes the full appearance defaults", () => {
   assert.equal(settings.theme, "auto");
   assert.equal(settings.underline, false);
   assert.equal(settings.underlineColor, "");
-  assert.equal(settings.ribbon, true);
+  assert.equal(settings.ribbon, false);
   assert.equal(settings.ribbonColor, "#2f6fdf");
 });
 
@@ -666,7 +666,7 @@ test("default reader and print CSS are frozen snapshots", () => {
     buildTranslationCSS("interlinear-translation", undefined, "reader"),
     `.interlinear-translation {
   box-sizing: border-box;
-  border-left: 4px solid #2f6fdf;
+  border-left: none;
   margin: 0.65em 0 1.25em;
   padding: 0.45em 0.95em;
   line-height: 1.75;
@@ -680,7 +680,7 @@ test("default reader and print CSS are frozen snapshots", () => {
     `.interlinear-translation {
   margin: 0.18em 0 1.25em !important;
   padding: 0.12em 0 0.12em 0.78em !important;
-  border-left: 2.2pt solid #2f6fdf !important;
+  border-left: none !important;
   color: #222 !important;
   background: transparent !important;
   font-size: 12pt !important;
@@ -720,6 +720,7 @@ test("divider, right ribbon and block layout are emitted and clamped", () => {
       dividerStyle: "dashed",
       dividerWidth: 2,
       dividerOffset: 0.5,
+      ribbon: true,
       ribbonPosition: "right",
       ribbonWidth: 6,
       ribbonStyle: "dotted",

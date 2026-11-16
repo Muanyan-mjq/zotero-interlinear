@@ -18,6 +18,15 @@ export interface ShortcutEventLike {
   metaKey?: boolean;
 }
 
+export interface ShortcutParseOptions {
+  /**
+   * Paragraph translation may bind a bare letter or digit. Typing contexts are
+   * excluded by the reader, so a plain key is usable there without hijacking
+   * the settings form or the reader's search field.
+   */
+  allowPlainKey?: boolean;
+}
+
 export const DEFAULT_SHORTCUT = "Alt+Enter";
 
 const MODIFIER_ALIASES: Record<string, "ctrl" | "alt" | "shift" | "meta"> = {
@@ -100,12 +109,20 @@ function isMac(override?: boolean): boolean {
   }
 }
 
-function withModifiers(spec: Pick<ShortcutSpec, "ctrl" | "alt" | "meta" | "key">): boolean {
-  // A plain letter/number would hijack ordinary typing inside the reader.
-  return spec.ctrl || spec.alt || spec.meta || /^F([1-9]|1[0-2])$/u.test(spec.key);
+function withModifiers(
+  spec: Pick<ShortcutSpec, "ctrl" | "alt" | "shift" | "meta" | "key">,
+  allowPlainKey = false,
+): boolean {
+  if (spec.ctrl || spec.alt || spec.meta) return true;
+  if (/^F([1-9]|1[0-2])$/u.test(spec.key)) return true;
+  // Shift+letter would be ordinary capitalisation; only bare keys qualify.
+  return allowPlainKey && !spec.shift && /^([A-Z]|[0-9])$/u.test(spec.key);
 }
 
-export function parseShortcut(value: string): ShortcutSpec | null {
+export function parseShortcut(
+  value: string,
+  options: ShortcutParseOptions = {},
+): ShortcutSpec | null {
   const parts = String(value || "")
     .split("+")
     .map((part) => part.trim())
@@ -136,7 +153,7 @@ export function parseShortcut(value: string): ShortcutSpec | null {
   }
 
   if (!spec.key) return null;
-  if (!withModifiers(spec)) return null;
+  if (!withModifiers(spec, options.allowPlainKey)) return null;
   return spec;
 }
 
@@ -154,13 +171,20 @@ export function formatShortcut(
   return parts.join("+");
 }
 
-export function normalizeShortcut(value: string, fallback = DEFAULT_SHORTCUT): string {
-  const spec = parseShortcut(value);
+export function normalizeShortcut(
+  value: string,
+  fallback = DEFAULT_SHORTCUT,
+  options: ShortcutParseOptions = {},
+): string {
+  const spec = parseShortcut(value, options);
   return spec ? formatShortcut(spec) : fallback;
 }
 
-export function isValidShortcut(value: string): boolean {
-  return parseShortcut(value) !== null;
+export function isValidShortcut(
+  value: string,
+  options: ShortcutParseOptions = {},
+): boolean {
+  return parseShortcut(value, options) !== null;
 }
 
 function normalizeEventKey(key: string): string {
@@ -172,7 +196,10 @@ function normalizeEventKey(key: string): string {
   return key;
 }
 
-export function shortcutFromEvent(event: ShortcutEventLike): ShortcutSpec | null {
+export function shortcutFromEvent(
+  event: ShortcutEventLike,
+  options: ShortcutParseOptions = {},
+): ShortcutSpec | null {
   const key = eventKeyToken(event);
   if (!normalizeKey(key)) return null;
   const spec: ShortcutSpec = {
@@ -182,7 +209,7 @@ export function shortcutFromEvent(event: ShortcutEventLike): ShortcutSpec | null
     meta: !!event.metaKey,
     key,
   };
-  return withModifiers(spec) ? spec : null;
+  return withModifiers(spec, options.allowPlainKey) ? spec : null;
 }
 
 export function matchesShortcut(
@@ -201,9 +228,10 @@ export function matchesShortcut(
 export function shortcutsEqual(
   first: string,
   second: string,
+  options: ShortcutParseOptions = {},
 ): boolean {
-  const a = parseShortcut(first);
-  const b = parseShortcut(second);
+  const a = parseShortcut(first, options);
+  const b = parseShortcut(second, options);
   if (!a || !b) return false;
   return (
     a.ctrl === b.ctrl &&

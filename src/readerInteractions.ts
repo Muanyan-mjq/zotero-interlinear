@@ -22,7 +22,10 @@ interface SelectionLike {
 
 export interface InteractionHost {
   translateSelection(text: string): Promise<string>;
-  translateParagraph(source: HTMLElement, options?: { force?: boolean }): Promise<void>;
+  translateParagraph(
+    source: HTMLElement,
+    options?: { force?: boolean; toggle?: boolean },
+  ): Promise<void>;
 }
 
 export interface InteractionOptions {
@@ -57,10 +60,34 @@ function findSource(target: EventTarget | null): HTMLElement | null {
   return source;
 }
 
+/**
+ * Resolve the paragraph a pointer or key gesture refers to. Hovering a
+ * translation block targets the paragraph above it, so the same gesture that
+ * translated it can also remove it.
+ */
+function sourceAt(target: EventTarget | null): HTMLElement | null {
+  const element = elementOf(target as Node | null);
+  const block = element?.closest?.(`.${TRANSLATION_CLASS}`) as HTMLElement | null;
+  if (block) {
+    const previous = block.previousElementSibling as HTMLElement | null;
+    return previous?.matches?.(SOURCE_SELECTOR) ? previous : null;
+  }
+  return findSource(target);
+}
+
+/** Never turn keystrokes typed into a control into reader gestures. */
+export function isTextEntryTarget(target: EventTarget | null): boolean {
+  const element = elementOf(target as Node | null);
+  if (!element) return false;
+  const tag = element.localName;
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  return (element as HTMLElement).isContentEditable === true;
+}
+
 function invokeParagraph(
   host: InteractionHost,
   source: HTMLElement,
-  options?: { force?: boolean },
+  options?: { force?: boolean; toggle?: boolean },
 ): void {
   const report = (error: unknown) => {
     try {
@@ -241,6 +268,8 @@ export function attachReaderInteractions(
     });
   let disposed = false;
   let hovered: HTMLElement | null = null;
+  /** Last paragraph under the pointer, tracked without requiring Alt. */
+  let pointerSource: HTMLElement | null = null;
   let popup: ReturnType<typeof createPopup> | null = null;
 
   const getPopupWidth = options.getPopupWidth || (() => 380);
@@ -273,12 +302,13 @@ export function attachReaderInteractions(
   };
 
   /**
-   * Alt-hover only marks the paragraph; translation happens on Alt+click.
-   * Hover-to-translate and the Ctrl modifier were removed at the user's
-   * request, so there is no dwell timer here.
+   * The pointer position is tracked even without Alt so the paragraph shortcut
+   * works with a single key press. Alt still adds the outline that marks the
+   * paragraph an Alt+click would act on.
    */
   const onMouseMove = (event: MouseEvent) => {
-    const source = findSource(event.target);
+    const source = sourceAt(event.target);
+    pointerSource = source?.isConnected ? source : null;
     if (!event.altKey) {
       clearHover();
       return;
@@ -291,9 +321,14 @@ export function attachReaderInteractions(
     }
   };
 
-  const onMouseLeave = () => clearHover();
+  const clearPointer = () => {
+    pointerSource = null;
+    clearHover();
+  };
 
-  const onScroll = () => clearHover();
+  const onMouseLeave = () => clearPointer();
+
+  const onScroll = () => clearPointer();
 
   const onMouseUp = () => {
     schedule(() => {
@@ -400,26 +435,32 @@ export function attachReaderInteractions(
   const onDoubleClick = (event: MouseEvent) => showBlockMenu(event);
 
   const onClick = (event: MouseEvent) => {
-    if (retryIfRequested(event)) return;
-    if (!event.altKey) return;
-    const source = findSource(event.target);
+    if (!event.altKey) {
+      // A plain click on a failed block retries it; Alt+click keeps the
+      // translate/restore toggle even for failed blocks.
+      retryIfRequested(event);
+      return;
+    }
+    const source = sourceAt(event.target);
     if (!source) return;
     event.preventDefault();
     event.stopPropagation();
-    clearHover();
-    invokeParagraph(host, source);
+    clearPointer();
+    invokeParagraph(host, source, { toggle: true });
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
       hidePopup();
-      clearHover();
+      clearPointer();
       return;
     }
 
     if ((event.key === "Enter" || event.key === " ") && retryIfRequested(event)) {
       return;
     }
+
+    if (isTextEntryTarget(event.target)) return;
 
     const toggleShortcut = options.getToggleShortcutSettings?.();
     if (
@@ -450,7 +491,12 @@ export function attachReaderInteractions(
     const target = elementOf(event.target as Node);
     if (target?.closest(`.${POPUP_CLASS}`)) return;
 
-    let source = hovered && hovered.isConnected ? hovered : null;
+    let source =
+      hovered && hovered.isConnected
+        ? hovered
+        : pointerSource && pointerSource.isConnected
+          ? pointerSource
+          : null;
     if (!source) {
       const selection = getSelection();
       if (selection?.rangeCount) {
@@ -460,15 +506,15 @@ export function attachReaderInteractions(
     if (!source) return;
     event.preventDefault();
     event.stopPropagation();
-    clearHover();
-    invokeParagraph(host, source);
+    clearPointer();
+    invokeParagraph(host, source, { toggle: true });
   };
 
   const onMouseDown = (event: MouseEvent) => {
     if (popup && !popup.contains(event.target)) hidePopup();
   };
 
-  const onWindowBlur = () => clearHover();
+  const onWindowBlur = () => clearPointer();
 
   doc.addEventListener("mousemove", onMouseMove, true);
   doc.addEventListener("mouseleave", onMouseLeave, true);

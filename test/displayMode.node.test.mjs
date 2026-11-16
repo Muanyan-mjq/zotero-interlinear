@@ -8,23 +8,23 @@ import {
   normalizeDisplayMode,
 } from "../src/displayMode.ts";
 
-test("display modes expose the four reader layouts and a top-bottom default", () => {
+test("display modes expose the four reader layouts and a side-by-side default", () => {
   assert.deepEqual(DISPLAY_MODES, [
     "top-bottom",
     "side-by-side",
     "target-only",
     "source-only",
   ]);
-  assert.equal(DEFAULT_DISPLAY_MODE, "top-bottom");
+  assert.equal(DEFAULT_DISPLAY_MODE, "side-by-side");
 });
 
-test("normalizeDisplayMode keeps valid modes and falls back to top-bottom", () => {
+test("normalizeDisplayMode keeps valid modes and falls back to side-by-side", () => {
   for (const mode of DISPLAY_MODES) {
     assert.equal(normalizeDisplayMode(mode), mode);
   }
-  assert.equal(normalizeDisplayMode("columns"), "top-bottom");
-  assert.equal(normalizeDisplayMode(undefined), "top-bottom");
-  assert.equal(normalizeDisplayMode(null), "top-bottom");
+  assert.equal(normalizeDisplayMode("columns"), "side-by-side");
+  assert.equal(normalizeDisplayMode(undefined), "side-by-side");
+  assert.equal(normalizeDisplayMode(null), "side-by-side");
 });
 
 test("target-only hides only the source cells", () => {

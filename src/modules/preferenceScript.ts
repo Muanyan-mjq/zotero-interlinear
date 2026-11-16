@@ -8,6 +8,7 @@ import {
   DEFAULT_MAX_CONCURRENT,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_OLLAMA_MODEL,
+  DEFAULT_OLLAMA_PROMPT,
   DEFAULT_OLLAMA_URL,
   DEFAULT_OPENAI_ENDPOINT,
   DEFAULT_OPENAI_MODEL,
@@ -52,17 +53,24 @@ import {
   getLibreTranslateURL,
   getMyMemoryEmail,
   getMyMemoryURL,
+  DEFAULT_AZURE_ENDPOINT,
   DEFAULT_MYMEMORY_URL,
   getToggleShortcut,
   getToggleShortcutEnabled,
   getDisplayShortcut,
   getDisplayShortcutEnabled,
   getAutoTranslateOnOpen,
+  getAlibabaAccessKeyId,
+  getAlibabaAccessKeySecret,
+  getAzureApiKey,
+  getAzureEndpoint,
+  getAzureRegion,
   getMaxCharsPerRequest,
   getMaxBatchParagraphs,
   getMaxConcurrent,
   getMaxConsecutiveErrors,
   getOllamaModel,
+  getOllamaPrompt,
   getOllamaURL,
   getOpenAIApiKey,
   getOpenAIEndpoint,
@@ -116,11 +124,14 @@ import {
   setDisplayShortcut,
   setDisplayShortcutEnabled,
   setAutoTranslateOnOpen,
+  setAzureEndpoint,
+  setAzureRegion,
   setMaxCharsPerRequest,
   setMaxBatchParagraphs,
   setMaxConcurrent,
   setMaxConsecutiveErrors,
   setOllamaModel,
+  setOllamaPrompt,
   setOllamaURL,
   setOpenAIApiKey,
   setOpenAIEndpoint,
@@ -233,8 +244,6 @@ import { version as addonVersion } from "../../package.json";
 import { logError, redactForDisplay } from "../utils/log";
 import { assessEndpoint } from "../utils/endpointSafety";
 import { SECRET_PREFS, clearSecret, getSecret, getSecretStatus, isKeystoreAvailable, setSecret, whenSecretsReady } from "../secrets";
-
-const PROJECT_URL = "https://github.com/Muanyan-mjq/zotero-interlinear";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -3127,6 +3136,40 @@ function syncSectionVisibility(doc: Document): void {
   }
 }
 
+/**
+ * Auto rotation can reach every free service, so it shows all groups. Pinning a
+ * service hides the unrelated groups and opens the backup drawer that holds the
+ * pinned one.
+ */
+function syncFreeServiceFields(doc: Document): void {
+  const backend =
+    getElement<HTMLSelectElement>(doc, "interlinear-free-backend")?.value || "auto";
+  const isAuto = backend === "auto";
+  const isGoogle = isAuto || backend.startsWith("google:");
+  const show = (id: string, visible: boolean): void => {
+    const element = doc.getElementById(id) as HTMLElement | null;
+    if (element) element.hidden = !visible;
+  };
+
+  show("interlinear-free-google-card", isGoogle);
+  show("interlinear-free-client-field", isAuto);
+  show("interlinear-free-client-help", isAuto);
+  show("interlinear-free-fallback-field", !isAuto);
+  show("interlinear-free-fallback-help", !isAuto);
+
+  const backup = doc.getElementById(
+    "interlinear-free-backup-details",
+  ) as HTMLDetailsElement | null;
+  if (backup) backup.open = !isGoogle;
+
+  for (const group of Array.from(
+    doc.querySelectorAll("[data-free-group]"),
+  ) as HTMLElement[]) {
+    const id = group.dataset.freeGroup || "";
+    group.hidden = !(isAuto || id === backend);
+  }
+}
+
 function setActiveTab(
   doc: Document,
   tab: SettingsTab,
@@ -3198,7 +3241,22 @@ const SECRET_FIELDS: SecretField[] = [
   { name: "claude", inputId: "interlinear-claude-api-key", pref: SECRET_PREFS.claude },
   { name: "gemini", inputId: "interlinear-gemini-api-key", pref: SECRET_PREFS.gemini },
   { name: "libre", inputId: "interlinear-libre-api-key", pref: SECRET_PREFS.libreTranslate },
+  {
+    name: "alibaba-id",
+    inputId: "interlinear-alibaba-access-key-id",
+    pref: SECRET_PREFS.alibabaAccessKeyId,
+  },
+  {
+    name: "alibaba-secret",
+    inputId: "interlinear-alibaba-access-key-secret",
+    pref: SECRET_PREFS.alibabaAccessKeySecret,
+  },
+  { name: "azure", inputId: "interlinear-azure-api-key", pref: SECRET_PREFS.azure },
 ];
+
+function secretField(name: string): SecretField | undefined {
+  return SECRET_FIELDS.find((field) => field.name === name);
+}
 
 /**
  * How to persist keys on the next save when the OS key store is unavailable.
@@ -3273,6 +3331,11 @@ function readSecretInput(doc: Document, field: SecretField): string | undefined 
     return undefined;
   }
   return input.value.trim();
+}
+
+function readNamedSecret(doc: Document, name: string): string | undefined {
+  const field = secretField(name);
+  return field ? readSecretInput(doc, field) : undefined;
 }
 
 /**
@@ -3385,12 +3448,23 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-google-help", "provider-google-help"],
     ["interlinear-free-backend-label", "provider-free-backend-label"],
     ["interlinear-free-backend-help", "provider-free-backend-help"],
+    ["interlinear-free-google-subtitle", "provider-free-google-subtitle"],
+    ["interlinear-free-backup-summary", "provider-free-backup-summary"],
+    ["interlinear-free-mirrors-summary", "provider-free-mirrors-summary"],
+    ["interlinear-free-microsoft-subtitle", "provider-free-microsoft-subtitle"],
+    ["interlinear-free-microsoft-help", "provider-free-microsoft-help"],
+    ["interlinear-free-mymemory-subtitle", "provider-free-mymemory-subtitle"],
+    ["interlinear-free-libre-subtitle", "provider-free-libre-subtitle"],
+    ["interlinear-free-custom-subtitle", "provider-free-custom-subtitle"],
     ["interlinear-free-backend-auto", "provider-free-backend-auto"],
     ["interlinear-free-backend-google-it", "provider-free-backend-google-it"],
     ["interlinear-free-backend-google-at", "provider-free-backend-google-at"],
     ["interlinear-free-backend-google-gtx", "provider-free-backend-google-gtx"],
     ["interlinear-free-backend-google-chrome", "provider-free-backend-google-chrome"],
     ["interlinear-free-backend-google-firefox", "provider-free-backend-google-firefox"],
+    ["interlinear-free-backend-alibaba", "provider-free-backend-alibaba"],
+    ["interlinear-free-backend-azure", "provider-free-backend-azure"],
+    ["interlinear-free-backend-microsoft", "provider-free-backend-microsoft"],
     ["interlinear-free-backend-mymemory", "provider-free-backend-mymemory"],
     ["interlinear-free-backend-libre", "provider-free-backend-libre"],
     ["interlinear-free-backend-custom", "provider-free-backend-custom"],
@@ -3406,6 +3480,35 @@ function fillProviderLabels(doc: Document): void {
     ["interlinear-free-libre-url-help", "provider-free-libre-url-help"],
     ["interlinear-free-libre-key-label", "provider-free-libre-key-label"],
     ["interlinear-free-libre-key-help", "provider-free-libre-key-help"],
+    ["interlinear-free-libre-help", "provider-free-libre-help"],
+    ["interlinear-free-libre-step1", "provider-free-libre-step1"],
+    ["interlinear-free-libre-key-link", "provider-free-libre-key-link"],
+    ["interlinear-free-libre-step2", "provider-free-libre-step2"],
+    ["interlinear-free-libre-quickstart-link", "provider-free-libre-quickstart-link"],
+    ["interlinear-free-libre-hint", "provider-free-libre-hint"],
+    ["interlinear-free-alibaba-subtitle", "provider-free-alibaba-subtitle"],
+    ["interlinear-free-alibaba-help", "provider-free-alibaba-help"],
+    ["interlinear-free-alibaba-step1", "provider-free-alibaba-step1"],
+    ["interlinear-free-alibaba-console-link", "provider-free-alibaba-console-link"],
+    ["interlinear-free-alibaba-step2", "provider-free-alibaba-step2"],
+    ["interlinear-free-alibaba-ak-link", "provider-free-alibaba-ak-link"],
+    ["interlinear-free-alibaba-hint", "provider-free-alibaba-hint"],
+    ["interlinear-free-alibaba-id-label", "provider-free-alibaba-id-label"],
+    ["interlinear-free-alibaba-id-help", "provider-free-alibaba-id-help"],
+    ["interlinear-free-alibaba-secret-label", "provider-free-alibaba-secret-label"],
+    ["interlinear-free-alibaba-secret-help", "provider-free-alibaba-secret-help"],
+    ["interlinear-free-azure-subtitle", "provider-free-azure-subtitle"],
+    ["interlinear-free-azure-help", "provider-free-azure-help"],
+    ["interlinear-free-azure-step1", "provider-free-azure-step1"],
+    ["interlinear-free-azure-create-link", "provider-free-azure-create-link"],
+    ["interlinear-free-azure-step2", "provider-free-azure-step2"],
+    ["interlinear-free-azure-hint", "provider-free-azure-hint"],
+    ["interlinear-free-azure-key-label", "provider-free-azure-key-label"],
+    ["interlinear-free-azure-key-help", "provider-free-azure-key-help"],
+    ["interlinear-free-azure-region-label", "provider-free-azure-region-label"],
+    ["interlinear-free-azure-region-help", "provider-free-azure-region-help"],
+    ["interlinear-free-azure-endpoint-label", "provider-free-azure-endpoint-label"],
+    ["interlinear-free-azure-endpoint-help", "provider-free-azure-endpoint-help"],
     ["interlinear-free-mirrors-label", "provider-free-mirrors-label"],
     ["interlinear-free-mirrors-help", "provider-free-mirrors-help"],
     ["interlinear-free-custom-url-label", "provider-free-custom-url-label"],
@@ -3710,6 +3813,8 @@ function fillStaticLabels(doc: Document): void {
     ["interlinear-ollama-title", "settings-ollama-title"],
     ["interlinear-ollama-url-label", "settings-ollama-url-label"],
     ["interlinear-ollama-model-label", "settings-ollama-model-label"],
+    ["interlinear-ollama-prompt-label", "settings-ollama-prompt-label"],
+    ["interlinear-ollama-prompt-help", "settings-ollama-prompt-help"],
     ["interlinear-test-ollama", "settings-test-ollama"],
     ["interlinear-refresh-title", "settings-refresh-title"],
     ["interlinear-refresh-help", "settings-refresh-help"],
@@ -3741,6 +3846,7 @@ const KEY_TARGET_ENDPOINT_IDS = [
   "interlinear-openai-endpoint",
   "interlinear-claude-endpoint",
   "interlinear-gemini-base-url",
+  "interlinear-azure-endpoint",
 ] as const;
 
 /** Every endpoint that can be pointed at an arbitrary host. */
@@ -3922,6 +4028,9 @@ function saveSettings(doc: Document): string[] {
   const model =
     getElement<HTMLInputElement>(doc, "interlinear-ollama-model")?.value ||
     DEFAULT_OLLAMA_MODEL;
+  const prompt =
+    getElement<HTMLTextAreaElement>(doc, "interlinear-ollama-prompt")?.value ||
+    DEFAULT_OLLAMA_PROMPT;
 
   setEngine(engine);
   setSourceLanguage(
@@ -3954,17 +4063,33 @@ function saveSettings(doc: Document): string[] {
   setFreeCustomResultPath(
     readInputText(doc, "interlinear-free-custom-path") || DEFAULT_FREE_CUSTOM_RESULT_PATH,
   );
-  const libreKey = readSecretInput(doc, SECRET_FIELDS[3]);
+  const libreKey = readNamedSecret(doc, "libre");
   if (libreKey !== undefined) {
     setSecret(SECRET_PREFS.libreTranslate, libreKey, secretWriteOptions());
   }
+  const alibabaId = readNamedSecret(doc, "alibaba-id");
+  if (alibabaId !== undefined) {
+    setSecret(SECRET_PREFS.alibabaAccessKeyId, alibabaId, secretWriteOptions());
+  }
+  const alibabaSecret = readNamedSecret(doc, "alibaba-secret");
+  if (alibabaSecret !== undefined) {
+    setSecret(SECRET_PREFS.alibabaAccessKeySecret, alibabaSecret, secretWriteOptions());
+  }
+  const azureKey = readNamedSecret(doc, "azure");
+  if (azureKey !== undefined) {
+    setSecret(SECRET_PREFS.azure, azureKey, secretWriteOptions());
+  }
+  setAzureRegion(readInputText(doc, "interlinear-azure-region"));
+  setAzureEndpoint(
+    readInputText(doc, "interlinear-azure-endpoint") || DEFAULT_AZURE_ENDPOINT,
+  );
   // A changed service selection invalidates the cooldowns from the old chain.
   resetFreeBackends();
   setOpenAIEndpoint(
     readInputText(doc, "interlinear-openai-endpoint") || DEFAULT_OPENAI_ENDPOINT,
   );
   setOpenAIModel(readInputText(doc, "interlinear-openai-model") || DEFAULT_OPENAI_MODEL);
-  const openaiKey = readSecretInput(doc, SECRET_FIELDS[0]);
+  const openaiKey = readNamedSecret(doc, "openai");
   if (openaiKey !== undefined) setSecret(SECRET_PREFS.openai, openaiKey, secretWriteOptions());
   setOpenAIPrompt(readInputText(doc, "interlinear-openai-prompt") || DEFAULT_OPENAI_PROMPT);
   setOpenAITemperature(
@@ -3974,7 +4099,7 @@ function saveSettings(doc: Document): string[] {
     readInputText(doc, "interlinear-claude-endpoint") || getClaudeEndpoint(),
   );
   setClaudeModel(readInputText(doc, "interlinear-claude-model") || getClaudeModel());
-  const claudeKey = readSecretInput(doc, SECRET_FIELDS[1]);
+  const claudeKey = readNamedSecret(doc, "claude");
   if (claudeKey !== undefined) setSecret(SECRET_PREFS.claude, claudeKey, secretWriteOptions());
   setClaudePrompt(readInputText(doc, "interlinear-claude-prompt") || getClaudePrompt());
   setClaudeTemperature(
@@ -3982,7 +4107,7 @@ function saveSettings(doc: Document): string[] {
   );
   setGeminiBaseURL(readInputText(doc, "interlinear-gemini-base-url") || getGeminiBaseURL());
   setGeminiModel(readInputText(doc, "interlinear-gemini-model") || getGeminiModel());
-  const geminiKey = readSecretInput(doc, SECRET_FIELDS[2]);
+  const geminiKey = readNamedSecret(doc, "gemini");
   if (geminiKey !== undefined) setSecret(SECRET_PREFS.gemini, geminiKey, secretWriteOptions());
   setGeminiPrompt(readInputText(doc, "interlinear-gemini-prompt") || getGeminiPrompt());
   setGeminiTemperature(
@@ -3991,6 +4116,7 @@ function saveSettings(doc: Document): string[] {
   setGlossaryText(readInputText(doc, "interlinear-glossary"));
   setOllamaURL(url);
   setOllamaModel(model);
+  setOllamaPrompt(prompt);
   setSkipLastPages(
     readNumberInput(doc, "interlinear-skip-last-pages", DEFAULT_SKIP_LAST_PAGES),
   );
@@ -4033,8 +4159,13 @@ function saveSettings(doc: Document): string[] {
   setShortcutEnabled(readCheckbox(doc, "interlinear-shortcut-enabled"));
   const shortcutInput = getElement<HTMLInputElement>(doc, "interlinear-shortcut");
   const rawShortcut = shortcutInput?.value.trim() || DEFAULT_SHORTCUT;
-  const shortcutValid = isValidShortcut(rawShortcut);
-  const normalizedShortcut = normalizeShortcut(rawShortcut);
+  const shortcutOptions = { allowPlainKey: true };
+  const shortcutValid = isValidShortcut(rawShortcut, shortcutOptions);
+  const normalizedShortcut = normalizeShortcut(
+    rawShortcut,
+    DEFAULT_SHORTCUT,
+    shortcutOptions,
+  );
   setShortcut(normalizedShortcut);
   if (shortcutInput) shortcutInput.value = normalizedShortcut;
   if (!shortcutValid) warnings.push(getString("interaction-shortcut-invalid"));
@@ -4167,8 +4298,15 @@ async function testGoogle(doc: Document): Promise<void> {
       myMemoryEmail: readInputText(doc, "interlinear-free-mymemory-email"),
       myMemoryUrl: readInputText(doc, "interlinear-free-mymemory-url") || DEFAULT_MYMEMORY_URL,
       libreURL: readInputText(doc, "interlinear-free-libre-url"),
-      libreKey:
-        readSecretInput(doc, SECRET_FIELDS[3]) ?? getLibreTranslateApiKey(),
+      libreKey: readNamedSecret(doc, "libre") ?? getLibreTranslateApiKey(),
+      alibabaAccessKeyId:
+        readNamedSecret(doc, "alibaba-id") ?? getAlibabaAccessKeyId(),
+      alibabaAccessKeySecret:
+        readNamedSecret(doc, "alibaba-secret") ?? getAlibabaAccessKeySecret(),
+      azureKey: readNamedSecret(doc, "azure") ?? getAzureApiKey(),
+      azureRegion: readInputText(doc, "interlinear-azure-region"),
+      azureEndpoint:
+        readInputText(doc, "interlinear-azure-endpoint") || DEFAULT_AZURE_ENDPOINT,
       googleMirrors: readInputText(doc, "interlinear-free-mirrors"),
       customUrl: readInputText(doc, "interlinear-free-custom-url"),
       customResultPath:
@@ -4410,22 +4548,26 @@ function clearCache(doc: Document): void {
   updateCacheStatus(doc);
 }
 
-function registerProjectLink(doc: Document): void {
-  getElement<HTMLAnchorElement>(doc, "interlinear-github-link")?.addEventListener(
-    "click",
-    (event) => {
+function registerExternalLinks(doc: Document): void {
+  for (const anchor of Array.from(
+    doc.querySelectorAll("a.interlinear-external-link"),
+  ) as HTMLAnchorElement[]) {
+    anchor.addEventListener("click", (event) => {
+      const href = anchor.getAttribute("href") || "";
+      if (!/^https?:\/\//u.test(href)) return;
       event.preventDefault();
       const launcher = (Zotero as any).launchURL;
-      if (typeof launcher === "function") launcher(PROJECT_URL);
-      else doc.defaultView?.open(PROJECT_URL, "_blank");
-    },
-  );
+      if (typeof launcher === "function") launcher(href);
+      else doc.defaultView?.open(href, "_blank");
+    });
+  }
 }
 
 function registerShortcutRecorder(
   doc: Document,
   inputId: string,
   defaultShortcut: string,
+  options: { allowPlainKey?: boolean } = {},
 ): void {
   const input = getElement<HTMLInputElement>(doc, inputId);
   if (!input) return;
@@ -4440,7 +4582,7 @@ function registerShortcutRecorder(
       return;
     }
 
-    const spec = shortcutFromEvent(keyEvent);
+    const spec = shortcutFromEvent(keyEvent, options);
     if (spec) input.value = formatShortcut(spec);
   });
 
@@ -4454,11 +4596,11 @@ function updateShortcutConflict(doc: Document): void {
     readInputText(doc, "interlinear-shortcut"),
     readInputText(doc, "interlinear-toggle-shortcut"),
     readInputText(doc, "interlinear-display-shortcut"),
-  ].filter(isValidShortcut);
+  ].filter((value) => isValidShortcut(value, { allowPlainKey: true }));
   let conflict = false;
   for (let i = 0; i < values.length; i += 1) {
     for (let j = i + 1; j < values.length; j += 1) {
-      if (shortcutsEqual(values[i], values[j])) conflict = true;
+      if (shortcutsEqual(values[i], values[j], { allowPlainKey: true })) conflict = true;
     }
     if (isReservedShortcut(values[i])) conflict = true;
   }
@@ -4489,6 +4631,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   const engine = getElement<HTMLSelectElement>(doc, "interlinear-engine");
   const url = getElement<HTMLInputElement>(doc, "interlinear-ollama-url");
   const model = getElement<HTMLInputElement>(doc, "interlinear-ollama-model");
+  const ollamaPrompt = getElement<HTMLTextAreaElement>(doc, "interlinear-ollama-prompt");
   const skipLastPages = getElement<HTMLInputElement>(doc, "interlinear-skip-last-pages");
   const maxConcurrent = getElement<HTMLInputElement>(doc, "interlinear-max-concurrent");
   const gap = getElement<HTMLInputElement>(doc, "interlinear-request-gap");
@@ -4557,6 +4700,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (engine) engine.value = getEngine();
   if (url) url.value = getOllamaURL();
   if (model) model.value = getOllamaModel();
+  if (ollamaPrompt) ollamaPrompt.value = getOllamaPrompt();
   if (googleBaseURL) googleBaseURL.value = getGoogleBaseURL();
   const freeBackend = getElement<HTMLSelectElement>(doc, "interlinear-free-backend");
   const freeFallback = getElement<HTMLInputElement>(doc, "interlinear-free-fallback");
@@ -4569,6 +4713,7 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   const freeCustomURL = getElement<HTMLInputElement>(doc, "interlinear-free-custom-url");
   const freeCustomPath = getElement<HTMLInputElement>(doc, "interlinear-free-custom-path");
   if (freeBackend) freeBackend.value = getFreeBackend();
+  syncFreeServiceFields(doc);
   if (freeFallback) freeFallback.checked = getFreeAutoFallback();
   if (freeClient) freeClient.value = getGoogleClient();
   if (myMemoryEmail) myMemoryEmail.value = getMyMemoryEmail();
@@ -4578,6 +4723,8 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   if (freeMirrors) freeMirrors.value = getFreeGoogleMirrors();
   if (freeCustomURL) freeCustomURL.value = getFreeCustomURL();
   if (freeCustomPath) freeCustomPath.value = getFreeCustomResultPath();
+  setFormValue(doc, "interlinear-azure-region", getAzureRegion());
+  setFormValue(doc, "interlinear-azure-endpoint", getAzureEndpoint());
   if (openAIEndpoint) openAIEndpoint.value = getOpenAIEndpoint();
   if (openAIModel) openAIModel.value = getOpenAIModel();
   if (openAIApiKey) openAIApiKey.value = getOpenAIApiKey();
@@ -4659,8 +4806,10 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
   doc.addEventListener("change", () => refreshAppearancePreview(doc));
   refreshAppearancePreview(doc);
   updateCacheStatus(doc);
-  registerProjectLink(doc);
-  registerShortcutRecorder(doc, "interlinear-shortcut", DEFAULT_SHORTCUT);
+  registerExternalLinks(doc);
+  registerShortcutRecorder(doc, "interlinear-shortcut", DEFAULT_SHORTCUT, {
+    allowPlainKey: true,
+  });
   registerShortcutRecorder(
     doc,
     "interlinear-toggle-shortcut",
@@ -4691,6 +4840,11 @@ export async function registerPrefsScripts(window: Window): Promise<void> {
     syncSectionVisibility(doc);
     markDirty(doc, engine);
   });
+
+  getElement<HTMLSelectElement>(doc, "interlinear-free-backend")?.addEventListener(
+    "change",
+    () => syncFreeServiceFields(doc),
+  );
 
   const performSave = (): void => {
     try {

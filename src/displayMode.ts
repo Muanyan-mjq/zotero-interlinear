@@ -10,7 +10,7 @@ export const DISPLAY_MODES: readonly DisplayMode[] = [
   "source-only",
 ];
 
-export const DEFAULT_DISPLAY_MODE: DisplayMode = "top-bottom";
+export const DEFAULT_DISPLAY_MODE: DisplayMode = "side-by-side";
 
 export function normalizeDisplayMode(value: unknown): DisplayMode {
   return DISPLAY_MODES.includes(value as DisplayMode)

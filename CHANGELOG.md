@@ -8,6 +8,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
+## [Unreleased]
+
+## [0.9.0] - 2026-11-16
+
+### Changed
+
+- Fresh installs now open translations in side-by-side columns with no left
+  ribbon. Translation blocks stay full width (`Maximum width` 0 = unlimited).
+  Display mode and appearance preferences that a user already saved are kept.
+- Starting or showing a translation now switches Zotero's Reading Mode page
+  width to 100% (the full-width option), so the side-by-side columns use the
+  whole reader pane.
+- The default free translation service is now MyMemory instead of the Google
+  pools. Google, Microsoft Edge, Alibaba Cloud, Azure and LibreTranslate stay
+  available in the picker and in auto rotation.
+- The Azure guidance now links to Microsoft's official "create a Translator
+  resource" article instead of the sign-in-gated portal deep link, which could
+  stall on an unavailable tenant-specific OAuth endpoint.
+
+### Added
+
+- Microsoft Edge's translation endpoint is now a zero-configuration free
+  backend. It needs no account or key, accepts a whole batch in one request and
+  preserves line breaks. Auto rotation uses it after the Google pools, and it
+  can also be pinned in the settings.
+- The free Google chain now includes two built-in alternate gateways
+  (`clients5.google.com` and `translate.google.com`) between the quota pools
+  and the non-Google services. They are skipped when the user already listed
+  the same host as an extra gateway.
+- Alibaba Cloud Machine Translation is now an optional free-quota backend. It
+  signs `TranslateGeneral` requests with the user's AccessKey (HMAC-SHA1 via
+  WebCrypto), splits long paragraphs at the 5,000-character limit, sends
+  segments in parallel, and is throttled like the other free services. The
+  standard tier includes 1,000,000 characters per month at 50 QPS.
+- Azure AI Translator is now an optional free-quota backend. It sends a whole
+  batch of paragraphs in one request, maps the plugin's language codes to
+  `zh-Hans`/`zh-Hant`, and supports an optional resource region and a custom
+  endpoint. The F0 tier includes 2,000,000 characters per month with no expiry.
+- Both account-backed services appear in **Services → Google → Backup and
+  custom services** with step-by-step guidance and direct links to the Alibaba
+  Cloud console/RAM pages and the Azure resource-creation page. AccessKey ID,
+  AccessKey secret and Azure key are stored through the OS key store like every
+  other credential; the Azure region and endpoint are ordinary preferences.
+- LibreTranslate now has the same guided setup card: a link to the official API
+  key portal for the public instance, a link to the self-hosting documentation,
+  and a note that the plugin appends `/translate` to the URL root. The card
+  explains that the public instance requires a key while self-hosted instances
+  usually do not.
+- Single-paragraph translation is now a toggle. The shortcut and Alt+click act
+  on the paragraph under the pointer (including its translation block) and a
+  second gesture takes the block down while keeping the cached text; failed
+  blocks are taken down as well, while a plain click on a failed block still
+  retries. The shortcut may be recorded as a single letter, digit or F1–F12;
+  show/hide and layout-cycle shortcuts remain combination-only.
+- Auto rotation now tries configured Alibaba Cloud and Azure backends after the
+  Google pools and before Microsoft Edge, MyMemory and LibreTranslate. Pinning
+  either service without credentials reports a specific error instead of
+  falling through the whole chain.
+- Unit tests cover the Alibaba RPC signing (cross-checked against Node's
+  `createHmac`), request parameter contract, response parsing and throttle
+  classification, plus Azure language mapping, endpoint normalisation, batch
+  alignment and error extraction.
+- `npm run test:stress` runs a bounded live check of the free backends,
+  including an Alibaba signing benchmark (400 signatures at 20 concurrent), and
+  reports success rate, latency, throttling and batch alignment. It is a
+  diagnostic and is not part of CI.
+
 ## [0.8.1] - 2026-11-12
 
 ### Fixed

@@ -52,19 +52,16 @@
 
 | 偏好键 | 类型 | 范围 / 取值 | 默认 | 作用 | 影响缓存键 / 需重新翻译 |
 |---|---|---|---|---|---|
-| `displayMode` | string | top-bottom / side-by-side / target-only / source-only | top-bottom | 译文块布局 | 否 |
-| `interaction.hoverTranslate` | boolean | true/false | true | 悬停自动翻译开关 | 否 |
-| `interaction.hoverDelayMs` | number | 200–5000 ms | 800 | 悬停停留时间 | 否 |
-| `interaction.hoverModifier` | string | none / alt / ctrl | none | 悬停时必须按住的修饰键 | 否 |
+| `displayMode` | string | top-bottom / side-by-side / target-only / source-only | side-by-side | 译文块布局 | 否 |
 | `interaction.shortcutEnabled` | boolean | true/false | true | 单段翻译快捷键开关 | 否 |
-| `interaction.shortcut` | string | 合法组合键 | Alt+Enter | 单段翻译快捷键 | 否 |
+| `interaction.shortcut` | string | 合法组合键或单键 | Alt+Enter | 单段翻译快捷键；支持单个字母/数字/F1–F12，焦点在输入框时不触发 | 否 |
 | `interaction.toggleShortcutEnabled` | boolean | true/false | false | 显示/隐藏快捷键开关 | 否 |
 | `interaction.toggleShortcut` | string | 合法组合键 | Alt+Shift+T | 显示/隐藏译文 | 否 |
 | `interaction.displayShortcutEnabled` | boolean | true/false | false | 排版循环快捷键开关 | 否 |
 | `interaction.displayShortcut` | string | 合法组合键 | Alt+Shift+D | 循环四种排版 | 否 |
 | `interaction.autoTranslateOnOpen` | string | off / cached / always | off | 打开 PDF 时自动显示缓存或全文翻译 | cached：只读缓存；always：会发请求 |
 
-快捷键冲突：与另一个 Interlinear 快捷键完全相同，或命中 Ctrl/Cmd + A/C/F/L/N/O/P/Q/R/S/T/V/W/X/Y/Z 等常见组合时显示警告；只警告，不阻止保存。
+快捷键冲突：与另一个 Interlinear 快捷键完全相同，或命中 Ctrl/Cmd + A/C/F/L/N/O/P/Q/R/S/T/V/W/X/Y/Z 等常见组合时显示警告；只警告，不阻止保存。单段翻译快捷键可以录成单个字母、数字或 F1–F12（设置页会提示可能覆盖阅读器同名按键），检查器只在鼠标位于段落上或已选中文本时响应。
 
 ## 4. 外观（逐字段兼容偏好）
 
@@ -79,7 +76,7 @@
 | `appearance.theme` | string | auto / light / dark | auto | 译文块配色主题 |
 | `appearance.underline` | boolean | true/false | false | 是否下划线（与 textDecoration 同步） |
 | `appearance.underlineColor` | string | 合法 CSS 颜色 | 空 | 下划线颜色（旧字段） |
-| `appearance.ribbon` | boolean | true/false | true | 左侧色带开关 |
+| `appearance.ribbon` | boolean | true/false | false | 左侧色带开关 |
 | `appearance.ribbonColor` | string | 合法 CSS 颜色 | #2f6fdf | 色带颜色（旧字段） |
 | `appearance.schema` | number | 1–99 | 3 | 外观 schema 版本 |
 | `appearance.v2` | JSON string | 见下节 | 无 | 完整外观结构；存在时优先读取 |
@@ -113,7 +110,7 @@
 | `dividerStyle` | string | solid/dashed/dotted/double | solid | 分隔线线型 |
 | `dividerWidth` | number | 1–6 px | 1 | 分隔线粗细 |
 | `dividerOffset` | number | 0–2 em | 0 | 分隔线与文字距离 |
-| `ribbon` | boolean | true/false | true | 色带开关 |
+| `ribbon` | boolean | true/false | false | 色带开关 |
 | `ribbonPosition` | string | left / right | left | 色带位置 |
 | `ribbonWidth` | number | 1–12 px | 4 | 色带宽度 |
 | `ribbonStyle` | string | solid/dashed/dotted/double | solid | 色带线型 |
@@ -170,7 +167,7 @@
 | `cache.v4.index` | JSON object | LRU 索引（条目数/字符数，上限 1500 条 / 600 万字符） |
 | `cache.v4.{engineHash}.{itemKey}.{len}.{textHash}.{targetLang}` | string | 单条译文；引擎标签包含 provider 配置指纹、语言对、术语表哈希（不含 API Key） |
 
-**不会进入缓存键**：外观（字体/颜色/装饰/块布局）、显示模式、悬停/快捷键、翻译范围、导出模式、UI 跟随。修改这些只重新应用 CSS/收集范围，不会重新请求已有译文。
+**不会进入缓存键**：外观（字体/颜色/装饰/块布局）、显示模式、快捷键、翻译范围、导出模式、UI 跟随。修改这些只重新应用 CSS/收集范围，不会重新请求已有译文。
 
 **会进入缓存键/需要重新翻译**：引擎、端点、模型、提示词、温度、原文/目标语言、术语表（哈希）。轮换 API Key 不影响缓存命中。
 

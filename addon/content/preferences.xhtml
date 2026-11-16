@@ -194,6 +194,9 @@
                 <html:option id="interlinear-free-backend-google-gtx" value="google:gtx"></html:option>
                 <html:option id="interlinear-free-backend-google-chrome" value="google:dict-chrome-ex"></html:option>
                 <html:option id="interlinear-free-backend-google-firefox" value="google:firefox-a"></html:option>
+                <html:option id="interlinear-free-backend-alibaba" value="alibaba"></html:option>
+                <html:option id="interlinear-free-backend-azure" value="azure"></html:option>
+                <html:option id="interlinear-free-backend-microsoft" value="microsoft"></html:option>
                 <html:option id="interlinear-free-backend-mymemory" value="mymemory"></html:option>
                 <html:option id="interlinear-free-backend-libre" value="libretranslate"></html:option>
                 <html:option id="interlinear-free-backend-custom" value="custom"></html:option>
@@ -201,7 +204,7 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-free-backend-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
+          <html:div id="interlinear-free-fallback-field" class="interlinear-field">
             <html:label
               id="interlinear-free-fallback-label"
               for="interlinear-free-fallback"
@@ -216,7 +219,11 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-free-fallback-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
+        </html:div>
+
+        <html:div id="interlinear-free-google-card" class="interlinear-card">
+          <html:p id="interlinear-free-google-subtitle" class="interlinear-subtitle"></html:p>
+          <html:div id="interlinear-free-client-field" class="interlinear-field">
             <html:label
               id="interlinear-free-client-label"
               for="interlinear-free-client"
@@ -249,140 +256,396 @@
             </html:div>
           </html:div>
           <html:p id="interlinear-google-base-help" class="interlinear-help"></html:p>
+          <html:details class="interlinear-details">
+            <html:summary
+              id="interlinear-free-mirrors-summary"
+              class="interlinear-details-summary"
+            ></html:summary>
+            <html:div class="interlinear-details-body">
+              <html:div class="interlinear-field interlinear-field-stacked">
+                <html:label
+                  id="interlinear-free-mirrors-label"
+                  for="interlinear-free-mirrors"
+                  class="interlinear-field-label"
+                ></html:label>
+                <html:div class="interlinear-field-control">
+                  <html:textarea
+                    id="interlinear-free-mirrors"
+                    class="interlinear-textarea"
+                    rows="3"
+                    placeholder="https://translate.google.com&#10;https://your-worker.example.com"
+                  ></html:textarea>
+                </html:div>
+                <html:p id="interlinear-free-mirrors-help" class="interlinear-help"></html:p>
+              </html:div>
+            </html:div>
+          </html:details>
         </html:div>
 
-        <html:div class="interlinear-card">
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-mymemory-url-label"
-              for="interlinear-free-mymemory-url"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-free-mymemory-url"
-                type="text"
-                class="interlinear-input"
-                placeholder="https://api.mymemory.translated.net/get"
-              />
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-free-mymemory-url-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-mymemory-label"
-              for="interlinear-free-mymemory-email"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-free-mymemory-email"
-                type="text"
-                class="interlinear-input"
-                placeholder="name@example.com"
-              />
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-free-mymemory-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-libre-url-label"
-              for="interlinear-free-libre-url"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-free-libre-url"
-                type="text"
-                class="interlinear-input"
-                placeholder="https://libretranslate.com"
-              />
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-free-libre-url-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-libre-key-label"
-              for="interlinear-libre-api-key"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-libre-api-key"
-                type="password"
-                class="interlinear-input"
-              />
-              <html:button
-                type="button"
-                class="interlinear-button interlinear-button-small interlinear-secret-toggle"
-                data-target="interlinear-libre-api-key"
-              ></html:button>
-              <html:span
-                id="interlinear-libre-key-status"
-                class="interlinear-secret-status"
-                role="status"
-                aria-live="polite"
-              ></html:span>
-              <html:button
-                id="interlinear-libre-key-clear"
-                type="button"
-                class="interlinear-button interlinear-button-small interlinear-secret-clear"
-              ></html:button>
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-free-libre-key-help" class="interlinear-help"></html:p>
-        </html:div>
+        <html:details id="interlinear-free-backup-details" class="interlinear-details">
+          <html:summary
+            id="interlinear-free-backup-summary"
+            class="interlinear-details-summary"
+          ></html:summary>
+          <html:div class="interlinear-details-body">
+            <html:div class="interlinear-card">
+              <html:div
+                id="interlinear-free-alibaba-group"
+                class="interlinear-free-group"
+                data-free-group="alibaba"
+              >
+                <html:p
+                  id="interlinear-free-alibaba-subtitle"
+                  class="interlinear-subtitle"
+                ></html:p>
+                <html:p id="interlinear-free-alibaba-help" class="interlinear-help"></html:p>
+                <html:p class="interlinear-help">
+                  <html:span id="interlinear-free-alibaba-step1"></html:span>
+                  <html:a
+                    id="interlinear-free-alibaba-console-link"
+                    class="interlinear-link interlinear-external-link"
+                    href="https://mt.console.aliyun.com/"
+                    >https://mt.console.aliyun.com/</html:a
+                  >
+                </html:p>
+                <html:p class="interlinear-help">
+                  <html:span id="interlinear-free-alibaba-step2"></html:span>
+                  <html:a
+                    id="interlinear-free-alibaba-ak-link"
+                    class="interlinear-link interlinear-external-link"
+                    href="https://ram.console.aliyun.com/manage/ak"
+                    >https://ram.console.aliyun.com/manage/ak</html:a
+                  >
+                </html:p>
+                <html:p id="interlinear-free-alibaba-hint" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-alibaba-id-label"
+                    for="interlinear-alibaba-access-key-id"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-alibaba-access-key-id"
+                      type="password"
+                      class="interlinear-input"
+                      autocomplete="off"
+                    />
+                    <html:button
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-toggle"
+                      data-target="interlinear-alibaba-access-key-id"
+                    ></html:button>
+                    <html:span
+                      id="interlinear-alibaba-id-key-status"
+                      class="interlinear-secret-status"
+                      role="status"
+                      aria-live="polite"
+                    ></html:span>
+                    <html:button
+                      id="interlinear-alibaba-id-key-clear"
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-clear"
+                    ></html:button>
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-alibaba-id-help" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-alibaba-secret-label"
+                    for="interlinear-alibaba-access-key-secret"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-alibaba-access-key-secret"
+                      type="password"
+                      class="interlinear-input"
+                      autocomplete="off"
+                    />
+                    <html:button
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-toggle"
+                      data-target="interlinear-alibaba-access-key-secret"
+                    ></html:button>
+                    <html:span
+                      id="interlinear-alibaba-secret-key-status"
+                      class="interlinear-secret-status"
+                      role="status"
+                      aria-live="polite"
+                    ></html:span>
+                    <html:button
+                      id="interlinear-alibaba-secret-key-clear"
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-clear"
+                    ></html:button>
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-alibaba-secret-help" class="interlinear-help"></html:p>
+              </html:div>
 
-        <html:div class="interlinear-card">
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-mirrors-label"
-              for="interlinear-free-mirrors"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:textarea
-                id="interlinear-free-mirrors"
-                class="interlinear-textarea"
-                rows="3"
-                placeholder="https://translate.google.com&#10;https://your-worker.example.com"
-              ></html:textarea>
+              <html:div
+                id="interlinear-free-azure-group"
+                class="interlinear-free-group"
+                data-free-group="azure"
+              >
+                <html:p
+                  id="interlinear-free-azure-subtitle"
+                  class="interlinear-subtitle"
+                ></html:p>
+                <html:p id="interlinear-free-azure-help" class="interlinear-help"></html:p>
+                <html:p class="interlinear-help">
+                  <html:span id="interlinear-free-azure-step1"></html:span>
+                  <html:a
+                    id="interlinear-free-azure-create-link"
+                    class="interlinear-link interlinear-external-link"
+                    href="https://learn.microsoft.com/azure/ai-services/translator/how-to/create-translator-resource"
+                    >https://learn.microsoft.com/azure/ai-services/translator/how-to/create-translator-resource</html:a
+                  >
+                </html:p>
+                <html:p id="interlinear-free-azure-step2" class="interlinear-help"></html:p>
+                <html:p id="interlinear-free-azure-hint" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-azure-key-label"
+                    for="interlinear-azure-api-key"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-azure-api-key"
+                      type="password"
+                      class="interlinear-input"
+                      autocomplete="off"
+                    />
+                    <html:button
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-toggle"
+                      data-target="interlinear-azure-api-key"
+                    ></html:button>
+                    <html:span
+                      id="interlinear-azure-key-status"
+                      class="interlinear-secret-status"
+                      role="status"
+                      aria-live="polite"
+                    ></html:span>
+                    <html:button
+                      id="interlinear-azure-key-clear"
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-clear"
+                    ></html:button>
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-azure-key-help" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-azure-region-label"
+                    for="interlinear-azure-region"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-azure-region"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="eastasia"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-azure-region-help" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-azure-endpoint-label"
+                    for="interlinear-azure-endpoint"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-azure-endpoint"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="https://api.cognitive.microsofttranslator.com"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-azure-endpoint-help" class="interlinear-help"></html:p>
+              </html:div>
+
+              <html:div
+                id="interlinear-free-microsoft-group"
+                class="interlinear-free-group"
+                data-free-group="microsoft"
+              >
+                <html:p
+                  id="interlinear-free-microsoft-subtitle"
+                  class="interlinear-subtitle"
+                ></html:p>
+                <html:p id="interlinear-free-microsoft-help" class="interlinear-help"></html:p>
+              </html:div>
+
+              <html:div
+                id="interlinear-free-mymemory-group"
+                class="interlinear-free-group"
+                data-free-group="mymemory"
+              >
+                <html:p
+                  id="interlinear-free-mymemory-subtitle"
+                  class="interlinear-subtitle"
+                ></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-mymemory-url-label"
+                    for="interlinear-free-mymemory-url"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-free-mymemory-url"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="https://api.mymemory.translated.net/get"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-mymemory-url-help" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-mymemory-label"
+                    for="interlinear-free-mymemory-email"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-free-mymemory-email"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="name@example.com"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-mymemory-help" class="interlinear-help"></html:p>
+              </html:div>
+
+              <html:div
+                id="interlinear-free-libre-group"
+                class="interlinear-free-group"
+                data-free-group="libretranslate"
+              >
+                <html:p id="interlinear-free-libre-subtitle" class="interlinear-subtitle"></html:p>
+                <html:p id="interlinear-free-libre-help" class="interlinear-help"></html:p>
+                <html:p class="interlinear-help">
+                  <html:span id="interlinear-free-libre-step1"></html:span>
+                  <html:a
+                    id="interlinear-free-libre-key-link"
+                    class="interlinear-link interlinear-external-link"
+                    href="https://portal.libretranslate.com"
+                    >https://portal.libretranslate.com</html:a
+                  >
+                </html:p>
+                <html:p class="interlinear-help">
+                  <html:span id="interlinear-free-libre-step2"></html:span>
+                  <html:a
+                    id="interlinear-free-libre-quickstart-link"
+                    class="interlinear-link interlinear-external-link"
+                    href="https://docs.libretranslate.com/"
+                    >https://docs.libretranslate.com/</html:a
+                  >
+                </html:p>
+                <html:p id="interlinear-free-libre-hint" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-libre-url-label"
+                    for="interlinear-free-libre-url"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-free-libre-url"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="https://libretranslate.com"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-libre-url-help" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-libre-key-label"
+                    for="interlinear-libre-api-key"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-libre-api-key"
+                      type="password"
+                      class="interlinear-input"
+                    />
+                    <html:button
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-toggle"
+                      data-target="interlinear-libre-api-key"
+                    ></html:button>
+                    <html:span
+                      id="interlinear-libre-key-status"
+                      class="interlinear-secret-status"
+                      role="status"
+                      aria-live="polite"
+                    ></html:span>
+                    <html:button
+                      id="interlinear-libre-key-clear"
+                      type="button"
+                      class="interlinear-button interlinear-button-small interlinear-secret-clear"
+                    ></html:button>
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-libre-key-help" class="interlinear-help"></html:p>
+              </html:div>
+
+              <html:div
+                id="interlinear-free-custom-group"
+                class="interlinear-free-group"
+                data-free-group="custom"
+              >
+                <html:p
+                  id="interlinear-free-custom-subtitle"
+                  class="interlinear-subtitle"
+                ></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-custom-url-label"
+                    for="interlinear-free-custom-url"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-free-custom-url"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="https://api.mymemory.translated.net/get?q={text}&amp;langpair={from}|{to}"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-custom-url-help" class="interlinear-help"></html:p>
+                <html:div class="interlinear-field">
+                  <html:label
+                    id="interlinear-free-custom-path-label"
+                    for="interlinear-free-custom-path"
+                    class="interlinear-field-label"
+                  ></html:label>
+                  <html:div class="interlinear-field-control">
+                    <html:input
+                      id="interlinear-free-custom-path"
+                      type="text"
+                      class="interlinear-input"
+                      placeholder="responseData.translatedText"
+                    />
+                  </html:div>
+                </html:div>
+                <html:p id="interlinear-free-custom-path-help" class="interlinear-help"></html:p>
+              </html:div>
             </html:div>
           </html:div>
-          <html:p id="interlinear-free-mirrors-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-custom-url-label"
-              for="interlinear-free-custom-url"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-free-custom-url"
-                type="text"
-                class="interlinear-input"
-                placeholder="https://api.mymemory.translated.net/get?q={text}&amp;langpair={from}|{to}"
-              />
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-free-custom-url-help" class="interlinear-help"></html:p>
-          <html:div class="interlinear-field">
-            <html:label
-              id="interlinear-free-custom-path-label"
-              for="interlinear-free-custom-path"
-              class="interlinear-field-label"
-            ></html:label>
-            <html:div class="interlinear-field-control">
-              <html:input
-                id="interlinear-free-custom-path"
-                type="text"
-                class="interlinear-input"
-                placeholder="responseData.translatedText"
-              />
-            </html:div>
-          </html:div>
-          <html:p id="interlinear-free-custom-path-help" class="interlinear-help"></html:p>
-        </html:div>
+        </html:details>
 
         <html:div class="interlinear-card">
           <html:div class="interlinear-field">
@@ -834,6 +1097,21 @@
                 placeholder="gpt-oss:20b"
               />
             </html:div>
+          </html:div>
+          <html:div class="interlinear-field interlinear-field-stacked">
+            <html:label
+              id="interlinear-ollama-prompt-label"
+              for="interlinear-ollama-prompt"
+              class="interlinear-field-label"
+            ></html:label>
+            <html:div class="interlinear-field-control">
+              <html:textarea
+                id="interlinear-ollama-prompt"
+                rows="5"
+                class="interlinear-textarea"
+              ></html:textarea>
+            </html:div>
+            <html:p id="interlinear-ollama-prompt-help" class="interlinear-help"></html:p>
           </html:div>
           <html:div class="interlinear-actions">
             <html:button
@@ -2341,7 +2619,7 @@
               <html:a
                 id="interlinear-github-link"
                 href="https://github.com/Muanyan-mjq/zotero-interlinear"
-                class="interlinear-link"
+                class="interlinear-link interlinear-external-link"
                 >https://github.com/Muanyan-mjq/zotero-interlinear</html:a
               >
             </html:p>

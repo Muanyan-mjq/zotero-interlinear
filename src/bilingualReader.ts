@@ -58,6 +58,7 @@ import {
 } from "./readingLayout";
 import {
   attachReaderInteractions,
+  isTextEntryTarget,
   type InteractionController,
 } from "./readerInteractions";
 import {
@@ -72,6 +73,7 @@ import { INTERLINEAR_ICON_DATA_URL } from "./interlinearIcon";
 import { logError } from "./utils/log";
 import {
   transition,
+  isTranslationHidden,
   isTranslationVisible,
   type ToggleState,
   type ToggleEvent,
@@ -86,6 +88,7 @@ import {
   getSDTViewDocument,
   getSDTViews,
   setReadingMode,
+  setReadingModePageWidth,
 } from "./zoteroCompat";
 
 const TRANSLATION_CLASS = "interlinear-translation";
@@ -409,6 +412,9 @@ function setTranslationsHidden(reader: any, hidden: boolean): void {
   } else {
     delete content.dataset.interlinearHidden;
     content.dataset.interlinearDisplay = getDisplayMode();
+    // Reading Mode defaults to 75% page width; the bilingual layout needs the
+    // full column so both side-by-side halves stay readable.
+    setReadingModePageWidth(reader, 1);
   }
   // The layout MutationObserver does not watch data-* attributes.
   refreshReadingLayout(doc);
@@ -1034,7 +1040,7 @@ export async function translateSelectedText(reader: any, rawText: string): Promi
 export function translateReaderParagraph(
   reader: any,
   source: HTMLElement,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; toggle?: boolean } = {},
 ): Promise<void> {
   const pending = paragraphRequests.get(source);
   if (pending) return pending;
@@ -1047,14 +1053,27 @@ export function translateReaderParagraph(
   const sourceText = (source.textContent || "").replace(/\s+/g, " ").trim();
   if (!refPath || sourceText.length < 2) return Promise.resolve();
 
-  if (!options.force) {
-    const existingBlock = source.nextElementSibling as HTMLElement | null;
-    if (existingBlock?.classList?.contains(TRANSLATION_CLASS)) {
-      const state = existingBlock.dataset.state;
-      if (state === "loading" || state === "done") return Promise.resolve();
+  const next = source.nextElementSibling as HTMLElement | null;
+  const existing = next?.classList?.contains(TRANSLATION_CLASS) ? next : null;
+  if (existing && !options.force) {
+    const state = existing.dataset.state;
+    if (state === "loading") return Promise.resolve();
+    // A toggle gesture takes down a finished or failed block; programmatic
+    // callers (retry, Alt+click without toggle) keep the retry fallthrough.
+    if (state === "done" || (options.toggle && (state === "error" || state === "paused"))) {
+      // While translations are hidden the same gesture reveals them instead of
+      // deleting a block the user cannot see.
+      if (options.toggle && !isTranslationHidden(getToggleState(reader))) {
+        removeReaderParagraph(reader, doc, source, existing);
+        return Promise.resolve();
+      }
+      dispatchToggle(reader, "shortcut");
+      return Promise.resolve();
     }
+    // error / paused fall through so a retry can reuse the existing block.
   }
 
+  dispatchToggle(reader, "shortcut");
   const promise = requestReaderParagraph(
     reader,
     source,
@@ -1069,6 +1088,37 @@ export function translateReaderParagraph(
   };
   void promise.then(release, release);
   return promise;
+}
+
+/** Undo a single on-demand translation, keeping the cached text for reuse. */
+function removeReaderParagraph(
+  reader: any,
+  doc: Document,
+  source: HTMLElement,
+  block: HTMLElement,
+): void {
+  try {
+    block.remove();
+  } catch (_) {
+    // The reader may have replaced the SDT since the block was rendered.
+  }
+  try {
+    source.classList.remove(SOURCE_CELL_CLASS);
+  } catch (_) {
+    // Same iframe replacement case as clearTranslations.
+  }
+
+  if (doc.querySelector(`.${TRANSLATION_CLASS}`)) {
+    refreshReadingLayout(doc);
+    return;
+  }
+
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (content) delete content.dataset.interlinearDisplay;
+  const root = getDocumentRoot(doc);
+  if (root) delete root.dataset.interlinearRunning;
+  cleanupReadingLayout(doc);
+  dispatchToggle(reader, "reset");
 }
 
 async function requestReaderParagraph(
@@ -1168,10 +1218,8 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
     doc,
     {
       translateSelection: (text) => translateSelectedText(reader, text),
-      translateParagraph: (source, options) => {
-        dispatchToggle(reader, "shortcut");
-        return translateReaderParagraph(reader, source, options);
-      },
+      translateParagraph: (source, options) =>
+        translateReaderParagraph(reader, source, options),
     },
     {
       getShortcutSettings: () => ({
@@ -1371,6 +1419,7 @@ export function watchReaderInteractions(reader: any): void {
       state.onBootstrapKeyDown = (event: KeyboardEvent) => {
         try {
           if (isReadingModeReady(reader)) return;
+          if (isTextEntryTarget(event.target)) return;
           if (!getInternalReader(reader) || !getShortcutEnabled()) return;
           const spec = getShortcutSpec();
           if (!spec || !matchesShortcut(event, spec)) return;
@@ -1907,6 +1956,8 @@ async function prepareAndRun(reader: any): Promise<void> {
   const root = getDocumentRoot(doc);
   if (!root) throw new Error(getString("error-reading-mode-page"));
 
+  // Reading Mode defaults to 75% page width; a translation run starts at 100%.
+  setReadingModePageWidth(reader, 1);
   installStyles(doc);
   cancelRun(reader);
 

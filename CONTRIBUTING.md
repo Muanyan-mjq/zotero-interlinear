@@ -23,6 +23,13 @@ The e2e harness can additionally hit a real local Ollama model and a real
 Google endpoint through a local proxy; see the environment variables in the
 README's Development section.
 
+`npm run test:stress` is a bounded live check of the free backends (Edge,
+Google, MyMemory, plus Alibaba/Azure when their keys are in the environment).
+It keeps concurrency at or below what the plugin allows and reports success
+rate, latency, 429s and batch alignment; it is a diagnostic, not part of CI.
+Node's `fetch` ignores system proxies unless `NODE_USE_ENV_PROXY=1` and
+`HTTPS_PROXY` are set.
+
 For interactive development, copy `.env.example` to `.env`, set your Zotero
 binary path, and run `npm start`.
 

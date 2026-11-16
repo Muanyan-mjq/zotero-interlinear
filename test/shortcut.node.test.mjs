@@ -56,6 +56,45 @@ test("parseShortcut rejects unsafe or malformed combinations", () => {
   assert.equal(isValidShortcut("not a shortcut"), false);
 });
 
+test("allowPlainKey accepts bare letters and digits only when requested", () => {
+  assert.equal(parseShortcut("T"), null);
+  assert.equal(isValidShortcut("Q"), false);
+  assert.deepEqual(parseShortcut("t", { allowPlainKey: true }), {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    key: "T",
+  });
+  assert.deepEqual(parseShortcut("7", { allowPlainKey: true }), {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    key: "7",
+  });
+  // Capitalisation, named keys and navigation keys must stay unavailable.
+  assert.equal(parseShortcut("Shift+T", { allowPlainKey: true }), null);
+  assert.equal(parseShortcut("Enter", { allowPlainKey: true }), null);
+  assert.equal(parseShortcut("Space", { allowPlainKey: true }), null);
+  assert.equal(parseShortcut("ArrowLeft", { allowPlainKey: true }), null);
+
+  assert.deepEqual(shortcutFromEvent({ key: "j" }, { allowPlainKey: true }), {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    key: "J",
+  });
+  assert.equal(shortcutFromEvent({ key: "j" }), null);
+  assert.equal(shortcutFromEvent({ key: "j", shiftKey: true }, { allowPlainKey: true }), null);
+
+  assert.equal(normalizeShortcut("q", "Alt+Enter", { allowPlainKey: true }), "Q");
+  assert.equal(isValidShortcut("Q", { allowPlainKey: true }), true);
+  assert.equal(shortcutsEqual("Q", "q", { allowPlainKey: true }), true);
+  assert.equal(shortcutsEqual("Q", "q"), false);
+});
+
 test("formatShortcut emits a stable modifier order", () => {
   assert.equal(
     formatShortcut({ ctrl: true, alt: true, shift: true, meta: true, key: "T" }),
