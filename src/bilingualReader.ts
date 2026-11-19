@@ -4,6 +4,9 @@ import {
   getDisplayMode,
   getEngine,
   getGlossaryEntries,
+  getHoverHighlightEnabled,
+  getSelectionHighlightEnabled,
+  getSyncReaderTabsEnabled,
   getToggleShortcut,
   getToggleShortcutEnabled,
   getDisplayShortcut,
@@ -40,6 +43,12 @@ import {
   type BatchInput,
 } from "./translationPipeline";
 import { isFailureText } from "./translationFailure";
+import {
+  maskProtectedSpans,
+  renderTranslationFragment,
+  restoreProtectedSpans,
+  sanitizeModelOutput,
+} from "./translationFormat";
 import { applyGlossaryToTranslation } from "./glossary";
 import { getTranslationProvider } from "./providers";
 import { GoogleThrottleError } from "./providers/google";
@@ -48,9 +57,15 @@ import { matchesShortcut, parseShortcut } from "./shortcut";
 import {
   buildTranslationCSS,
   resolveTextDirection,
+  resolveThemeColor,
   resolveUiFontFamily,
+  type ColorScheme,
 } from "./appearance";
 import { buildDisplayModeCSS, DISPLAY_MODES, type DisplayMode } from "./displayMode";
+import {
+  createReaderHighlighter,
+  type ReaderHighlighter,
+} from "./readerHighlight";
 import {
   cleanupReadingLayout,
   observeReadingLayout,
@@ -85,21 +100,44 @@ import {
   getInternalReader,
   getReaderFrameDocument,
   getReaders,
+  getSDTDocuments,
   getSDTViewDocument,
+  getSDTViewForDocument,
   getSDTViews,
   setReadingMode,
   setReadingModePageWidth,
+  disableSplitView,
+  enableSplitView,
+  focusSplitView,
+  isSplitView,
 } from "./zoteroCompat";
+import {
+  createScrollSync,
+  type ScrollSyncHandle,
+} from "./readerScrollSync";
 
 const TRANSLATION_CLASS = "interlinear-translation";
 const SOURCE_CELL_CLASS = "interlinear-source";
 const TOOLBAR_BUTTON_CLASS = "interlinear-toolbar-button";
 const REFRESH_BUTTON_CLASS = "interlinear-refresh-button";
 const DISPLAY_BUTTON_CLASS = "interlinear-display-button";
+const SPLIT_BUTTON_CLASS = "interlinear-split-button";
 const PROGRESS_CLASS = "interlinear-progress";
 const ERROR_NOTICE_CLASS = "interlinear-error-notice";
 const STYLE_ID = "interlinear-style";
 const PREFERENCES_PANE_ID = "interlinear-preferences";
+const SOURCE_REF_SELECTOR = [
+  "#sdt-content p[data-ref-path]",
+  "#sdt-content h1[data-ref-path]",
+  "#sdt-content h2[data-ref-path]",
+  "#sdt-content h3[data-ref-path]",
+  "#sdt-content h4[data-ref-path]",
+  "#sdt-content h5[data-ref-path]",
+  "#sdt-content h6[data-ref-path]",
+  "#sdt-content li[data-ref-path]",
+  "#sdt-content figcaption[data-ref-path]",
+  "#sdt-content aside.sdt-note[data-ref-path]",
+].join(",");
 
 interface ReaderParagraph {
   refPath: string;
@@ -133,9 +171,31 @@ interface InteractionWatcher {
   onBootstrapKeyDown: ((event: KeyboardEvent) => void) | null;
 }
 
+interface DualViewState {
+  docs: Document[];
+  sync: ScrollSyncHandle;
+  observers: any[];
+  createdSplit: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 const runStates = new WeakMap<object, RunState>();
 const toggleStates = new WeakMap<object, ToggleState>();
+const dualViews = new WeakMap<object, DualViewState>();
+
+/**
+ * Reader tabs that show the same attachment can be kept on the same paragraph.
+ * Off by default: syncing every open tab surprises users who scroll one copy
+ * while reading the other.
+ */
+interface TabSyncEntry {
+  docs: Set<Document>;
+  handle: ScrollSyncHandle | null;
+}
+const tabSyncs = new Map<number, TabSyncEntry>();
 const interactionControllers = new WeakMap<object, ReaderInteractions[]>();
+const readerHighlighters = new WeakMap<object, ReaderHighlighter>();
+const documentHighlighters = new WeakMap<Document, ReaderHighlighter>();
 const interactionWatchers = new WeakMap<object, InteractionWatcher>();
 // Short bounded retries cover the reader's own mount sequence. Anything
 // later is handled by the MutationObserver below and by ensureReadingMode(),
@@ -256,7 +316,7 @@ async function translateText(
     timeoutMs: getRequestTimeoutMs(),
   });
   return {
-    text: applyGlossaryToTranslation(result.text, getGlossaryEntries()),
+    text: applyGlossaryToTranslation(sanitizeModelOutput(result.text), getGlossaryEntries()),
     engineTag: getCacheEngineTag(),
   };
 }
@@ -282,7 +342,7 @@ async function translateTextBatch(
   });
   const entries = getGlossaryEntries();
   return {
-    texts: results.map((text) => applyGlossaryToTranslation(text, entries)),
+    texts: results.map((text) => applyGlossaryToTranslation(sanitizeModelOutput(text), entries)),
     engineTag: getCacheEngineTag(),
   };
 }
@@ -297,16 +357,26 @@ async function translateTextLimited(
   text: string,
   request: (chunk: string) => Promise<TranslationResponse>,
 ): Promise<TranslationResponse> {
-  const chunks = splitTextForRequest(text, getMaxCharsPerRequest());
+  // Mask formulas/code/URLs once for the whole text so chunk boundaries cannot
+  // split a protected span differently per request.
+  const protectedSpans = maskProtectedSpans(text);
+  const chunks = splitTextForRequest(
+    protectedSpans.text,
+    getMaxCharsPerRequest(),
+  );
   if (chunks.length === 1) {
-    return request(chunks[0]);
+    const response = await request(chunks[0]);
+    return {
+      ...response,
+      text: restoreProtectedSpans(response.text, protectedSpans.tokens),
+    };
   }
 
   const translated: string[] = [];
   let engineTag = "";
   for (const chunk of chunks) {
     const response = await request(chunk);
-    translated.push(response.text);
+    translated.push(restoreProtectedSpans(response.text, protectedSpans.tokens));
     engineTag = response.engineTag;
   }
   return { text: translated.join(" ").trim(), engineTag };
@@ -387,8 +457,8 @@ function getToggleState(reader: any): ToggleState {
   // The reader can replace its SDT document (re-render, split view switch).
   // Without translation blocks the reader is untranslated again.
   try {
-    const doc = getSDTDocument(reader);
-    if (!doc?.querySelector(`.${TRANSLATION_CLASS}`)) {
+    const docs = getSDTDocuments(reader);
+    if (!docs.some((doc) => doc.querySelector(`.${TRANSLATION_CLASS}`))) {
       toggleStates.delete(reader);
       return "empty";
     }
@@ -400,34 +470,41 @@ function getToggleState(reader: any): ToggleState {
 }
 
 function setTranslationsHidden(reader: any, hidden: boolean): void {
-  const doc = getSDTDocument(reader);
-  const content = doc?.querySelector("#sdt-content") as HTMLElement | null;
-  if (!doc || !content) return;
-  if (hidden) {
-    // All display-mode CSS is scoped by data-interlinear-display, so removing
-    // it restores the native layout (including side-by-side margins) while
-    // the blocks and their results stay in the DOM.
-    delete content.dataset.interlinearDisplay;
-    content.dataset.interlinearHidden = "true";
-  } else {
-    delete content.dataset.interlinearHidden;
-    content.dataset.interlinearDisplay = getDisplayMode();
-    // Reading Mode defaults to 75% page width; the bilingual layout needs the
+  const docs = getSDTDocuments(reader);
+  let applied = false;
+  for (const doc of docs) {
+    const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+    if (!content) continue;
+    applied = true;
+    if (hidden) {
+      // All display-mode CSS is scoped by data-interlinear-display, so removing
+      // it restores the native layout (including side-by-side margins) while
+      // the blocks and their results stay in the DOM.
+      delete content.dataset.interlinearDisplay;
+      content.dataset.interlinearHidden = "true";
+    } else {
+      delete content.dataset.interlinearHidden;
+      applyDisplayMode(doc);
+    }
+    // The layout MutationObserver does not watch data-* attributes.
+    refreshReadingLayout(doc);
+  }
+  if (!applied) return;
+  if (!hidden) {
+    // A side-by-side run narrows every column; translation runs open the
     // full column so both side-by-side halves stay readable.
     setReadingModePageWidth(reader, 1);
   }
-  // The layout MutationObserver does not watch data-* attributes.
-  refreshReadingLayout(doc);
 }
 
 function markLoadingBlocksPaused(reader: any): void {
-  const doc = getSDTDocument(reader);
-  if (!doc) return;
-  const blocks = Array.from(
-    doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="loading"]`),
-  ) as HTMLElement[];
-  for (const block of blocks) {
-    setBlockState(block, "paused", getString("paragraph-paused"));
+  for (const doc of getSDTDocuments(reader)) {
+    const blocks = Array.from(
+      doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="loading"]`),
+    ) as HTMLElement[];
+    for (const block of blocks) {
+      setBlockState(block, "paused", getString("paragraph-paused"));
+    }
   }
 }
 
@@ -476,7 +553,10 @@ function isCurrentRun(reader: any, generation: number, doc: Document): boolean {
   }
 
   try {
-    return getSDTDocument(reader) === doc && !!doc.querySelector("#sdt-content");
+    if (!doc.querySelector("#sdt-content")) return false;
+    // A split view makes the "active" pane follow the pointer; the run belongs
+    // to the reader as long as its document is still one of the loaded panes.
+    return getSDTDocuments(reader).includes(doc);
   } catch (_) {
     return false;
   }
@@ -541,8 +621,25 @@ async function ensureReadingMode(reader: any): Promise<Document> {
   throw new Error(getString("error-reading-mode-timeout"));
 }
 
+function resolveReaderScheme(doc: Document, theme: string): ColorScheme {
+  if (theme === "dark") return "dark";
+  if (theme === "light") return "light";
+  try {
+    const win: any = doc.defaultView;
+    const query = win?.matchMedia?.("(prefers-color-scheme: dark)");
+    return query?.matches ? "dark" : "light";
+  } catch (_) {
+    return "light";
+  }
+}
+
 function installStyles(doc: Document): void {
   const appearance = getAppearance();
+  const highlightColor = resolveThemeColor(
+    appearance.colors.highlight,
+    resolveReaderScheme(doc, appearance.theme),
+    "highlight",
+  );
   const uiFont = appearance.uiFollowAppearance
     ? resolveUiFontFamily(appearance, getTargetLanguage())
     : "";
@@ -573,6 +670,7 @@ function installStyles(doc: Document): void {
   --interlinear-ui-font-family: ${uiFont || "inherit"};
   --interlinear-ui-font-size: ${uiFontSize};
   --interlinear-popup-max-width: ${appearance.popupMaxWidth}px;
+  --interlinear-highlight-color: ${highlightColor};
 }
 ${buildTranslationCSS(TRANSLATION_CLASS, appearance, "reader", {
   targetLanguage: getTargetLanguage(),
@@ -591,10 +689,34 @@ ${buildDisplayModeCSS(TRANSLATION_CLASS, SOURCE_CELL_CLASS, appearance.paragraph
     .${TRANSLATION_CLASS} {
       user-select: text;
     }
+    .${TRANSLATION_CLASS} code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.95em;
+      white-space: pre-wrap;
+      padding: 0 0.18em;
+      border-radius: 3px;
+      background: rgba(127, 127, 127, 0.16);
+    }
+    .${TRANSLATION_CLASS} .interlinear-math {
+      font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", serif;
+      font-style: italic;
+      white-space: nowrap;
+    }
 ${animation}
     .interlinear-source-hover {
       outline: 1px dashed currentColor;
       outline-offset: 2px;
+    }
+    ::highlight(interlinear-sync) {
+      background-color: var(--interlinear-highlight-color, rgba(255, 224, 138, 0.65));
+      /* Keep text readable whatever preset the user picks. Gecko that cannot
+         parse color-mix keeps the plain tint above. */
+      background-color: color-mix(in srgb, var(--interlinear-highlight-color, #ffe08a) 62%, transparent);
+      color: inherit;
+    }
+    .${TRANSLATION_CLASS}[data-interlinear-sync="true"] {
+      background-color: var(--interlinear-highlight-color, rgba(255, 224, 138, 0.65));
+      background-color: color-mix(in srgb, var(--interlinear-highlight-color, #ffe08a) 62%, transparent);
     }
     .interlinear-selection-popup {
       position: fixed;
@@ -707,7 +829,31 @@ function applyDisplayMode(doc: Document, mode: DisplayMode = getDisplayMode()): 
   if (!content) return;
   // Hidden readers keep the native layout until the user shows translations.
   if (content.dataset.interlinearHidden === "true") return;
-  content.dataset.interlinearDisplay = mode;
+  // Dual view pins each pane to its own half of the pair.
+  const locked = content.dataset.interlinearDisplayLock as DisplayMode | undefined;
+  content.dataset.interlinearDisplay = locked || mode;
+  refreshReadingLayout(doc);
+}
+
+/** Pin one pane to a layout while dual view is active. */
+function lockDisplayMode(doc: Document, mode: DisplayMode): void {
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (!content) return;
+  content.dataset.interlinearDisplayLock = mode;
+  if (content.dataset.interlinearHidden !== "true") {
+    content.dataset.interlinearDisplay = mode;
+  }
+  refreshReadingLayout(doc);
+}
+
+/** Let the pane follow the global display mode again. */
+function unlockDisplayMode(doc: Document): void {
+  const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+  if (!content) return;
+  delete content.dataset.interlinearDisplayLock;
+  if (content.dataset.interlinearHidden !== "true") {
+    content.dataset.interlinearDisplay = getDisplayMode();
+  }
   refreshReadingLayout(doc);
 }
 
@@ -757,8 +903,7 @@ export function refreshDisplayModes(): void {
   for (const reader of readers) {
     try {
       if (reader.type !== "pdf") continue;
-      const doc = getSDTDocument(reader);
-      if (doc?.querySelector("#sdt-content")) applyDisplayMode(doc);
+      for (const doc of getSDTDocuments(reader)) applyDisplayMode(doc);
       updateDisplayButtonState(reader);
     } catch (error) {
       logError(error as Error);
@@ -772,10 +917,9 @@ export function refreshTranslationStyles(): void {
   for (const reader of readers) {
     try {
       if (reader.type !== "pdf") continue;
-      const doc = getSDTDocument(reader);
-      if (doc?.querySelector("#sdt-content")) {
+      const direction = translationDirection();
+      for (const doc of getSDTDocuments(reader)) {
         installStyles(doc);
-        const direction = translationDirection();
         for (const block of Array.from(
           doc.querySelectorAll(`.${TRANSLATION_CLASS}`),
         ) as HTMLElement[]) {
@@ -954,10 +1098,11 @@ function ensureTranslationBlock(doc: Document, paragraph: ReaderParagraph): HTML
 function prepareOnDemandReading(reader: any, doc: Document): void {
   installStyles(doc);
   applyDisplayMode(doc);
-  observeReadingLayout(getActiveSDTView(reader), doc);
+  observeReadingLayout(getSDTViewForDocument(reader, doc), doc);
 }
 
 function clearTranslations(doc: Document): void {
+  documentHighlighters.get(doc)?.clearFor(doc);
   const nodes = Array.from(doc.querySelectorAll(`.${TRANSLATION_CLASS}`)) as HTMLElement[];
   for (const node of nodes) {
     try {
@@ -1200,19 +1345,38 @@ async function requestReaderParagraph(
   }
 }
 
+function getReaderHighlighter(reader: any): ReaderHighlighter {
+  let highlighter = readerHighlighters.get(reader);
+  if (!highlighter) {
+    highlighter = createReaderHighlighter();
+    readerHighlighters.set(reader, highlighter);
+  }
+  return highlighter;
+}
+
 function ensureReaderInteractions(reader: any, doc: Document): void {
   const controllers = interactionControllers.get(reader) || [];
+  const highlighter = getReaderHighlighter(reader);
   for (let index = controllers.length - 1; index >= 0; index -= 1) {
     const entry = controllers[index];
-    if (entry.doc === doc) return;
+    if (entry.doc === doc) {
+      highlighter.register(doc);
+      documentHighlighters.set(doc, highlighter);
+      return;
+    }
     if (isInteractionDocumentAlive(entry.doc)) continue;
     controllers.splice(index, 1);
+    highlighter.unregister(entry.doc);
+    documentHighlighters.delete(entry.doc);
     try {
       entry.controller.dispose();
     } catch (error) {
       logError(error as Error);
     }
   }
+
+  highlighter.register(doc);
+  documentHighlighters.set(doc, highlighter);
 
   const controller = attachReaderInteractions(
     doc,
@@ -1239,10 +1403,81 @@ function ensureReaderInteractions(reader: any, doc: Document): void {
       },
       onCycleDisplayShortcut: () => cycleDisplayMode(reader),
       getPopupWidth: () => getAppearance().popupMaxWidth,
+      onSourceHover: (source, origin) => {
+        if (!source) {
+          highlighter.clear();
+          return;
+        }
+        if (origin === "translation") highlighter.showSource(source);
+        else highlighter.showFromSource(source);
+      },
+      onSourceSelection: (source, range) =>
+        highlighter.showFromSource(source, range),
+      onTranslationSelection: (block, range) =>
+        highlighter.showFromTranslation(block, range),
+      onClearHighlight: () => highlighter.clear(),
+      isHoverHighlightEnabled: () => getHoverHighlightEnabled(),
+      isSelectionHighlightEnabled: () => getSelectionHighlightEnabled(),
     },
   );
   controllers.push({ doc, controller });
   interactionControllers.set(reader, controllers);
+  registerTabScrollSync(reader, doc);
+}
+
+/**
+ * Join this document to the scroll sync of every other open tab of the same
+ * attachment. Documents that belong to a split view are excluded: the split
+ * already syncs its own two panes.
+ */
+function registerTabScrollSync(reader: any, doc: Document): void {
+  const itemID = Number(reader?.itemID || 0);
+  if (!itemID || !getSyncReaderTabsEnabled()) return;
+  const dual = dualViews.get(reader);
+  if (dual?.docs.includes(doc)) return;
+
+  let entry = tabSyncs.get(itemID);
+  if (!entry) {
+    entry = { docs: new Set(), handle: null };
+    tabSyncs.set(itemID, entry);
+  }
+  for (const candidate of entry.docs) {
+    try {
+      if (!candidate.defaultView) entry.docs.delete(candidate);
+    } catch (_) {
+      entry.docs.delete(candidate);
+    }
+  }
+  entry.docs.add(doc);
+  entry.handle?.stop?.();
+  if (entry.docs.size < 2) {
+    entry.handle = null;
+    return;
+  }
+  try {
+    entry.handle = createScrollSync(Array.from(entry.docs));
+    entry.handle.start();
+  } catch (error) {
+    logError(error as Error);
+    entry.handle = null;
+  }
+}
+
+function unregisterTabScrollSync(reader: any, doc: Document): void {
+  const itemID = Number(reader?.itemID || 0);
+  const entry = itemID ? tabSyncs.get(itemID) : null;
+  if (!itemID || !entry) return;
+  entry.docs.delete(doc);
+  entry.handle?.stop?.();
+  entry.handle = null;
+  if (entry.docs.size < 2) return;
+  try {
+    entry.handle = createScrollSync(Array.from(entry.docs));
+    entry.handle.start();
+  } catch (error) {
+    logError(error as Error);
+    entry.handle = null;
+  }
 }
 
 function isInteractionDocumentAlive(doc: Document): boolean {
@@ -1561,8 +1796,14 @@ function setBlockState(
   text: string,
 ): void {
   if (!block) return;
+  const owner = block.ownerDocument;
+  if (owner) documentHighlighters.get(owner)?.clearFor(owner);
   block.dataset.state = state;
-  block.textContent = text;
+  if (state === "done" && owner) {
+    block.replaceChildren(renderTranslationFragment(owner, text));
+  } else {
+    block.textContent = text;
+  }
   if (state === "error" || state === "paused") {
     block.title = getString("paragraph-retry-title");
     block.setAttribute("role", "button");
@@ -1983,7 +2224,7 @@ async function prepareAndRun(reader: any): Promise<void> {
     throw new Error(getString("error-no-paragraphs"));
   }
 
-  observeReadingLayout(getActiveSDTView(reader), doc);
+  observeReadingLayout(getSDTViewForDocument(reader, doc), doc);
   for (const paragraph of paragraphs) {
     ensureTranslationBlock(doc, paragraph);
   }
@@ -2170,7 +2411,7 @@ async function showCachedTranslations(reader: any): Promise<void> {
   );
   if (!paragraphs.length) return;
 
-  observeReadingLayout(getActiveSDTView(reader), doc);
+  observeReadingLayout(getSDTViewForDocument(reader, doc), doc);
   for (const paragraph of paragraphs) {
     const block = ensureTranslationBlock(doc, paragraph);
     if (block && paragraph.translation) {
@@ -2193,6 +2434,265 @@ function maybeAutoTranslate(reader: any): void {
     return;
   }
   void showCachedTranslations(reader).catch((error) => logError(error as Error));
+}
+
+function findSourceByRefPath(doc: Document, refPath: string): HTMLElement | null {
+  for (const node of Array.from(doc.querySelectorAll(SOURCE_REF_SELECTOR))) {
+    const element = node as HTMLElement;
+    if (element.dataset.refPath === refPath) return element;
+  }
+  return null;
+}
+
+function countDoneBlocks(doc: Document): number {
+  return doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="done"]`).length;
+}
+
+function findTranslationBlock(doc: Document, refPath: string): HTMLElement | null {
+  for (const node of Array.from(
+    doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-source-ref-path]`),
+  )) {
+    const candidate = node as HTMLElement;
+    if (candidate.dataset.sourceRefPath === refPath) return candidate;
+  }
+  return null;
+}
+
+/** Replace formatted content while crossing iframe realms safely. */
+function copyBlockContent(from: HTMLElement, to: HTMLElement): void {
+  const doc = to.ownerDocument;
+  if (!doc) return;
+  const nodes: Node[] = [];
+  for (const child of Array.from(from.childNodes)) {
+    if (!child) continue;
+    try {
+      nodes.push(doc.importNode(child, true));
+    } catch (_) {
+      nodes.push(doc.createTextNode(child.textContent || ""));
+    }
+  }
+  to.replaceChildren(...nodes);
+}
+
+/**
+ * Copy one finished translation into the other pane. Returns true when the
+ * peer changed, so the caller can refresh Zotero's layout once per batch.
+ */
+function mirrorTranslationRef(
+  from: Document,
+  to: Document,
+  refPath: string,
+  overwrite: boolean,
+): boolean {
+  const block = findTranslationBlock(from, refPath);
+  if (!block || block.dataset.state !== "done") return false;
+
+  const text = block.textContent || "";
+  if (!text.trim()) return false;
+
+  const existing = findTranslationBlock(to, refPath);
+  if (existing?.dataset.state === "done") {
+    if (existing.textContent === text) return false;
+    if (!overwrite) return false;
+  }
+
+  if (existing) {
+    setBlockState(existing, "done", text);
+    copyBlockContent(block, existing);
+    return true;
+  }
+
+  const source = findSourceByRefPath(to, refPath);
+  if (!source) return false;
+  const target = ensureTranslationBlock(to, {
+    refPath,
+    sourceText: "",
+    sourceElement: source,
+    translation: text,
+  });
+  if (!target) return false;
+  copyBlockContent(block, target);
+  return true;
+}
+
+function mirrorAllTranslations(from: Document, to: Document, overwrite = false): number {
+  const refs = new Set<string>();
+  for (const node of Array.from(
+    from.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="done"]`),
+  )) {
+    const refPath = (node as HTMLElement).dataset.sourceRefPath;
+    if (refPath) refs.add(refPath);
+  }
+  let changed = 0;
+  for (const refPath of refs) {
+    if (mirrorTranslationRef(from, to, refPath, overwrite)) changed += 1;
+  }
+  if (changed) refreshReadingLayout(to);
+  return changed;
+}
+
+/** Watch `data-state` changes only, so a run fills the target pane live. */
+function startDualMirror(state: DualViewState): void {
+  const win = Zotero.getMainWindow() as any;
+  if (typeof win?.MutationObserver !== "function") return;
+
+  const pending = new Set<string>();
+  let scheduled = false;
+  const flush = () => {
+    scheduled = false;
+    const refs = Array.from(pending);
+    pending.clear();
+    if (!refs.length) return;
+    for (const from of state.docs) {
+      for (const refPath of refs) {
+        for (const to of state.docs) {
+          if (to !== from) mirrorTranslationRef(from, to, refPath, true);
+        }
+      }
+    }
+    for (const doc of state.docs) refreshReadingLayout(doc);
+  };
+
+  for (const from of state.docs) {
+    const observer = new win.MutationObserver((mutations: any[]) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          const element = mutation.target as HTMLElement;
+          const block = element?.classList?.contains?.(TRANSLATION_CLASS)
+            ? element
+            : (element?.closest?.(`.${TRANSLATION_CLASS}`) as HTMLElement | null);
+          const refPath = block?.dataset?.sourceRefPath;
+          if (refPath && block?.dataset?.state === "done") pending.add(refPath);
+        } else {
+          for (const node of Array.from(mutation.addedNodes || [])) {
+            const element = node as HTMLElement;
+            if (!element?.classList?.contains?.(TRANSLATION_CLASS)) continue;
+            const refPath = element.dataset?.sourceRefPath;
+            if (refPath) pending.add(refPath);
+          }
+        }
+      }
+      if (!pending.size || scheduled) return;
+      scheduled = true;
+      state.timer = setTimeout(flush, 150);
+    });
+    const root = from.querySelector("#sdt-content");
+    if (!root) continue;
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-state"],
+    });
+    state.observers.push(observer);
+  }
+}
+
+function updateDualButtonState(reader: any, toolbarDoc?: Document): void {
+  if (!toolbarDoc) {
+    try {
+      toolbarDoc = getReaderFrameDocument(reader) as Document | undefined;
+    } catch (_) {
+      toolbarDoc = undefined;
+    }
+  }
+  const button = toolbarDoc?.querySelector(
+    `.${SPLIT_BUTTON_CLASS}`,
+  ) as HTMLButtonElement | null;
+  if (!button) return;
+  const active = dualViews.has(reader);
+  button.setAttribute("aria-pressed", String(active));
+  const title = getString(
+    active ? "toolbar-split-active-title" : "toolbar-split-title",
+  );
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.style.background = active ? "rgba(127, 127, 127, 0.28)" : "";
+  button.style.borderRadius = active ? "4px" : "";
+}
+
+function teardownDualView(reader: any): DualViewState | null {
+  const state = dualViews.get(reader);
+  if (!state) return null;
+  dualViews.delete(reader);
+  try {
+    state.sync.dispose();
+  } catch (error) {
+    logError(error as Error);
+  }
+  for (const observer of state.observers) {
+    try {
+      observer.disconnect();
+    } catch (_) {
+      // Already disconnected.
+    }
+  }
+  if (state.timer) clearTimeout(state.timer);
+  return state;
+}
+
+function disableDualView(reader: any, toolbarDoc?: Document): void {
+  const state = teardownDualView(reader);
+  if (!state) return;
+  for (const doc of state.docs) unlockDisplayMode(doc);
+  if (state.createdSplit) void disableSplitView(reader);
+  updateDualButtonState(reader, toolbarDoc);
+}
+
+async function toggleDualView(reader: any, toolbarDoc?: Document): Promise<void> {
+  if (dualViews.has(reader)) {
+    disableDualView(reader, toolbarDoc);
+    return;
+  }
+
+  let result: Awaited<ReturnType<typeof enableSplitView>> = null;
+  try {
+    result = await enableSplitView(reader);
+  } catch (error) {
+    logError(error as Error);
+  }
+  if (!result || result.docs.length < 2) {
+    showError(reader, getString("split-error-unsupported"));
+    return;
+  }
+
+  const docs = result.docs.slice(0, 2);
+  for (const doc of docs) {
+    installStyles(doc);
+    ensureReaderInteractions(reader, doc);
+    observeReadingLayout(getSDTViewForDocument(reader, doc), doc);
+    const content = doc.querySelector("#sdt-content") as HTMLElement | null;
+    if (content) delete content.dataset.interlinearHidden;
+  }
+  focusSplitView(reader, true);
+
+  const state: DualViewState = {
+    docs,
+    sync: createScrollSync(docs),
+    observers: [],
+    createdSplit: result.created,
+    timer: null,
+  };
+  dualViews.set(reader, state);
+
+  const source =
+    countDoneBlocks(docs[0]) >= countDoneBlocks(docs[1]) ? docs[0] : docs[1];
+  const target = docs[0] === source ? docs[1] : docs[0];
+  mirrorAllTranslations(source, target);
+
+  lockDisplayMode(docs[0], "source-only");
+  lockDisplayMode(docs[1], "target-only");
+  startDualMirror(state);
+  state.sync.start();
+
+  const toggleState = getToggleState(reader);
+  if (toggleState === "empty") {
+    // Nothing translated yet: fill the target pane while the user reads.
+    void toggleBilingualReading(reader);
+  } else if (isTranslationHidden(toggleState)) {
+    dispatchToggle(reader, "shortcut");
+  }
+  updateDualButtonState(reader, toolbarDoc);
 }
 
 export function renderBilingualToolbarButtons(event: any): void {
@@ -2237,6 +2737,15 @@ export function renderBilingualToolbarButtons(event: any): void {
     append(createToolbarButton(doc, DISPLAY_BUTTON_CLASS, "◫", ""));
   }
   updateDisplayButtonState(reader, doc);
+
+  registerToolbarHandlers(doc, SPLIT_BUTTON_CLASS, {
+    onClick: () => void toggleDualView(reader, doc),
+  });
+
+  if (!doc.querySelector(`.${SPLIT_BUTTON_CLASS}`)) {
+    append(createToolbarButton(doc, SPLIT_BUTTON_CLASS, "▥", ""));
+  }
+  updateDualButtonState(reader, doc);
 
   if (!doc.querySelector(`.${PROGRESS_CLASS}`)) {
     const progress = doc.createElement("span") as HTMLSpanElement;
@@ -2311,16 +2820,33 @@ export function cleanupBilingualReader(reader: any): void {
   toggleStates.delete(reader);
   stopWatchingReaderInteractions(reader);
 
+  try {
+    const dualState = teardownDualView(reader);
+    if (dualState) {
+      for (const doc of dualState.docs) unlockDisplayMode(doc);
+    }
+  } catch (error) {
+    logError(error as Error);
+  }
+
   const interactions = interactionControllers.get(reader);
   if (interactions) {
     interactionControllers.delete(reader);
     for (const entry of interactions) {
+      documentHighlighters.delete(entry.doc);
+      unregisterTabScrollSync(reader, entry.doc);
       try {
         entry.controller.dispose();
       } catch (error) {
         logError(error as Error);
       }
     }
+  }
+
+  const highlighter = readerHighlighters.get(reader);
+  if (highlighter) {
+    readerHighlighters.delete(reader);
+    highlighter.dispose();
   }
 
   for (const view of getSDTViews(reader)) {
@@ -2344,7 +2870,7 @@ export function cleanupBilingualReader(reader: any): void {
   const buttons = toolbarDoc
     ? (Array.from(
         toolbarDoc.querySelectorAll(
-          `.${TOOLBAR_BUTTON_CLASS}, .${DISPLAY_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}, .${PROGRESS_CLASS}`,
+          `.${TOOLBAR_BUTTON_CLASS}, .${DISPLAY_BUTTON_CLASS}, .${SPLIT_BUTTON_CLASS}, .${REFRESH_BUTTON_CLASS}, .${PROGRESS_CLASS}`,
         ),
       ) as HTMLElement[])
     : [];

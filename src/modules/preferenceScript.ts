@@ -86,11 +86,17 @@ import {
   getScopeListItems,
   getScopeNotes,
   getScopeTitles,
+  getHoverHighlightEnabled,
+  getSelectionHighlightEnabled,
+  getSyncReaderTabsEnabled,
   getShortcut,
   getShortcutEnabled,
   getSkipLastPages,
   getSourceLanguage,
   getTargetLanguage,
+  setHoverHighlightEnabled,
+  setSelectionHighlightEnabled,
+  setSyncReaderTabsEnabled,
   setClaudeApiKey,
   setClaudeEndpoint,
   setClaudeModel,
@@ -2737,7 +2743,37 @@ function hydrateStyleControls(doc: Document, appearance: AppearanceSettings): vo
   setFormValue(doc, "interlinear-export-mode", appearance.exportMode);
   setFormChecked(doc, "interlinear-state-animation", appearance.stateAnimation);
   setFormChecked(doc, "interlinear-reduce-motion", appearance.reduceMotion);
+  setFormChecked(doc, "interlinear-hover-highlight", getHoverHighlightEnabled());
+  setFormChecked(doc, "interlinear-selection-highlight", getSelectionHighlightEnabled());
+  setFormChecked(doc, "interlinear-sync-tabs", getSyncReaderTabsEnabled());
   syncStyleControlDisabled(doc);
+}
+
+function initHighlightToggles(doc: Document): void {
+  getElement<HTMLInputElement>(doc, "interlinear-hover-highlight")?.addEventListener(
+    "change",
+    (event) => {
+      setHoverHighlightEnabled(
+        (event.target as HTMLInputElement | null)?.checked !== false,
+      );
+    },
+  );
+  getElement<HTMLInputElement>(doc, "interlinear-selection-highlight")?.addEventListener(
+    "change",
+    (event) => {
+      setSelectionHighlightEnabled(
+        (event.target as HTMLInputElement | null)?.checked !== false,
+      );
+    },
+  );
+  getElement<HTMLInputElement>(doc, "interlinear-sync-tabs")?.addEventListener(
+    "change",
+    (event) => {
+      setSyncReaderTabsEnabled(
+        (event.target as HTMLInputElement | null)?.checked === true,
+      );
+    },
+  );
 }
 
 function initStyleControls(doc: Document): void {
@@ -3099,6 +3135,7 @@ function initializeAppearanceControls(doc: Document): void {
 
   initFontControls(doc);
   initStyleControls(doc);
+  initHighlightToggles(doc);
   refreshColorUI(doc);
 }
 
@@ -3609,6 +3646,9 @@ function fillAppearanceLabels(doc: Document): void {
     ["interlinear-export-mode-print", "export-mode-print"],
     ["interlinear-state-animation-label", "state-animation-label"],
     ["interlinear-reduce-motion-label", "reduce-motion-label"],
+    ["interlinear-hover-highlight-label", "hover-highlight-label"],
+    ["interlinear-selection-highlight-label", "selection-highlight-label"],
+    ["interlinear-sync-tabs-label", "sync-tabs-label"],
     ["interlinear-appearance-type-title", "appearance-type-title"],
     ["interlinear-appearance-colors-title", "appearance-colors-title"],
     ["interlinear-appearance-preview-label", "appearance-preview-label"],

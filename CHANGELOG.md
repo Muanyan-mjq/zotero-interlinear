@@ -8,7 +8,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The pre-Interlinear history of the fork lives in the Git history and is not
 reproduced here.
 
-## [Unreleased]
+## [0.9.1] - 2026-11-19
+
+### Added
+
+- Hovering a source paragraph now tints its translation, and selecting part of
+  the source text tints only the matching sentences in the translation. The
+  tint uses the CSS Custom Highlight API (block tint only as a fallback) and
+  never rewrites Zotero's text nodes. Its color is configurable under
+  **Appearance → Hover/selection highlight**, with the usual light/dark pair,
+  presets and reset.
+- Hover linking now runs in both directions and in every layout, including the
+  stacked and side-by-side single-document layouts and the split view. A
+  pointer inside a translation tints the paragraph it came from; only a pointer
+  that actually sits on the source text counts as a source hover, so padding,
+  wrappers and formatted children no longer fall through to the wrong side.
+- Hover tinting and selection tinting have separate switches under
+  **Appearance → Hover/selection highlight** (both on by default), so either
+  one can be turned off without losing the other.
+- Selection mapping is now word-level instead of character-proportional:
+  sentences act as anchors, words are interpolated between them, and the edges
+  snap to word boundaries. Selecting a single word tints that word's
+  translation only, instead of the whole sentence or the whole block.
+- An optional **Sync scrolling between reader tabs of the same item** switch
+  (off by default) keeps two reader windows of the same document on the same
+  paragraph.
+- PDF export now asks which layout to use and offers all four reader layouts:
+  translation below, side-by-side columns, translation only, or source only.
+  The export re-typesets paired blocks, so the chosen layout applies to the
+  searchable PDF instead of always defaulting to stacked pairs.
+- The reader toolbar has a split-screen button. It opens Zotero's vertical
+  split with a source-only pane on one side and a translation-only pane on the
+  other, copies finished translations across both panes (including live updates
+  from a running translation), and links their scrolling so both stay on the
+  same paragraph. Closing the button restores the single-pane layout.
+- Translations now preserve LaTeX math, inline code, URLs and segment markers:
+  they are masked before the request, the prompt asks every backend (including
+  custom prompts) to keep them verbatim, and the rendered translation shows
+  code and math as formatted text instead of raw `$...$`, backticks or
+  Markdown markers. Bold, italic and links are rendered without `innerHTML`.
+- Every prompt now carries a numbered verbatim list (math, inline code, URLs,
+  placeholder numbering and position, segment markers, numbers, units, citation
+  and figure labels) and the default LLM prompt spells out seven rules, including
+  "translate only" and one-for-one sentences with no merging.
+- Model answers are cleaned before they reach the page: code fences,
+  `<answer>` tags, a single wrapping tag, a leading "Translation:"/"译文："
+  label, one pair of wrapping ASCII quotes and runs of blank lines are removed,
+  while CJK quotation marks inside real text are kept.
+
+### Fixed
+
+- Hover no longer cancels an active selection tint. Previously any non-collapsed
+  selection in the document disabled hover, so the tint froze; now hover steps
+  aside only when the selection actually touches the same source paragraph or
+  translation block.
+- Exporting a bilingual PDF from the split view now uses the pane that actually
+  holds the finished translations (the translation pane also carries the source
+  text), so the exported PDF keeps both sides instead of producing an
+  translation-less document.
+- In the translation-only layout and in translation-only export, source blocks
+  that contain a figure, table, image, SVG, canvas or video stay visible while
+  plain paragraphs stay hidden, so charts, tables and formula screenshots are
+  no longer removed along with the prose.
+- Side-by-side mode no longer turns list items and figure captions into
+  half-width inline blocks. Paragraphs, headings and notes keep the two-column
+  layout; list items and captions keep their native markers and nesting, with
+  their translation stacked full width below.
 
 ## [0.9.0] - 2026-11-16
 

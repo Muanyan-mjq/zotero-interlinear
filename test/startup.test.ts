@@ -212,6 +212,43 @@ describe("startup", function () {
       ) as HTMLInputElement | null;
       assert.isTrue(shortcutEnabled?.checked ?? false);
       assert.equal(shortcut?.value, "Alt+Enter");
+
+      // The reader UX switches must exist, be labeled and default correctly.
+      const hoverToggle = win?.document.getElementById(
+        "interlinear-hover-highlight",
+      ) as HTMLInputElement | null;
+      const selectionToggle = win?.document.getElementById(
+        "interlinear-selection-highlight",
+      ) as HTMLInputElement | null;
+      const syncTabsToggle = win?.document.getElementById(
+        "interlinear-sync-tabs",
+      ) as HTMLInputElement | null;
+      assert.isTrue(hoverToggle?.checked ?? false);
+      assert.isTrue(selectionToggle?.checked ?? false);
+      assert.isFalse(syncTabsToggle?.checked ?? true);
+      for (const id of [
+        "interlinear-hover-highlight-label",
+        "interlinear-selection-highlight-label",
+        "interlinear-sync-tabs-label",
+      ]) {
+        assert.isNotEmpty(
+          win?.document
+            .getElementById(id)
+            ?.textContent?.replace(/\s+/gu, " ")
+            .trim(),
+        );
+      }
+
+      // Flipping the checkbox must persist immediately, not only on save.
+      const hoverPref = "extensions.zotero.interlinear.reader.hoverHighlight";
+      try {
+        hoverToggle?.click();
+        assert.isFalse(Zotero.Prefs.get(hoverPref, true) as boolean);
+        hoverToggle?.click();
+        assert.isTrue(Zotero.Prefs.get(hoverPref, true) as boolean);
+      } finally {
+        Zotero.Prefs.clear(hoverPref, true);
+      }
       const googleBaseURL = win?.document.getElementById(
         "interlinear-google-base-url",
       ) as HTMLInputElement | null;
@@ -3121,7 +3158,7 @@ describe("startup", function () {
       const block = paragraph.nextElementSibling as HTMLElement;
       assert.equal(block?.className, "interlinear-translation");
       assert.equal(block?.getAttribute("data-state"), "done");
-      assert.equal(block?.textContent, `译文：On demand paragraph ${stamp}.`);
+      assert.equal(block?.textContent, `On demand paragraph ${stamp}.`);
       assert.isTrue(paragraph.classList.contains("interlinear-source"));
 
       await translateReaderParagraph(reader, paragraph);
@@ -3130,11 +3167,11 @@ describe("startup", function () {
       const selected = await translateSelectedText(reader, `  Selected\n text ${stamp}.  `);
       assert.equal(requested.length, 2);
       assert.equal(requested[1], `Selected text ${stamp}.`);
-      assert.equal(selected, `译文：Selected text ${stamp}.`);
+      assert.equal(selected, `Selected text ${stamp}.`);
 
       const cached = await translateSelectedText(reader, `Selected text ${stamp}.`);
       assert.equal(requested.length, 2);
-      assert.equal(cached, `译文：Selected text ${stamp}.`);
+      assert.equal(cached, `Selected text ${stamp}.`);
     } finally {
       clearTranslationCache();
       (Zotero.HTTP as any).request = previousRequest;

@@ -1,5 +1,10 @@
 import { buildTranslationCSS } from "./appearance";
-import { getAppearance, getTargetLanguage } from "./settings";
+import { getAppearance, getDisplayMode, getTargetLanguage } from "./settings";
+import { DISPLAY_MODES, type DisplayMode } from "./displayMode";
+import {
+  buildExportLayoutCSS,
+  wrapExportPairs,
+} from "./exportLayout";
 import { getString } from "./utils/locale";
 import { registerToolbarHandlers } from "./toolbarEvents";
 import { logError } from "./utils/log";
@@ -8,10 +13,14 @@ import {
   getInternalReader,
   getReaderFrameDocument,
   getReaderFrameWindow,
+  getSDTDocuments,
   getSDTViewDocument,
+  getSDTViewForDocument,
+  preloadSourceCrops,
 } from "./zoteroCompat";
 
 const TRANSLATION_CLASS = "interlinear-translation";
+const SOURCE_CLASS = "interlinear-source";
 const EXPORT_BUTTON_CLASS = "interlinear-export-button";
 const PRINTER_EMOJI = "🖨️";
 
@@ -22,6 +31,30 @@ function getSDTDocument(reader: any): Document | null {
   } catch (_) {
     return null;
   }
+}
+
+/**
+ * A split view keeps the source in one pane and the translations in the other.
+ * Choosing the pane that actually holds finished translations lets any export
+ * layout work, whichever pane happens to be focused.
+ */
+function pickExportDocument(reader: any, layout: DisplayMode): Document | null {
+  const active = getSDTDocument(reader);
+  if (layout === "source-only" || !active) return active;
+  const documents: Document[] = [];
+  try {
+    for (const doc of getSDTDocuments(reader)) {
+      if (doc?.querySelector("#sdt-content")) documents.push(doc);
+    }
+  } catch (_) {
+    // A torn-down split pane list is not fatal.
+  }
+  if (!documents.length) return active;
+  const withTranslations = documents.filter(
+    (doc) =>
+      doc.querySelectorAll(`.${TRANSLATION_CLASS}[data-state="done"]`).length > 0,
+  );
+  return withTranslations[0] || active;
 }
 
 function getDialogWindow(reader: any): any {
@@ -104,7 +137,11 @@ function getTranslationStats(doc: Document): { done: number; unfinished: number 
   return { done, unfinished };
 }
 
-function buildExportHTML(doc: Document, title: string): string {
+function buildExportHTML(
+  doc: Document,
+  title: string,
+  layout: DisplayMode,
+): string {
   const sourceRoot = doc.querySelector("#sdt-content") as HTMLElement | null;
   if (!sourceRoot) throw new Error(getString("export-error-source"));
 
@@ -113,6 +150,31 @@ function buildExportHTML(doc: Document, title: string): string {
     root.querySelectorAll(`.${TRANSLATION_CLASS}:not([data-state="done"])`),
   ) as HTMLElement[];
   for (const block of unfinishedBlocks) block.remove();
+
+  if (layout === "source-only") {
+    for (const block of Array.from(
+      root.querySelectorAll(`.${TRANSLATION_CLASS}`),
+    ) as HTMLElement[]) {
+      block.remove();
+    }
+  } else if (layout === "target-only") {
+    for (const source of Array.from(
+      root.querySelectorAll(`.${SOURCE_CLASS}`),
+    ) as HTMLElement[]) {
+      // A translation-only export still needs the page crops: figures, tables
+      // and formula images have no textual translation to stand in for them.
+      if (
+        source.matches("figure, table, pre, img, svg, canvas") ||
+        Boolean(source.querySelector("figure, table, pre, img, svg, canvas"))
+      ) {
+        continue;
+      }
+      source.remove();
+    }
+  } else {
+    wrapExportPairs(root, TRANSLATION_CLASS, SOURCE_CLASS);
+  }
+  root.dataset.exportLayout = layout;
 
   const removable = Array.from(
     root.querySelectorAll("script, button, input, textarea, select"),
@@ -192,6 +254,7 @@ function buildExportHTML(doc: Document, title: string): string {
       colorScheme: appearance.theme === "dark" ? "dark" : "light",
     });
   })()}
+  ${buildExportLayoutCSS(layout, TRANSLATION_CLASS, SOURCE_CLASS)}
   .${TRANSLATION_CLASS}[data-state="done"]::before {
     content: "";
   }
@@ -261,8 +324,21 @@ async function printHTMLToPDF(html: string, tempFile: any): Promise<void> {
   const HiddenBrowser = getHiddenBrowserConstructor();
   const browser = new HiddenBrowser({ useHiddenFrame: false });
 
+  // A `data:` URL doubles the document size once percent-encoded, and papers
+  // with many figure crops reach tens of megabytes. Load from a temp file
+  // instead so printing only pays for the real bytes.
+  const htmlFile = tempFile.parent.clone();
+  htmlFile.append(`${tempFile.leafName}.html`);
   try {
-    const loaded = await browser.load(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    if (htmlFile.exists()) htmlFile.remove(false);
+  } catch (_) {
+    // A timestamped file should normally not exist.
+  }
+
+  try {
+    await Zotero.File.putContentsAsync(htmlFile, html);
+    const fileUrl = encodeURI(`file:///${String(htmlFile.path).replace(/\\/gu, "/")}`);
+    const loaded = await browser.load(fileUrl);
     if (!loaded) throw new Error(getString("export-error-page-load"));
 
     try {
@@ -304,23 +380,109 @@ async function printHTMLToPDF(html: string, tempFile: any): Promise<void> {
     } catch (_) {
       // Best-effort cleanup only.
     }
+    try {
+      if (htmlFile.exists()) htmlFile.remove(false);
+    } catch (_) {
+      // Best-effort cleanup only.
+    }
   }
 }
 
+function displayModeLabel(mode: DisplayMode): string {
+  switch (mode) {
+    case "side-by-side":
+      return getString("display-mode-side-by-side");
+    case "target-only":
+      return getString("display-mode-target-only");
+    case "source-only":
+      return getString("display-mode-source-only");
+    default:
+      return getString("display-mode-top-bottom");
+  }
+}
+
+function chooseExportLayout(reader: any): Promise<DisplayMode | null> {
+  const doc = getReaderFrameDocument(reader) as Document | null;
+  if (!doc) return Promise.resolve(getDisplayMode());
+
+  return new Promise((resolve) => {
+    const overlay = doc.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;" +
+      "justify-content:center;background:rgba(0,0,0,0.35);";
+    const card = doc.createElement("div");
+    card.style.cssText =
+      "min-width:240px;max-width:340px;padding:14px;border-radius:8px;" +
+      "background:Canvas;color:CanvasText;box-shadow:0 10px 30px rgba(0,0,0,0.35);" +
+      'font-family:system-ui,sans-serif;font-size:13px;';
+    const title = doc.createElement("div");
+    title.textContent = getString("export-layout-title");
+    title.style.cssText = "font-weight:600;margin-bottom:8px;";
+    card.append(title);
+
+    const finish = (mode?: DisplayMode) => {
+      overlay.remove();
+      doc.removeEventListener("keydown", onKey, true);
+      resolve(mode ?? null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") finish();
+    };
+
+    const current = getDisplayMode();
+    for (const mode of DISPLAY_MODES) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.textContent =
+        mode === current
+          ? `✓ ${displayModeLabel(mode)}`
+          : displayModeLabel(mode);
+      button.style.cssText =
+        "display:block;width:100%;margin:4px 0;padding:6px 8px;text-align:start;" +
+        "border:1px solid rgba(127,127,127,0.45);border-radius:5px;" +
+        "background:ButtonFace;color:ButtonText;cursor:pointer;";
+      button.addEventListener("click", () => finish(mode));
+      card.append(button);
+    }
+
+    const cancel = doc.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = getString("export-layout-cancel");
+    cancel.style.cssText =
+      "display:block;width:100%;margin-top:8px;padding:5px 8px;" +
+      "border:none;border-radius:5px;background:transparent;" +
+      "color:inherit;opacity:0.75;cursor:pointer;";
+    cancel.addEventListener("click", () => finish());
+    card.append(cancel);
+
+    overlay.append(card);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish();
+    });
+    doc.addEventListener("keydown", onKey, true);
+    (doc.body || doc.documentElement)?.append(overlay);
+  });
+}
+
 export async function exportBilingualPDF(reader: any): Promise<void> {
-  const doc = getSDTDocument(reader);
+  let doc = getSDTDocument(reader);
   if (!doc?.querySelector("#sdt-content")) {
     showMessage(reader, getString("export-error-not-active"));
     return;
   }
 
+  const layout = await chooseExportLayout(reader);
+  if (!layout) return;
+
+  doc = pickExportDocument(reader, layout) || doc;
   const { done, unfinished } = getTranslationStats(doc);
-  if (!done) {
+  if (layout !== "source-only" && !done) {
     showMessage(reader, getString("export-error-no-translations"));
     return;
   }
 
   if (
+    layout !== "source-only" &&
     unfinished > 0 &&
     !confirmMessage(
       reader,
@@ -365,7 +527,10 @@ export async function exportBilingualPDF(reader: any): Promise<void> {
 
   let importedAttachment: any = null;
   try {
-    const html = buildExportHTML(doc, attachmentTitle);
+    // Lazy page crops must have their data URLs before we clone the document.
+    await preloadSourceCrops(getSDTViewForDocument(reader, doc) || getActiveSDTView(reader), 8000);
+    await Zotero.Promise.delay(50);
+    const html = buildExportHTML(doc, attachmentTitle, layout);
     await printHTMLToPDF(html, tempFile);
     importedAttachment = await importExportedPDF(tempFile, sourceAttachment);
   } catch (error: any) {

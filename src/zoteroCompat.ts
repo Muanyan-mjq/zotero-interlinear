@@ -39,6 +39,106 @@ export function getSDTViews(reader: any): any[] {
   return [internal._primarySDTView, internal._secondarySDTView].filter(Boolean);
 }
 
+/** Every loaded SDT document (one per split pane), primary first. */
+export function getSDTDocuments(reader: any): Document[] {
+  const docs: Document[] = [];
+  for (const view of getSDTViews(reader)) {
+    const doc = getSDTViewDocument(view);
+    if (doc?.querySelector("#sdt-content") && !docs.includes(doc)) docs.push(doc);
+  }
+  return docs;
+}
+
+/** The SDT view that hosts `doc`, falling back to the active view. */
+export function getSDTViewForDocument(reader: any, doc: Document): any {
+  for (const view of getSDTViews(reader)) {
+    if (getSDTViewDocument(view) === doc) return view;
+  }
+  return getActiveSDTView(reader);
+}
+
+/** Whether the reader currently shows two panes. */
+export function isSplitView(reader: any): boolean {
+  return Boolean(getInternalReader(reader)?._state?.splitType);
+}
+
+/** Mark one split pane as the one Zotero's own controls operate on. */
+export function focusSplitView(reader: any, primary = true): void {
+  try {
+    getInternalReader(reader)?.focusView?.(primary);
+  } catch (_) {
+    // Focusing is cosmetic; a build without focusView still syncs fine.
+  }
+}
+
+export interface SplitViewResult {
+  docs: Document[];
+  created: boolean;
+}
+
+/**
+ * Open a vertical split and put both panes into Reading Mode. Reading-mode
+ * transitions are serialized inside Zotero, so the two calls are safe back to
+ * back; each pane needs its own SDT overlay for the plugin to style it.
+ */
+export async function enableSplitView(reader: any): Promise<SplitViewResult | null> {
+  const internal = getInternalReader(reader);
+  if (!internal || typeof internal.toggleVerticalSplit !== "function") return null;
+  if (typeof internal._setReadingMode !== "function") return null;
+
+  const created = !internal._state?.splitType;
+  if (internal._state?.splitType !== "vertical") {
+    try {
+      internal.toggleVerticalSplit(true);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Zotero builds the secondary base view synchronously in its state handler;
+  // slower builds may need a moment before the overlay can attach.
+  for (let i = 0; i < 50 && !internal._secondaryView; i += 1) {
+    await Zotero.Promise.delay(100);
+  }
+  if (!internal._secondaryView) return null;
+
+  try {
+    await internal._setReadingMode(true, true);
+  } catch (_) {
+    // The primary pane may already be in reading mode.
+  }
+  let secondaryFailed = false;
+  try {
+    await internal._setReadingMode(false, true);
+  } catch (_) {
+    secondaryFailed = true;
+  }
+
+  const deadline = Date.now() + (secondaryFailed ? 3000 : 15000);
+  while (Date.now() < deadline) {
+    const docs = getSDTDocuments(reader);
+    if (docs.length >= 2) return { docs, created };
+    await Zotero.Promise.delay(100);
+  }
+  return null;
+}
+
+/** Close the split we opened, removing the secondary overlay first. */
+export async function disableSplitView(reader: any): Promise<void> {
+  const internal = getInternalReader(reader);
+  if (!internal) return;
+  try {
+    await internal._setReadingMode?.(false, false);
+  } catch (_) {
+    // The overlay may already be gone.
+  }
+  try {
+    internal.toggleVerticalSplit?.(false);
+  } catch (_) {
+    // A build without split view has nothing to close.
+  }
+}
+
 /**
  * Turn reading mode on/off. Returns false when the build does not expose
  * `_setReadingMode` (the caller reports "reading mode unsupported").
@@ -95,6 +195,34 @@ export function getSDTViewDocument(view: any): Document | null {
     return view?._iframeDocument || view?._iframe?.contentDocument || null;
   } catch (_) {
     return null;
+  }
+}
+
+/**
+ * Reading mode renders page crops lazily through an IntersectionObserver.
+ * Exporting clones the document, so every crop must have its data URL first.
+ */
+export async function preloadSourceCrops(view: any, timeoutMs = 8000): Promise<void> {
+  const doc = getSDTViewDocument(view);
+  if (!doc || typeof view?._loadSourceCrop !== "function") return;
+
+  const figures = Array.from(
+    doc.querySelectorAll("figure.sdt-source-crop"),
+  ) as HTMLElement[];
+  const deadline = Date.now() + timeoutMs;
+  for (const figure of figures) {
+    if (Date.now() >= deadline) return;
+    if (figure.dataset.sourceCropState !== "ready") continue;
+    try {
+      await Promise.race([
+        Promise.resolve(view._loadSourceCrop(figure)),
+        new Promise((resolve) =>
+          setTimeout(resolve, Math.max(250, deadline - Date.now())),
+        ),
+      ]);
+    } catch (_) {
+      // A missing crop must not block the export.
+    }
   }
 }
 

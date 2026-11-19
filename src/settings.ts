@@ -86,11 +86,13 @@ export { DEFAULT_GEMINI_MODEL };
 export const DEFAULT_OPENAI_PROMPT = `你是学术论文翻译专家。把用户提供的段落准确翻译为指定的目标语言。
 
 要求：
-1. 只输出译文，不要解释、总结或添加原文没有的内容。
-2. 保持学术语体，术语使用领域通行译法并前后一致。
-3. 原样保留数字、单位、公式、变量、基因/蛋白/药物名称、文献引用和图表编号。
-4. 若原文含 [[BRSEG_0000]] 这类分段标记，必须逐字保留并保持顺序，不得翻译、删除或合并段落。
-5. 被标记分隔的段落逐段翻译，输出顺序与输入一致。`;
+1. 只输出译文本身，不要解释、总结、致谢或添加原文没有的内容。
+2. 不要输出任何包裹标签（如 <answer>）、代码块围栏、标题，也不要以“译文：”或“Translation:”开头。
+3. 保持学术语体，术语使用领域通行译法并前后一致。
+4. 原样保留数字、单位、公式、变量、基因/蛋白/药物名称、文献引用和图表编号。
+5. ⟦IL0⟧ 这类形如“⟦IL数字⟧”的占位符代表已保护的内容，必须逐字保留、编号不变、位置不变。
+6. 若原文含 [[BRSEG_0000]] 这类分段标记，必须逐字保留并保持顺序，不得翻译、删除或合并段落。
+7. 被标记分隔的段落逐段翻译，输出顺序与输入一致；一句原文对应一句译文，不要擅自合并或拆分句子。`;
 export const DEFAULT_OLLAMA_PROMPT = DEFAULT_OPENAI_PROMPT;
 export const DEFAULT_SOURCE_LANGUAGE = "auto";
 export const DEFAULT_TARGET_LANGUAGE = "zh-CN";
@@ -232,6 +234,9 @@ const FONT_DETECTION_PREF = `${BASE}.appearance.fontDetection`;
 const RECENT_COLORS_PREF = `${BASE}.appearance.recentColors`;
 const SAVED_COLORS_PREF = `${BASE}.appearance.savedColors`;
 const DISPLAY_MODE_PREF = `${BASE}.displayMode`;
+const HOVER_HIGHLIGHT_PREF = `${BASE}.reader.hoverHighlight`;
+const SELECTION_HIGHLIGHT_PREF = `${BASE}.reader.selectionHighlight`;
+const SYNC_TABS_PREF = `${BASE}.reader.syncTabs`;
 const GLOSSARY_PREF = `${BASE}.glossary`;
 
 function getStringPref(key: string, fallback: string): string {
@@ -1047,6 +1052,33 @@ export function getDisplayMode(): DisplayMode {
 
 export function setDisplayMode(mode: string): void {
   setStringPref(DISPLAY_MODE_PREF, normalizeDisplayMode(mode));
+}
+
+/** Hovering a paragraph tints its counterpart in the other view. */
+export function getHoverHighlightEnabled(): boolean {
+  return getBoolPref(HOVER_HIGHLIGHT_PREF, true);
+}
+
+export function setHoverHighlightEnabled(enabled: boolean): void {
+  setBoolPref(HOVER_HIGHLIGHT_PREF, enabled);
+}
+
+/** Selecting text tints the matching sentence of its translation. */
+export function getSelectionHighlightEnabled(): boolean {
+  return getBoolPref(SELECTION_HIGHLIGHT_PREF, true);
+}
+
+export function setSelectionHighlightEnabled(enabled: boolean): void {
+  setBoolPref(SELECTION_HIGHLIGHT_PREF, enabled);
+}
+
+/** Keep two reader tabs of the same attachment on the same paragraph. */
+export function getSyncReaderTabsEnabled(): boolean {
+  return getBoolPref(SYNC_TABS_PREF, false);
+}
+
+export function setSyncReaderTabsEnabled(enabled: boolean): void {
+  setBoolPref(SYNC_TABS_PREF, enabled);
 }
 
 export function getGlossaryText(): string {

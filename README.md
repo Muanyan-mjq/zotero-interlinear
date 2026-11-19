@@ -19,10 +19,16 @@ Interlinear plugs into the desktop PDF reader's reading mode, fetches a translat
 - **Full-document runs that behave.** Progress and cancel from the toolbar, viewport-first ordering that re-sorts as you page, short-paragraph batching, concurrency and rate limits, timeouts, automatic pause after repeated failures, and click-to-retry on any failed paragraph.
 - **Glossary.** Import/export CSV or TSV term lists. Terms are injected into LLM prompts and enforced as a post-translation replacement on every service, including Google.
 - **Reading assistant.** A chat sidebar answers questions about the selected paragraph, the current page, or the whole document (LLM services only).
-- **Bilingual PDF export.** The current source-plus-translation view is re-typeset into a searchable PDF and attached to the Zotero item.
+- **Bilingual PDF export.** The current source-plus-translation view is re-typeset into a searchable PDF and attached to the Zotero item. The export asks which of the four layouts to use.
 - **Appearance control with live preview.** Six built-in presets (Default, Eye-friendly paper, Academic serif, High contrast, Optimized dark, Minimal) apply in one click and can be undone. Includes a searchable installed-font list with favorites, a font-stack builder with up to six fallbacks, automatic per-language font stacks, a custom HSV color picker (hue/saturation/opacity/RGB/HSL/HEX), separate light/dark colors, recent and saved colors, text decoration (underline/overline/strikethrough with style/thickness/offset), paragraph dividers, ribbon position/width/style, block layout (padding/radius/border/indent/alignment/max width/opacity/source dimming), named presets, and JSON import/export.
 - **Caching.** Translations are cached per service, language pair, and glossary, with a one-click cleanup in settings.
 - English and Simplified Chinese UI; errors appear as non-blocking notices inside the reader.
+
+## Reader UX
+
+- **Linked highlighting.** Hover a source paragraph and its translation is tinted. Select part of the source and only the matching sentences of the translation are tinted. The color is yours: **Appearance → Hover/selection highlight** supports light/dark values, presets and reset.
+- **Dual pane with linked scrolling.** The split-screen toolbar button opens a source-only pane and a translation-only pane, keeps finished and in-progress translations mirrored into the translation pane, and scrolls both panes together so the same paragraph stays in view. Press it again to return to the single-pane layouts.
+- **Formula and inline formatting.** LaTeX (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`), inline code, URLs and paragraph markers are protected from translation and rendered as math/code instead of leaking raw markers into the text.
 
 ## Screenshots
 

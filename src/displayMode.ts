@@ -29,27 +29,51 @@ export function buildDisplayModeCSS(
   paragraphSpacing: number,
 ): string {
   const root = "#sdt-content";
-  return `    ${root}[data-interlinear-display="target-only"] .${sourceClass} {
+  const sideBySide = `${root}[data-interlinear-display="side-by-side"]`;
+  const columnSources = [
+    `${sideBySide} p.${sourceClass}`,
+    ...["h1", "h2", "h3", "h4", "h5", "h6"].map(
+      (tag) => `${sideBySide} ${tag}.${sourceClass}`,
+    ),
+    `${sideBySide} aside.sdt-note.${sourceClass}`,
+  ].join(",\n    ");
+  return `    /* A translation-only pane keeps the visual blocks: figures, tables and
+       formula images have no text to translate, so hiding them loses content. */
+    ${root}[data-interlinear-display="target-only"] .${sourceClass}:not(:has(figure, table, img, svg, canvas, video)) {
       display: none;
+    }
+    ${root}[data-interlinear-display="target-only"] .${sourceClass}:has(figure, table, img, svg, canvas, video) {
+      display: block;
+      margin: 0 0 ${paragraphSpacing}em;
     }
     ${root}[data-interlinear-display="source-only"] .${translationClass} {
       display: none;
     }
-    ${root}[data-interlinear-display="side-by-side"] .${sourceClass} {
-      display: inline-block;
-      width: 49%;
+    ${sideBySide} .${sourceClass} {
       vertical-align: top;
       box-sizing: border-box;
       margin-top: 0;
       margin-block-start: 0;
     }
-    ${root}[data-interlinear-display="side-by-side"] .${translationClass} {
+    /* Only paragraph-like sources become columns. Turning list items or
+       captions into inline blocks loses their markers and figure nesting. */
+    ${columnSources} {
+      display: inline-block;
+      width: 49%;
+    }
+    ${sideBySide} .${translationClass} {
       display: inline-block;
       width: 49%;
       vertical-align: top;
       box-sizing: border-box;
       margin: 0 0 ${paragraphSpacing}em 1%;
       padding-top: 0;
+    }
+    ${sideBySide} li.${sourceClass} + .${translationClass},
+    ${sideBySide} figcaption.${sourceClass} + .${translationClass} {
+      display: block;
+      width: auto;
+      margin-left: 0;
     }
 `;
 }
