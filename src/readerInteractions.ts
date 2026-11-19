@@ -40,6 +40,22 @@ export interface InteractionOptions {
   getDisplayShortcutSettings?: () => { enabled: boolean; spec: ShortcutSpec | null };
   onToggleShortcut?: () => void;
   onCycleDisplayShortcut?: () => void;
+  /** Called as the pointer moves; null means it left every source paragraph. */
+  onSourceHover?: (source: HTMLElement | null, origin?: "source" | "translation") => void;
+  /** Selecting inside a translation highlights the matching source text. */
+  onTranslationSelection?: (
+    block: HTMLElement,
+    range: { start: number; end: number },
+  ) => void;
+  /** Character offsets relative to the source paragraph's text content. */
+  onSourceSelection?: (
+    source: HTMLElement,
+    range: { start: number; end: number },
+  ) => void;
+  onClearHighlight?: () => void;
+  /** Read at gesture time so the settings switch applies without re-attaching. */
+  isHoverHighlightEnabled?: () => boolean;
+  isSelectionHighlightEnabled?: () => boolean;
 }
 
 export interface InteractionController {
@@ -73,6 +89,36 @@ function sourceAt(target: EventTarget | null): HTMLElement | null {
     return previous?.matches?.(SOURCE_SELECTOR) ? previous : null;
   }
   return findSource(target);
+}
+
+/**
+ * True when the live selection sits inside the same paragraph pair the pointer
+ * is over, so the selection tint belongs to that pair.
+ */
+function selectionTouchesPair(range: Range, source: HTMLElement | null): boolean {
+  if (!source) return false;
+  const refPath = source.dataset?.refPath || "";
+  if (!refPath) return false;
+  const anchor = elementOf(range.commonAncestorContainer as Node | null);
+  if (!anchor) return false;
+  const inSource = anchor.closest?.(SOURCE_SELECTOR) as HTMLElement | null;
+  if (inSource?.dataset?.refPath === refPath) return true;
+  const inBlock = anchor.closest?.(`.${TRANSLATION_CLASS}`) as HTMLElement | null;
+  return Boolean(inBlock && inBlock.dataset?.sourceRefPath === refPath);
+}
+
+function textOffsetWithin(root: HTMLElement, node: Node, offset: number): number | null {
+  if (!root.contains(node)) return null;
+  try {
+    const doc = root.ownerDocument;
+    if (!doc) return null;
+    const range = doc.createRange();
+    range.selectNodeContents(root);
+    range.setEnd(node, offset);
+    return range.toString().length;
+  } catch (_) {
+    return null;
+  }
 }
 
 /** Never turn keystrokes typed into a control into reader gestures. */
@@ -309,6 +355,30 @@ export function attachReaderInteractions(
   const onMouseMove = (event: MouseEvent) => {
     const source = sourceAt(event.target);
     pointerSource = source?.isConnected ? source : null;
+    // A live selection owns the highlight: repainting on every pointer move
+    // would replace the sub-sentence tint with a whole-block one.
+    const selection = getSelection();
+    // A selection that lives in this paragraph pair owns the highlight:
+    // repainting on every pointer move would replace the sub-sentence tint
+    // with a whole-block one. A selection anywhere else must not freeze
+    // hover, or the last painted block would look stuck.
+    const liveRange =
+      selection?.rangeCount && !selection.isCollapsed ? selection.getRangeAt(0) : null;
+    const selectionInPair = liveRange
+      ? selectionTouchesPair(liveRange, pointerSource)
+      : false;
+    if (!selectionInPair) {
+      const hoverEnabled = options.isHoverHighlightEnabled?.() !== false;
+      if (hoverEnabled) {
+        // Anything that is not a real source paragraph counts as the
+        // translation side: `sourceAt` already maps a hovered block back to its
+        // source, so a wrapper or padding hit must not look like a source hover.
+        const overSource = Boolean(
+          elementOf(event.target as Node | null)?.closest?.(SOURCE_SELECTOR),
+        );
+        options.onSourceHover?.(pointerSource, overSource ? "source" : "translation");
+      }
+    }
     if (!event.altKey) {
       clearHover();
       return;
@@ -326,13 +396,86 @@ export function attachReaderInteractions(
     clearHover();
   };
 
-  const onMouseLeave = () => clearPointer();
+  const onMouseLeave = () => {
+    clearPointer();
+    options.onClearHighlight?.();
+  };
 
-  const onScroll = () => clearPointer();
+  const onScroll = () => {
+    clearPointer();
+    options.onClearHighlight?.();
+  };
+
+  const syncSelectionHighlight = (): void => {
+    if (options.isSelectionHighlightEnabled?.() === false) {
+      options.onClearHighlight?.();
+      return;
+    }
+    const selection = getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) {
+      options.onClearHighlight?.();
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const startElement = elementOf(range.startContainer as Node | null);
+
+    // Selecting inside a translation works like hovering it: the matching
+    // source passage lights up instead of nothing happening.
+    const block = startElement?.closest?.(`.${TRANSLATION_CLASS}`) as HTMLElement | null;
+    if (block) {
+      const blockStart = textOffsetWithin(block, range.startContainer, range.startOffset);
+      const blockEnd = textOffsetWithin(block, range.endContainer, range.endOffset);
+      if (blockStart !== null && blockEnd !== null && blockEnd > blockStart) {
+        options.onTranslationSelection?.(block, { start: blockStart, end: blockEnd });
+      } else {
+        options.onClearHighlight?.();
+      }
+      return;
+    }
+
+    // A drag that spans inline markup can leave the common ancestor on a
+    // wrapper, so fall back to the paragraph that holds the selection start.
+    const byCommonAncestor = findSource(range.commonAncestorContainer);
+    const byStart = startElement?.closest?.(SOURCE_SELECTOR) as HTMLElement | null;
+    const source =
+      byCommonAncestor ||
+      (byStart &&
+      byStart.closest("#sdt-content") &&
+      !byStart.closest(`.${TRANSLATION_CLASS}, .${POPUP_CLASS}`)
+        ? byStart
+        : null);
+    if (!source) {
+      options.onClearHighlight?.();
+      return;
+    }
+    const start = textOffsetWithin(source, range.startContainer, range.startOffset);
+    let end = textOffsetWithin(source, range.endContainer, range.endOffset);
+    if (start === null) {
+      options.onClearHighlight?.();
+      return;
+    }
+    if (end === null || end <= start) {
+      end = Math.min(
+        (source.textContent || "").length,
+        start + Math.max(1, range.toString().length),
+      );
+    }
+    if (end <= start) {
+      options.onClearHighlight?.();
+      return;
+    }
+    options.onSourceSelection?.(source, { start, end });
+  };
+
+  const onSelectionChange = () => {
+    if (disposed) return;
+    syncSelectionHighlight();
+  };
 
   const onMouseUp = () => {
     schedule(() => {
       if (disposed) return;
+      syncSelectionHighlight();
       const selection = getSelection();
       if (!selection || selection.isCollapsed || !selection.rangeCount) {
         hidePopup();
@@ -453,6 +596,7 @@ export function attachReaderInteractions(
     if (event.key === "Escape") {
       hidePopup();
       clearPointer();
+      options.onClearHighlight?.();
       return;
     }
 
@@ -519,6 +663,7 @@ export function attachReaderInteractions(
   doc.addEventListener("mousemove", onMouseMove, true);
   doc.addEventListener("mouseleave", onMouseLeave, true);
   doc.addEventListener("mouseup", onMouseUp, true);
+  doc.addEventListener("selectionchange", onSelectionChange, true);
   doc.addEventListener("click", onClick, true);
   doc.addEventListener("keydown", onKeyDown, true);
   doc.addEventListener("mousedown", onMouseDown, true);
@@ -544,6 +689,7 @@ export function attachReaderInteractions(
       doc.removeEventListener("mousemove", onMouseMove, true);
       doc.removeEventListener("mouseleave", onMouseLeave, true);
       doc.removeEventListener("mouseup", onMouseUp, true);
+      doc.removeEventListener("selectionchange", onSelectionChange, true);
       doc.removeEventListener("click", onClick, true);
       doc.removeEventListener("keydown", onKeyDown, true);
       doc.removeEventListener("mousedown", onMouseDown, true);

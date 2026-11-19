@@ -23,5 +23,13 @@ export function languageNameZh(code: string): string {
 }
 
 export function buildLanguageDirective(source: string, target: string): string {
-  return `源语言：${languageNameZh(source)}\n目标语言：${languageNameZh(target)}`;
+  return [
+    `源语言：${languageNameZh(source)}`,
+    `目标语言：${languageNameZh(target)}`,
+    "保留要求：",
+    "- 公式（含 $...$、$$...$$、\\(...\\)、\\[...\\] 等 LaTeX 定界符）、行内代码、网址必须原样保留，不得翻译、改写或删除定界符。",
+    "- ⟦IL0⟧ 这类形如“⟦IL数字⟧”的占位符代表已保护的内容，必须逐字保留、编号不变、位置不变；不得翻译、增删或调换顺序。",
+    "- [[BRSEG_0000]] 这类分段标记必须逐字保留并保持顺序，不得翻译、删除或合并段落。",
+    "- 数字、单位、参考文献编号与引用标记（如 [12]、(2020)、Fig. 3、Table 2）保持原样。",
+  ].join("\n");
 }

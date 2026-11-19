@@ -17,6 +17,7 @@ export type ColorRole =
   | "divider"
   | "source"
   | "loading"
+  | "highlight"
   | "error";
 export type TextDecoration = "underline" | "overline" | "line-through";
 export type DecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
@@ -124,6 +125,7 @@ export const COLOR_ROLES: readonly ColorRole[] = [
   "divider",
   "source",
   "loading",
+  "highlight",
   "error",
 ];
 
@@ -139,6 +141,7 @@ export const THEME_ROLE_COLORS: Readonly<
   divider: { light: "#d9d9d9", dark: "#4a4a4a" },
   source: { light: "#666666", dark: "#a8a8a8" },
   loading: { light: "#666666", dark: "#a8a8a8" },
+  highlight: { light: "#ffe08a", dark: "#6b5a1f" },
   error: { light: "#c7354a", dark: "#ff8a9a" },
 };
 
@@ -166,6 +169,7 @@ export const DEFAULT_COLORS: ColorSettings = {
   divider: themeColor("theme", "", ""),
   source: themeColor("theme", "", ""),
   loading: themeColor("theme", "", ""),
+  highlight: themeColor("theme", "", ""),
   error: themeColor("theme", "", ""),
 };
 
@@ -188,6 +192,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
     divider: themeColor("theme", "", ""),
     source: themeColor("theme", "", ""),
     loading: themeColor("theme", "", ""),
+    highlight: themeColor("theme", "", ""),
     error: themeColor("theme", "", ""),
   },
   fontFamily: "",

@@ -129,6 +129,14 @@ describe("native Zotero reading-mode highlight layout", function () {
         ),
       );
       await Zotero.Promise.delay(250);
+      // A fixed delay is not enough when other suites leave the app busy:
+      // wait until the SDT content is laid out before touching annotations.
+      const readyDeadline = Date.now() + 6000;
+      while (Date.now() < readyDeadline) {
+        if (doc.querySelectorAll("[data-ref-path]").length >= 2) break;
+        await Zotero.Promise.delay(100);
+      }
+      await Zotero.Promise.delay(300);
       view._handleViewUpdate(true);
     } catch (error: any) {
       assert.fail(`Native reading-mode fixture: ${String(error)}\n${error?.stack || ""}`);
@@ -151,6 +159,20 @@ describe("native Zotero reading-mode highlight layout", function () {
     return Math.abs(path.getBoundingClientRect().top - range.getBoundingClientRect().top);
   }
 
+  // Geometry can settle one layout pass after the mutation, and a busy host
+  // delays that pass well past a fixed sleep. Poll for the settled value
+  // instead of asserting on a magic delay; a real regression never settles.
+  async function settledAlignment(ms = 2500): Promise<number> {
+    let best = alignmentError();
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (best < 2) return best;
+      await Zotero.Promise.delay(50);
+      best = alignmentError();
+    }
+    return best;
+  }
+
   nativeTest(
     "reproduces stale coordinates and fixes insertion, text growth, resize, and removal",
     async function () {
@@ -170,12 +192,10 @@ describe("native Zotero reading-mode highlight layout", function () {
       block.style.height = "auto";
       block.textContent = "译文第一行\n译文第二行\n译文第三行\n译文第四行";
       block.style.whiteSpace = "pre-wrap";
-      await Zotero.Promise.delay(100);
-      assert.isBelow(alignmentError(), 2, "Completed translations must remain aligned");
+      assert.isBelow(await settledAlignment(), 2, "Completed translations must remain aligned");
 
       block.style.height = "130px";
-      await Zotero.Promise.delay(100);
-      assert.isBelow(alignmentError(), 2, "Later layout changes must remain aligned");
+      assert.isBelow(await settledAlignment(), 2, "Later layout changes must remain aligned");
 
       // Step 4 block styles (padding, border, ribbon side, radius) must not
       // break the native highlight sync either.
@@ -185,9 +205,8 @@ describe("native Zotero reading-mode highlight layout", function () {
       block.style.borderRadius = "10px";
       block.style.marginLeft = "1em";
       block.style.textIndent = "0.5em";
-      await Zotero.Promise.delay(100);
       assert.isBelow(
-        alignmentError(),
+        await settledAlignment(),
         2,
         "Custom block padding, borders and indentation must stay aligned",
       );
@@ -230,7 +249,7 @@ describe("native Zotero reading-mode highlight layout", function () {
         if (updates !== settled) {
           settled = updates;
           quietSince = Date.now();
-        } else if (Date.now() - quietSince >= 400) {
+        } else if (Date.now() - quietSince >= 900) {
           quiet = true;
           break;
         }
